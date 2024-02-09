@@ -24,7 +24,7 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         *)
-            echo "Unbekanntes Argument: $1"
+            echo "Unknown argument: $1"
             exit 1
             ;;
     esac
@@ -47,7 +47,7 @@ fi
 
 if [[ "$visibility" == "private" || "$visibility" == "all" ]]; then
     if ! gh auth status | grep -q "Logged in to .* account $user "; then
-        printf "\e[31mError: You are not logged in as the specified user: $user.\e[0m\n"
+        printf "\e[31mError: You are not logged in as the specified user: $user. Set --visibility to 'public' or use 'gh auth login'.\e[0m\n"
         exit 1
     fi
 fi
@@ -60,20 +60,20 @@ if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
     while read -r repo _; do
         repo_name=$(basename "$repo")
         if [ -d "$into/$repo_name" ]; then
-            printf "\e[33m$repo_name already exists in $into. Skipping...\e[0m\n"
+            printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
         else
             gh repo clone "$repo" "$into/$repo_name" > /dev/null 2>&1
-            printf "\e[32mCloned $repo_name into $into/$repo_name\e[0m\n"
+            printf "\e[32mCloned $repo_name into $(realpath "$into/$repo_name")\e[0m\n"
         fi
     done < <(gh repo list "$user" --visibility "$visibility" --limit "$limit")
 else
     while read -r repo _; do
         repo_name=$(basename "$repo")
         if [ -d "$into/$repo_name" ]; then
-            printf "\e[33m$repo_name already exists in $into. Skipping...\e[0m\n"
+            printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
         else
             gh repo clone "$repo" "$into/$repo_name" > /dev/null 2>&1
-            printf "\e[32mCloned $repo_name into $into/$repo_name\e[0m\n"
+            printf "\e[32mCloned $repo_name into $(realpath "$into/$repo_name")\e[0m\n"
         fi
     done < <(gh repo list "$user" --limit "$limit")
 fi
