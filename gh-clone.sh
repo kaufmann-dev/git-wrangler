@@ -24,7 +24,7 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         *)
-            echo "Unknown argument: $1"
+            printf "\e[31mUnknown option: $1\e[0m\n"
             exit 1
             ;;
     esac
