@@ -1,8 +1,5 @@
 # BashScripts
 I am currently working on this repository. Scripts are not sufficiently tested or even not fully developed. Descriptions not yet added. Plase stand by.
-
-## git-remove-tracked-gitignore.sh
-
 ## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
@@ -28,10 +25,12 @@ Iterates through Git repositories found in the current directory and its immedia
 ```
 #### Options
 * `--force` (optional): Forcefully pushes changes to Git repositories, overwriting remote branches if necessary.
-## git-rename-commits.sh
+## git-remove-secrets.sh
+
+## git-remove-tracked-gitignore.sh
 
 ## git-rename-authors.sh
 
 ## git-rename-branches.sh
 
-## git-remove-secrets.sh
+## git-rename-commits.sh
