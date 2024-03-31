@@ -26,7 +26,9 @@ Iterates through Git repositories found in the current directory and its immedia
 #### Options
 * `--force` (optional): Forcefully pushes changes to Git repositories, overwriting remote branches if necessary.
 ## git-remove-secrets.sh
-
+```diff
+- to be developed
+```
 ## git-remove-tracked-gitignore.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, identifies and stops tracking files defined in their respective .gitignore files, and optionally performs a Git commit.
 #### Syntax
