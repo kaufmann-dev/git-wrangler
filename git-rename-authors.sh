@@ -43,11 +43,9 @@ for repo in $repos; do
         cd "$repo_dir" || exit
 
         if [ "$force" = true ]; then
-            error_message=$(git filter-repo --partial --force --email-callback "return b'$NEW_EMAIL'" \
-                            --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null)
+            error_message=$(git filter-repo --partial --force --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null)
         else
-            error_message=$(git filter-repo --partial --email-callback "return b'$NEW_EMAIL'" \
-                            --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null)
+            error_message=$(git filter-repo --partial --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null)
         fi
 
         if [ $? -ne 0 ]; then
