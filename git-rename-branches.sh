@@ -23,6 +23,11 @@ if [ -z "${oldbranch+x}" ] || [ -z "${newbranch+x}" ]; then
     exit 1
 fi
 
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
 find . -maxdepth 2 -type d -name '.git' | while read git_dir; do
     (
         repo_name=$(dirname "$git_dir")

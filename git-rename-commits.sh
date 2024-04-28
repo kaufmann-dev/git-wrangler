@@ -26,6 +26,16 @@ done
 
 IFS=',' read -r -a messages <<< "$tmp_messages"
 
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+if ! command -v git-filter-repo &> /dev/null; then
+    printf "\e[31mGit filter-repo is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
 find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
   (
     repo_path=$(dirname "$git_dir")
