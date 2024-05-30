@@ -75,15 +75,11 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
               ;;
           esac
 
-          git filter-repo --partial --message-callback '
-            return message.decode("utf-8").replace("'"$old_message"'", "'"$new_message"'").encode("utf-8")
-          ' --force > /dev/null 2>&1
+          git filter-repo --partial --message-callback 'return message.decode("utf-8").replace("'"$old_message"'", "'"$new_message"'").encode("utf-8")' --force > /dev/null 2>&1
 
           printf "Commit message of commit $commit_hash changed from '$old_message' to '$new_message'\n"
         else
-          git filter-repo --partial --message-callback '
-            return message.decode("utf-8").replace("'"$old_message"'", "'"$standard_msg"'").encode("utf-8")
-          ' --force > /dev/null 2>&1
+          git filter-repo --partial --message-callback 'return message.decode("utf-8").replace("'"$old_message"'", "'"$standard_msg"'").encode("utf-8")' --force > /dev/null 2>&1
 
           printf "Commit message of commit $commit_hash changed from '$old_message' to '$standard_msg'\n"
         fi
