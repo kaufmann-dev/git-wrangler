@@ -9,7 +9,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      echo "Unknown option: $1"
+      printf "\e[31mUnknown option: $1\e[0m\n"
       exit 1
       ;;
   esac
@@ -26,17 +26,21 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
 
     cd "$repo_path" || exit
 
-    if [ "$force" = true ]; then
-        if git push --force; then
-            echo "\e[32mGit push --force completed for repository: $repo_name_display\e[0m"
-        else
-            echo "\e[31mGit push --force failed for repository: $repo_name_display: $(git push --force 2>&1 | tail -n 1)\e[0m"
-        fi
+    if git diff-index --quiet HEAD --; then
+        printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
     else
-        if git push; then
-            echo "\e[32mGit push completed for repository: $repo_name_display\e[0m"
+        if [ "$force" = true ]; then
+            if git push --force; then
+                printf "\e[32mGit push --force completed for $repo_name_display\e[0m\n"
+            else
+                printf "\e[31mGit push --force failed for $repo_name_display: $(git push --force 2>&1 | tail -n 1)\e[0m\n"
+            fi
         else
-            echo "\e[31mGit push failed for repository: $repo_name_display: $(git push 2>&1 | tail -n 1)\e[0m"
+            if git push; then
+                printf "\e[32mGit push completed for $repo_name_display\e[0m\n"
+            else
+                printf "\e[31mGit push failed for $repo_name_display: $(git push 2>&1 | tail -n 1)\e[0m\n"
+            fi
         fi
     fi
 done
