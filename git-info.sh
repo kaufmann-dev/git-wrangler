@@ -8,24 +8,24 @@ find . -maxdepth 2 -type d -name '.git' | while read git_dir; do
     cd "$repo_name" || exit
 
     if [ "$repo_name" = "." ]; then
-        printf "Repository:            \e[1;32m"${PWD##*/}"\e[0m\n"
+        printf "Repository:         \e[1;32m"${PWD##*/}"\e[0m\n"
     else
-        printf "Repository:            \e[1;32m$(basename "$repo_name")\e[0m\n"
+        printf "Repository:         \e[1;32m$(basename "$repo_name")\e[0m\n"
     fi
 
     branch_count=$(git branch -a | grep -v 'remotes' | wc -l | tr -d '[:space:]')
-    printf "Anzahl der Branches:   $branch_count\n"
+    printf "Total branches:     $branch_count\n"
 
-    printf "Branches:              "
+    printf "Branches:           "
     # git branch -a | grep -v 'remotes' | sed -n 's/^\* //p; 2,$s/^/                     /p'
-    git branch -a | grep -v 'remotes' | awk '{sub(/^\* /, ""); if (NR==1) print $0; else printf "%-21s%s\n", "", $0}'
+    git branch -a | grep -v 'remotes' | awk '{sub(/^\* /, ""); if (NR==1) print $0; else printf "%-18s%s\n", "", $0}'
 
-    printf "Autoren und Committer: "
+    printf "Authors/committers: "
     # git log --format='%an <%ae>' | sort -u | sed '1!s/^/ /' | sed '2,$s/^/                      /'
-    git log --format='%an <%ae>' | sort -u | awk 'NR==1{print $0} NR>1{printf "%-23s%s\n", "", $0}'
+    git log --format='%an <%ae>' | sort -u | awk 'NR==1{print $0} NR>1{printf "%-20s%s\n", "", $0}'
 
     commit_count=$(git rev-list --all --count)
-    printf "Gesamtanzahl Commits:  $commit_count\n"
+    printf "Total commits:      $commit_count\n"
 
     cd .. || exit
 
