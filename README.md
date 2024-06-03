@@ -3,11 +3,11 @@ I am currently working on this repository. Scripts are not sufficiently tested o
 
 ## git-remove-tracked-gitignore.sh
 
-## git-clone.sh
+## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
 ```
-./script.sh [--user <username>] [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+./gh-clone.sh [--user <username>] [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
 ```
 #### Options
 * `--user` (required): Specify the GitHub username whose repositories to clone.
@@ -15,7 +15,11 @@ Clones GitHub repositories based on specified criteria (visibility, user, limit)
 * `--limit` (optional): Set the maximum number of repositories to clone (default: 100).
 * `--into` (optional): Specify the target directory to organize cloned repositories (default: username).
 ## git-info.sh
-
+Iterates through directories up to two levels deep, identifies Git repositories, and provides information about each repository including name, branch count, list of branches, authors and committers, and total commit count.
+#### Syntax
+```
+./git-info.sh
+```
 ## git-push.sh
 
 ## git-rename-commits.sh
