@@ -4,7 +4,7 @@ I am currently working on this repository. Scripts are not sufficiently tested o
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
 ```
-./gh-clone.sh [--user <username>] [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+./gh-clone.sh --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
 ```
 #### Options
 * `--user <username>` (required): Specify the GitHub username whose repositories to clone.
