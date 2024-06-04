@@ -1,22 +1,28 @@
 #!/bin/bash
 
-find . -maxdepth 2 -type f -name '.gitignore' | while read -r gitignore_file; do
-    repo_dir=$(dirname "$gitignore_file")
+find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
+    (
+        repo_dir=$(dirname "$git_dir")
 
-    cd "$repo_dir" || exit
+        cd "$repo_dir" || exit
 
-    if [ "$repo_name" = "." ]; then
-        repo_name_display="${PWD##*/}"
-    else
-        repo_name_display=$(basename "$repo_name")
-    fi
+        if [ "$repo_dir" = "." ]; then
+            repo_name_display="${PWD##*/}"
+        else
+            repo_name_display=$(basename "$repo_dir")
+        fi
 
-    ignored_files=$(git ls-files --ignored --exclude-standard -o -z)
-    if [ -n "$ignored_files" ]; then
-        git rm --cached -z $ignored_files
-        git commit -m "Stop tracking files defined in .gitignore" -q
-        echo -e "\e[32mStopped tracking files defined in .gitignore for $repo_name_display\e[0m"
-    else
-        echo -e "\e[33mNo files tracked that were defined in .gitignore for $repo_name_display\e[0m"
-    fi
+        if [ -f ".gitignore" ]; then
+            ignored_files=$(git ls-files --ignored --exclude-standard -o -z)
+            if [ -n "$ignored_files" ]; then
+                git rm --cached -z $ignored_files
+                git commit -m "Stop tracking files defined in .gitignore" -q
+                printf "\e[32mStopped tracking files defined in .gitignore for $repo_name_display\e[0m\n"
+            else
+                printf "\e[33mNo files tracked that were defined in .gitignore for $repo_name_display. Skipping...\e[0m\n"
+            fi
+        else
+            printf "\e[33mNo .gitignore file found for $repo_name_display. Skipping...\e[0m\n"
+        fi
+    )
 done
