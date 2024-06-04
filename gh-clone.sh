@@ -30,6 +30,11 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+if [ -z "$user" ]; then
+    printf "\e[31mError: The --user option is required.\e[0m\n"
+    exit 1
+fi
+
 if ! command -v gh &> /dev/null; then
     printf "\e[31mError: 'gh' (GitHub CLI) is not installed. Please install it first.\e[0m\n"
     exit 1
