@@ -45,8 +45,19 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
+repos_count=$(gh repo list "$user" --limit 1 | wc -l)
+if [ "$repos_count" -eq 0 ]; then
+    printf "\e[31mError: The specified user '$user' does not exist or has no repositories.\e[0m\n"
+    exit 1
+fi
+
 if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "private" ]]; then
     printf "\e[31mError: Invalid visibility option. Use 'all', 'public', or 'private'.\e[0m\n"
+    exit 1
+fi
+
+if [ ! -d "$into" ] && ! mkdir -p "$into"; then
+    printf "\e[31mError: Unable to create or access the specified directory '$into'.\e[0m\n"
     exit 1
 fi
 
