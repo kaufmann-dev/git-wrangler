@@ -20,32 +20,41 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
-    repo_path=$(dirname "$git_dir")
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
-    if [ "$repo_path" = "." ]; then
-        repo_name_display="${PWD##*/}"
-    else
-        repo_name_display=$(basename "$repo_path")
-    fi
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
 
-    cd "$repo_path" || exit
+echo "$git_repositories" | while read git_dir; do
+    (
+        repo_path=$(dirname "$git_dir")
 
-    if git diff-index --quiet HEAD --; then
-        printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
-    else
-        if [ "$force" = true ]; then
-            if git push --force; then
-                printf "\e[32mGit push --force completed for $repo_name_display\e[0m\n"
-            else
-                printf "\e[31mGit push --force failed for $repo_name_display: $(git push --force 2>&1 | tail -n 1)\e[0m\n"
-            fi
+        if [ "$repo_path" = "." ]; then
+            repo_name_display="${PWD##*/}"
         else
-            if git push; then
+            repo_name_display=$(basename "$repo_path")
+        fi
+
+        cd "$repo_path" || exit
+
+        if [ "$force" = true ]; then
+            push_output=$(git push --force origin HEAD 2>&1)
+        else
+            push_output=$(git push origin HEAD 2>&1)
+        fi
+
+        push_output=$(echo "$push_output" | tr '\n' ' ' | sed 's/ \{2,\}/ /g')
+
+        if [ "$?" -eq 0 ]; then
+            if ! printf "$push_output" | grep -q "Everything up-to-date"; then
                 printf "\e[32mGit push completed for $repo_name_display\e[0m\n"
             else
-                printf "\e[31mGit push failed for $repo_name_display: $(git push 2>&1 | tail -n 1)\e[0m\n"
+                printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
             fi
+        else
+            printf "\e[31mGit push failed for $repo_name_display: $push_output\e[0m\n"
         fi
-    fi
+    )
 done
