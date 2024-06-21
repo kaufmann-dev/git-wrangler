@@ -67,7 +67,7 @@ for repo in $(find . -maxdepth 2 -type d -name '.git'); do
         fi
 
         if [ $? -ne 0 ]; then
-            printf "\e[31mError: Unable to remove secret files from $repo_name_displa: $(echo "$error_message" | tr '\n' ' ' | sed 's/ \{2,\}/ /g')\e[0m\n"
+            printf "\e[31mError: Unable to remove secret files from $repo_name_display:\n$error_message\e[0m\n"
             continue
         fi
 
