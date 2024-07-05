@@ -5,7 +5,7 @@ Welcome to the BashScripts repository! In this repository, you will find a colle
 * ✅ `git-push.sh`: Push multiple git repositories.
 * 🚧 `git-remove-secrets.sh`: Remove secret files.
 * 🚧 `git-remove-tracked-gitignore.sh`: Remove untracked files defined in .gitignore.
-* 🚧 `git-rename-authors.sh`: Change name and email of authors and commiters.
+* ✅ `git-rename-authors.sh`: Change name and email of authors and commiters.
 * 🚧 `git-rename-branches.sh`: Rename git branches.
 * 🚧 `git-rename-commits.sh`: Rename commit messages.
 ## gh-clone.sh
