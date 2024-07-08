@@ -8,6 +8,9 @@ Welcome to the BashScripts repository! In this repository, you will find a colle
 * ✅ `git-rename-authors.sh`: Change name and email of authors and commiters.
 * 🚧 `git-rename-branches.sh`: Rename git branches.
 * 🚧 `git-rename-commits.sh`: Rename commit messages.
+
+✅... Tested and working 
+🚧... Work in progress, not sufficiently tested, use with caution 
 ## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
