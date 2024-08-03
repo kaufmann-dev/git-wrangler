@@ -10,6 +10,7 @@ Welcome to the BashScripts repository! In this repository, you will find a colle
 * 🚧 `git-rename-commits.sh`: Rename commit messages.
 
 <h6>✅ ... Tested and working
+  
 🚧 ... WIP, not sufficiently tested, use with caution</h6>
 
 ## gh-clone.sh
