@@ -4,7 +4,7 @@ I am currently working on this repository. Scripts are not sufficiently tested o
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
 ```
-./gh-clone.sh [--user <username>] [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+./gh-clone.sh --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
 ```
 #### Options
 * `--user <username>` (required): Specify the GitHub username whose repositories to clone.
@@ -12,7 +12,7 @@ Clones GitHub repositories based on specified criteria (visibility, user, limit)
 * `--limit <number>` (optional): Set the maximum number of repositories to clone (default: 100).
 * `--into <directory>` (optional): Specify the target directory to organize cloned repositories (default: username).
 ## git-info.sh
-Iterates through directories up to two levels deep, identifies Git repositories, and provides information about each repository including name, branch count, list of branches, authors and committers, and total commit count.
+Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, branch count, list of branches, authors and committers, and total commit count.
 #### Syntax
 ```
 ./git-info.sh
@@ -28,7 +28,13 @@ Iterates through Git repositories found in the current directory and its immedia
 ## git-remove-secrets.sh
 
 ## git-remove-tracked-gitignore.sh
-
+Iterates through Git repositories found in the current directory and its immediate subdirectories, identifies and stops tracking files defined in their respective .gitignore files, and optionally performs a Git commit.
+#### Syntax
+```
+./git-remove-tracked-gitignore.sh [--commit]
+```
+#### Options
+* `--commit` (optional): Perform a Git commit after removing cached files defined in the .gitignore.
 ## git-rename-authors.sh
 
 ## git-rename-branches.sh
