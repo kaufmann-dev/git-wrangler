@@ -118,7 +118,5 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
     else
       printf "\e[33mNo comit messages changed in $repo_name_display. Skipping...\e[0m\n"
     fi
-
-    printf ""
   )
 done
