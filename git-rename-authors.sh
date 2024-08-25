@@ -70,7 +70,5 @@ for repo in $repos; do
                 printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
             fi
         fi
-
-        cd .. || exit
     )
 done

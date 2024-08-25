@@ -46,7 +46,5 @@ find . -maxdepth 2 -type d -name '.git' | while read git_dir; do
         else
             printf "\e[33mIm Repository $repo_name_display existiert kein Branch $oldbranch.\e[0m\n"
         fi
-
-        cd .. || exit
     )
 done
