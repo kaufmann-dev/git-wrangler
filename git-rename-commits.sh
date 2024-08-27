@@ -62,7 +62,7 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
       old_message=$(git log --pretty=format:%B -1 "$commit_hash")
       message_length=${#old_message}
 
-      if ((message_length <= min_msg_length)) || [[ " ${messages[@]} " =~ " $old_message " ]]; then
+      if ((message_length <= min_msg_length)) || { [[ ${messages[*]} =~ $old_message ]]; }; then
         if ((file_count == 1)); then
             file_status=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | awk '{print $1}')
             file_name=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | awk '{print $2}')
