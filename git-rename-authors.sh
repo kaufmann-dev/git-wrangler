@@ -61,13 +61,13 @@ echo "$repos" | while read repo; do
             if error_message=$(git filter-repo --partial --force --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null); then
                 printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
             else
-                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
+                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n\n"
             fi
         else
             if error_message=$(git filter-repo --partial --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null); then
                 printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
             else
-                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
+                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n\n"
             fi
         fi
     )
