@@ -85,7 +85,9 @@ echo "$git_repositories" | while read git_dir; do
         # Branches
         branch_count=$(git branch -a | grep -v 'remotes' | wc -l | tr -d '[:space:]')
         printf "Branches ($branch_count):       "
-        git branch -a | grep -v 'remotes' | awk '{sub(/^\* /, ""); if (NR==1) print $0; else printf "%-18s%s\n", "", $0}'
+        branches=$(git branch -a | grep -v 'remotes' | sed 's/^\* //;s/^[[:space:]]*//')
+        printf "%s\n" "$(echo "$branches" | head -1)"
+        echo "$branches" | tail -n +2 | sed 's/^/                    /'
 
         # Remotes
         remotes=$(git remote -v | awk '{print $1 " " $2}' | sort -u)

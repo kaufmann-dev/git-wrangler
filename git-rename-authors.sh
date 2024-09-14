@@ -1,6 +1,9 @@
 #!/bin/bash
 
 force=false
+repo=""
+NEW_NAME=""
+NEW_EMAIL=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -15,6 +18,10 @@ while [[ $# -gt 0 ]]; do
         --force)
             force=true
             shift
+            ;;
+        --repo)
+            repo="$2"
+            shift 2
             ;;
         *)
             printf "\e[31mUnknown option: $1\e[0m\n"
@@ -38,7 +45,11 @@ if ! command -v git-filter-repo &> /dev/null; then
     exit 1
 fi
 
-repos=$(find . -maxdepth 2 -type d -name ".git")
+if [ -n "$repo" ]; then
+    repos=$(find "$repo" -maxdepth 2 -type d -name '.git')
+else
+    repos=$(find . -maxdepth 2 -type d -name '.git')
+fi
 
 if [ -z "$repos" ]; then
     printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
