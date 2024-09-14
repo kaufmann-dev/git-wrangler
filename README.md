@@ -54,7 +54,7 @@ Iterates through Git repositories found in the current directory and creates or 
 ./git-add-mit.sh
 ```
 #### Options
-* `--name <copyright_holder>`: Specifies the copyright holder's name.
+* `--name <copyright_holder>` (required): Specifies the copyright holder's name.
 * `--overwrite` (optional): If provided, replaces existing LICENSE files instead of skipping them.
 * `--repo <repository_name>` (optional): Specifies a single repository to create a LICENSE file, instead of all repositories in the current directory.
 
@@ -85,6 +85,7 @@ Iterates through Git repositories found in the current directory and its immedia
 * `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
 * `--email <new_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
 * `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
+* `--repo <repository_name>` (optional): Specifies a single repository instead of going through all repositories in the current directory.
 
 
 
