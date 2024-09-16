@@ -1,18 +1,16 @@
 # BashScripts
 Welcome to the BashScripts repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
-* [`gh-clone.sh`](#gh-clone-sh): Clone multiple GitHub repositories. *
-* [`git-push.sh`](#git-push-sh): Push multiple git repositories. *
-* [`git-info.sh`](#git-info-sh): Display information about git repositories. *
-* [`git-add-mit.sh`](#git-add-mit-sh): Add the MIT license to your repositories. *
-* [`git-rename-authors.sh`](#git-rename-authors-sh): Change name and email of authors and commiters. *
+* [`gh-clone.sh`](#gh-clone-sh): Clone multiple GitHub repositories.
+* [`git-push.sh`](#git-push-sh): Push multiple git repositories.
+* [`git-info.sh`](#git-info-sh): Display information about git repositories.
+* [`git-add-mit.sh`](#git-add-mit-sh): Add the MIT license to your repositories.
+* [`git-rename-authors.sh`](#git-rename-authors-sh): Change name and email of authors and commiters.
+<!--
 * [`git-remove-secrets.sh`](#git-remove-secrets-sh): Remove secret files.
 * [`git-remove-tracked-gitignore.sh`](#git-remove-tracked-gitignore-sh): Remove untracked files defined in .gitignore.
 * [`git-rename-branches.sh`](#git-rename-branches-sh): Rename git branches.
 * [`git-rename-commits.sh`](#git-rename-commits-sh): Rename commit messages.
-
-<h6>
-* The script has been thoroughly tested; please use others at your own risk.
-</h6>
+-->
 
 
 
@@ -89,6 +87,7 @@ Iterates through Git repositories found in the current directory and its immedia
 
 
 
+<!--
 <a id="git-remove-secrets-sh"></a>
 
 ## git-remove-secrets.sh
@@ -172,3 +171,4 @@ Iterates through Git repositories found in the current directory and its immedia
 * `--minmsglength <number>` (optional): Sets the minimum length for commit messages to be considered for replacement (default: 5).
 * `--standardmsg <string>` (optional): Specifies a default commit message to use when the existing message does not meet the criteria for replacement (default: Commit changes).
 * `--force` (optional): Forcefully changes commit messages.
+-->
