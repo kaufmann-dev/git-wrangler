@@ -36,7 +36,15 @@ Iterates through Git repositories found in the current directory and its immedia
 #### Options
 * `--commit` (optional): Perform a Git commit after removing cached files defined in the .gitignore.
 ## git-rename-authors.sh
-
+Iterates through Git repositories found in the current directory and its immediate subdirectories, updates author and committer information, with optional force mode, allowing users to specify a new name and email.
+#### Syntax
+```
+./git-rename-authors.sh --name <new_name> --email <new_email> [--force]
+```
+#### Options
+* `--name` (required): Specifies the new name to be set as the author and committer in the Git repositories.
+* `--email` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
+* `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
 ## git-rename-branches.sh
 
 ## git-rename-commits.sh
