@@ -1,5 +1,4 @@
 # BashScripts
-I am currently working on this repository. Scripts are not sufficiently tested or even not fully developed. Descriptions not yet added. Plase stand by.
 ## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
@@ -44,8 +43,8 @@ Iterates through Git repositories found in the current directory and its immedia
 ./git-rename-authors.sh --name <new_name> --email <new_email> [--force]
 ```
 #### Options
-* `--name <new_author_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
-* `--email <new_author_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
+* `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
+* `--email <new_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
 * `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
 ## git-rename-branches.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, renames a specified branch (--oldbranch) to a new branch (--newbranch) across all repositories.
