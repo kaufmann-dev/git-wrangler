@@ -44,9 +44,16 @@ Iterates through Git repositories found in the current directory and its immedia
 ./git-rename-authors.sh --name <new_name> --email <new_email> [--force]
 ```
 #### Options
-* `--name` (required): Specifies the new name to be set as the author and committer in the Git repositories.
-* `--email` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
+* `--name <new_author_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
+* `--email <new_author_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
 * `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
 ## git-rename-branches.sh
-
+Iterates through Git repositories found in the current directory and its immediate subdirectories, renames a specified branch (--oldbranch) to a new branch (--newbranch) across all repositories.
+#### Syntax
+```
+./git-rename-branches.sh --oldbranch <old_branch_name> --newbranch <new_branch_name>
+```
+#### Options
+* `--oldbranch <old_branch_name>` (required): Specifies the name of the existing Git branches that needs to be renamed.
+* `--newbranch <new_branch_name>` (required): Specifies the new name for the Git branches.
 ## git-rename-commits.sh
