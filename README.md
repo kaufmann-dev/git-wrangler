@@ -56,3 +56,12 @@ Iterates through Git repositories found in the current directory and its immedia
 * `--oldbranch <old_branch_name>` (required): Specifies the name of the existing Git branches that needs to be renamed.
 * `--newbranch <new_branch_name>` (required): Specifies the new name for the Git branches.
 ## git-rename-commits.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, updates commit messages based on certain conditions.
+#### Syntax
+```
+./git-rename-commits.sh [--messages <msg1>,<msg2>,...] [--minmsglength <number>] [--standardmsg <string>]
+```
+#### Options
+* `--messages` (optional): Allows the user to provide a list of specific commit messages to target for replacement.
+* `--minmsglength` (optional): Sets the minimum length for commit messages to be considered for replacement.
+* `--standardmsg` (optional): Specifies a default commit message to use when the existing message does not meet the criteria for replacement.
