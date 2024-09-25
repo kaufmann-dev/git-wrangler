@@ -1,84 +1,86 @@
 #!/bin/bash
 
-messages=()
 min_msg_length=5
 standard_msg="Commit changes"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --messages)
-      shift
-      messages=("$@")
-      break
+      tmp_messages=$2
+      shift 2
       ;;
     --minmsglength)
-      shift
-      min_msg_length=$1
-      shift
+      min_msg_length=$2
+      shift 2
       ;;
     --standardmsg)
-      shift
-      standard_msg=$1
-      shift
+      standard_msg=$2
+      shift 2
       ;;
     *)
-      echo "Unknown option: $1"
+      printf "\e[31mUnknown option: $1\e[0m\n"
       exit 1
       ;;
   esac
 done
 
-find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
-  repo_path=$(dirname "$git_dir")
+IFS=',' read -r -a messages <<< "$tmp_messages"
 
-  if [ -d "$repo_path/.git" ]; then
-    echo "Processing repository: $repo_path"
+find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
+  (
+    repo_path=$(dirname "$git_dir")
+
+    if [ "$repo_path" = "." ]; then
+        repo_name_display="${PWD##*/}"
+    else
+        repo_name_display=$(basename "$repo_path")
+    fi
+
+    printf "Processing repository: $repo_name_display\n"
 
     cd "$repo_path" || exit
 
-    if git log --pretty=format:%n --name-status -1 | grep -E '^[ADRM]\s+[^[:space:]]+$' &> /dev/null; then
-      file_status=$(git log --pretty=format:%n --name-status -1 | awk '{print $1}')
-      file_name=$(git log --pretty=format:%n --name-status -1 | awk '{print $2}')
+    git log --pretty=format:%H --reverse | while read -r commit_hash; do
+      file_count=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | grep -E '^[ADRM]\s+[^[:space:]]+$' | wc -l)
+      old_message=$(git log --pretty=format:%B -1 "$commit_hash")
+      message_length=${#old_message}
 
-      case "$file_status" in
-        'A')
-          new_message="Added $file_name"
-          old_message=$(git log --pretty=format:%B -1)
-          git filter-repo --message-callback '
-            return message.encode("utf-8").replace(b"old_string_added", b"'"$new_message"'")
-          ' --force
-          echo "Commit message of commit $(git rev-parse HEAD) changed from '$old_message' to '$new_message'"
-          ;;
-        'D')
-          new_message="Removed $file_name"
-          old_message=$(git log --pretty=format:%B -1)
-          git filter-repo --message-callback '
-            return message.encode("utf-8").replace(b"old_string_removed", b"'"$new_message"'")
-          ' --force
-          echo "Commit message of commit $(git rev-parse HEAD) changed from '$old_message' to '$new_message'"
-          ;;
-        'M')
-          new_message="Changed $file_name"
-          old_message=$(git log --pretty=format:%B -1)
-          git filter-repo --message-callback '
-            return message.encode("utf-8").replace(b"old_string_modified", b"'"$new_message"'")
-          ' --force
-          echo "Commit message of commit $(git rev-parse HEAD) changed from '$old_message' to '$new_message'"
-          ;;
-        *)
-          ;;
-      esac
-    else
-      old_message=$(git log --pretty=format:%B -1)
-      if [[ "${messages[@]}" =~ "$old_message" || ${#old_message} -lt $min_msg_length ]]; then
-        git filter-repo --message-callback '
-          return message.encode("utf-8").replace(b"old_string_other", b"'"$standard_msg"'")
-        ' --force
-        echo "Commit message of commit $(git rev-parse HEAD) changed from '$old_message' to '$standard_msg'"
+      if ((message_length <= min_msg_length)) || [[ " ${messages[@]} " =~ " $old_message " ]]; then
+        if ((file_count == 1)); then
+          file_status=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | awk '{print $1}')
+          file_name=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | awk '{print $2}')
+
+          case "$file_status" in
+            'A')
+              new_message="Added $file_name"
+              ;;
+            'D')
+              new_message="Removed $file_name"
+              ;;
+            'M')
+              new_message="Changed $file_name"
+              ;;
+            *)
+              new_message="$standard_msg"
+              ;;
+          esac
+
+          git filter-repo --partial --message-callback '
+            return message.decode("utf-8").replace("'"$old_message"'", "'"$new_message"'").encode("utf-8")
+          ' --force > /dev/null 2>&1
+
+          printf "Commit message of commit $commit_hash changed from '$old_message' to '$new_message'\n"
+        else
+          git filter-repo --partial --message-callback '
+            return message.decode("utf-8").replace("'"$old_message"'", "'"$standard_msg"'").encode("utf-8")
+          ' --force > /dev/null 2>&1
+
+          printf "Commit message of commit $commit_hash changed from '$old_message' to '$standard_msg'\n"
+        fi
       fi
-    fi
+    done
 
-    echo "Repository processed successfully."
-    echo ""
-  fi
+    printf "\e[32mChanged commit messages for $repo_name_display successfully.\e[0m\n"
+    printf ""
+  )
 done
