@@ -9,9 +9,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-printf -- "------------------------------------------------------------------\n"
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
-find . -maxdepth 2 -type d -name '.git' | while read git_dir; do
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
+
+printf -- "──────────────────────────────────────────────────────────────────\n"
+
+echo "$git_repositories" | while read git_dir; do
     (
         repo_name=$(dirname "$git_dir")
 
@@ -39,6 +46,6 @@ find . -maxdepth 2 -type d -name '.git' | while read git_dir; do
 
         cd .. || exit
 
-        printf -- "------------------------------------------------------------------\n"
+        printf -- "──────────────────────────────────────────────────────────────────\n"
     )
 done
