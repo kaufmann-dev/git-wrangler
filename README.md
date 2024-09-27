@@ -1,10 +1,10 @@
 # RepoManip
 Welcome to the RepoManip repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
-* [`gh-clone.sh`](#gh-clone-sh): Clone multiple GitHub repositories.
-* [`git-push.sh`](#git-push-sh): Push multiple git repositories.
-* [`git-info.sh`](#git-info-sh): Display information about git repositories.
-* [`git-add-mit.sh`](#git-add-mit-sh): Add the MIT license to your repositories.
-* [`git-rename-authors.sh`](#git-rename-authors-sh): Change name and email of authors and commiters.
+* [`clone-repositories.sh`](#clone-repositories-sh): Clone multiple GitHub repositories.
+* [`push-repositories.sh`](#push-repositories-sh): Push multiple git repositories.
+* [`repository-info.sh`](#repository-info-sh): Display information about git repositories.
+* [`add-license.sh`](#add-license-sh): Add the MIT license to your repositories.
+* [`rewrite-authors.sh`](#rewrite-authors-sh): Change name and email of authors and commiters.
 <!--
 * [`git-remove-secrets.sh`](#git-remove-secrets-sh): Remove secret files.
 * [`git-remove-tracked-gitignore.sh`](#git-remove-tracked-gitignore-sh): Remove untracked files defined in .gitignore.
@@ -14,13 +14,13 @@ Welcome to the RepoManip repository! In this repository, you will find a collect
 
 
 
-<a id="gh-clone-sh"></a>
+<a id="clone-repositories-sh"></a>
 
-## gh-clone.sh
+## clone-repositories.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
 ```
-./gh-clone.sh --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+./clone-repositories.sh --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
 ```
 #### Options
 * `--user <username>` (required): Specify the GitHub username whose repositories to clone.
@@ -30,39 +30,39 @@ Clones GitHub repositories based on specified criteria (visibility, user, limit)
 
 
 
-<a id="git-push-sh"></a>
+<a id="push-repositories-sh"></a>
 
-## git-push.sh
+## push-repositories.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, checks if there are changes to push, and performs a Git push operation with optional force flag.
 #### Syntax
 ```
-./git-push.sh [--force]
+./push-repositories.sh [--force]
 ```
 #### Options
 * `--force` (optional): Forcefully pushes changes to Git repositories, overwriting remote branches if necessary.
 
 
 
-<a id="git-info-sh"></a>
+<a id="repository-info-sh"></a>
 
-## git-info.sh
+## repository-info.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, status, license, branches, remotes, commits and files.
 #### Syntax
 ```
-./git-info.sh
+./repository-info.sh
 ```
 #### Options
 * `--repo <repository_name>` (optional): Specifies a single repository to analyze, instead of analyzing all repositories in the current directory.
 
 
 
-<a id="git-add-mit-sh"></a>
+<a id="add-license-sh"></a>
 
-## git-add-mit.sh
+## add-license.sh
 Iterates through Git repositories found in the current directory and creates or overwrites an MIT license file with a given copyright holder's name.
 #### Syntax
 ```
-./git-add-mit.sh
+./add-license.sh
 ```
 #### Options
 * `--name <copyright_holder>` (required): Specifies the copyright holder's name.
@@ -71,13 +71,13 @@ Iterates through Git repositories found in the current directory and creates or 
 
 
 
-<a id="git-rename-authors-sh"></a>
+<a id="rewrite-authors-sh"></a>
 
-## git-rename-authors.sh
+## rewrite-authors.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, updates author and committer information, with optional force mode, allowing users to specify a new name and email.
 #### Syntax
 ```
-./git-rename-authors.sh --name <new_name> --email <new_email> [--force]
+./rewrite-authors.sh --name <new_name> --email <new_email> [--force]
 ```
 #### Options
 * `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
