@@ -1,13 +1,11 @@
 #!/bin/bash
 
-COMMIT=false
+# Usage: ./remove-tracked-gitignore.sh
+# Removes files from the Git index that are actively tracked but match 
+# exclusion rules in .gitignore. Commits the removals. Takes no arguments.
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --commit)
-            COMMIT=true
-            shift
-            ;;
         *)
             printf "\e[31mUnknown option: $1\e[0m\n"
             exit 1
@@ -20,11 +18,16 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
+
+echo "$git_repositories" | while read git_dir; do
     (
         repo_dir=$(dirname "$git_dir")
-
-        cd "$repo_dir" || exit
 
         if [ "$repo_dir" = "." ]; then
             repo_name_display="${PWD##*/}"
@@ -32,18 +35,25 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
             repo_name_display=$(basename "$repo_dir")
         fi
 
+        cd "$repo_dir" || exit
+
         if [ -f ".gitignore" ]; then
-            ignored_files=$(git ls-files --ignored --exclude-standard -o -z)
+            # Identify files tracked in the index (--cached) that match ignore patterns (--ignored)
+            ignored_files=$(git ls-files --ignored --cached --exclude-standard)
+            
             if [ -n "$ignored_files" ]; then
-                git rm --cached -z $ignored_files
-                if [ "$COMMIT" = true ]; then
-                    git commit -m "Stop tracking files defined in .gitignore" -q
-                    printf "\e[32mStopped tracking files defined in .gitignore for $repo_name_display. Commit performed.\e[0m\n"
+                # Use -z and xargs -0 to safely handle any spaces or special characters in filenames
+                if error_message=$(git ls-files --ignored --cached --exclude-standard -z | xargs -0 git rm --cached -q 2>&1); then
+                    if commit_output=$(git commit -m "Stop tracking files defined in .gitignore" -q 2>&1); then
+                        printf "\e[32mStopped tracking and committed ignored files for $repo_name_display\e[0m\n"
+                    else
+                        printf "\e[31mError: Could not commit changes for $repo_name_display:\n$commit_output\e[0m\n\n"
+                    fi
                 else
-                    printf "\e[32mStopped tracking files defined in .gitignore for $repo_name_display. (No commit performed)\e[0m\n"
+                    printf "\e[31mError: Could not untrack files for $repo_name_display:\n$error_message\e[0m\n\n"
                 fi
             else
-                printf "\e[33mNo files tracked that were defined in .gitignore for $repo_name_display. Skipping...\e[0m\n"
+                printf "\e[33mNo currently tracked files match .gitignore in $repo_name_display. Skipping...\e[0m\n"
             fi
         else
             printf "\e[33mNo .gitignore file found for $repo_name_display. Skipping...\e[0m\n"

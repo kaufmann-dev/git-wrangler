@@ -1,105 +1,105 @@
 #!/bin/bash
 
-default_secrets=(
-    "appsettings.json"
-    ".env"
-    ".env.production"
-    ".env.development"
-    ".env.local"
-    "config.js"
-    "config.json"
-    "database.yml"
-    "secrets.yml"
-    "credentials.json"
-    "key.json"
-    "key.txt"
-    "settings.xml"
-    "private.key"
-    "private.pem"
-    "id_rsa"
-    "id_dsa"
-    "access_token"
-    "oauth_token"
-    "auth.config"
-    "docker-compose.override.yml"
-    ".dockerenv"
-    "aws-credentials"
-    "google-credentials.json"
-    "serviceAccountKey.json"
-    "firebase-adminsdk.json"
-    "firebase-service-account.json"
-    "client_secret.json"
-)
+# ==============================================================================
+# Usage: ./remove-secrets.sh
+# 
+# Description:
+# Permanently purges files containing sensitive data from the entire Git history
+# of all managed repositories (across all branches and tags).
+#
+# This script takes no arguments. It operates on all '.git' repositories found
+# within a depth of 2 from the current directory.
+# ==============================================================================
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --secrets)
-            shift
-            secrets_file="$1"
-            ;;
-        --force)
-            force=true
-            shift
-            ;;
-        *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
-            exit 1
-            ;;
-    esac
-    shift
-done
+# ==============================================================================
+# EDITABLE PATTERNS BLOCK
+# ==============================================================================
+TARGET_PATTERNS=(
+    ".env"
+    ".env.*"
+    "*.pem"
+    "*.key"
+    "*.p12"
+    "*.pfx"
+    "id_rsa"
+    "id_rsa.pub"
+    "id_ed25519"
+    "id_ed25519.pub"
+    "config.json"
+    "secrets.json"
+    "credentials.json"
+    "*.secret"
+)
+# ==============================================================================
 
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
-if ! command -v git-filter-repo &> /dev/null; then
-    printf "\e[31mError: 'git filter-repo' is not installed. Please install it first.\e[0m\n"
-    exit 1
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
 fi
 
-if [ -n "$secrets_file" ]; then
-    if [ -e "$secrets_file" ]; then
-        IFS=$'\n' read -d '' -r -a default_secrets < "$secrets_file"
-    else
-        printf "Specified secrets file not found: $secrets_file\n"
-        exit 1
-    fi
-fi
+echo "$git_repositories" | while read git_dir; do
+    (
+        repo_path=$(dirname "$git_dir")
 
-find . -maxdepth 2 -type d -name '.git' | while read repo; do
-    repo_path=$(dirname "$repo")
-
-    if [ "$repo_path" = "." ]; then
-        repo_name_display="${PWD##*/}"
-    else
-        repo_name_display=$(basename "$repo_path")
-    fi
-    
-    secret_files=""
-    for secret in "${default_secrets[@]}"; do
-        secret_files+=" -o -name '$secret'"
-    done
-    secret_files=${secret_files:3}  # Remove leading " -o"
-
-    found_secret_files=$(find "$repo_path" -type f \( $secret_files \))
-    
-    if [ -n "$found_secret_files" ]; then
-        if [ "$force" = true ]; then
-            error_message=$(git -C "$repo_path" filter-repo --path $found_secret_files --invert-paths --force 2>&1 >/dev/null)
+        if [ "$repo_path" = "." ]; then
+            repo_name_display="${PWD##*/}"
         else
-            error_message=$(git -C "$repo_path" filter-repo --path $found_secret_files --invert-paths 2>&1 >/dev/null)
+            repo_name_display=$(basename "$repo_path")
         fi
 
-        if [ $? -ne 0 ]; then
-            printf "\e[31mError: Unable to remove secret files from $repo_name_display:\n$error_message\e[0m\n\n"
-            continue
+        # Check repository accessibility
+        if ! cd "$repo_path" 2>/dev/null || ! git rev-parse --is-inside-work-tree &> /dev/null; then
+            printf "\e[31mError: $repo_name_display is not a valid or accessible git repository. Skipping...\e[0m\n"
+            exit 1
         fi
 
-        printf "\e[32mSecret files successfully removed from $repo_name_display\e[0m\n"
+        # Check for git-filter-repo per repository as requested by edge cases
+        if ! command -v git-filter-repo &> /dev/null; then
+            printf "\e[31mError: 'git-filter-repo' is not installed. Skipping $repo_name_display...\e[0m\n"
+            exit 1
+        fi
 
-    else
-        printf "\e[33mNo secret files found in $repo_name_display. Skipping...\e[0m\n"
-    fi
+        # Scan for matched patterns anywhere in the history
+        matched_patterns=()
+        for pattern in "${TARGET_PATTERNS[@]}"; do
+            if matches=$(git log --all --oneline -- "$pattern" 2>/dev/null | head -n 1) && [ -n "$matches" ]; then
+                matched_patterns+=("$pattern")
+            fi
+        done
+
+        if [ ${#matched_patterns[@]} -eq 0 ]; then
+            printf "\e[33mNo target patterns found in history. Skipping $repo_name_display cleanly...\e[0m\n"
+            exit 0
+        fi
+
+        filter_repo_args=()
+        for pattern in "${matched_patterns[@]}"; do
+            filter_repo_args+=(--path-glob "$pattern")
+        done
+
+        # Capture remote origin URL before rewriting (filter-repo drops it)
+        remote_url=$(git remote get-url origin 2>/dev/null)
+
+        # Execute rewrite
+        # We pass --force to git-filter-repo to bypass the fresh-clone requirement. The script is
+        # explicitly intended to run on the current working repositories without user friction.
+        if error_message=$(git filter-repo "${filter_repo_args[@]}" --invert-paths --use-base-name --force 2>&1 >/dev/null); then
+            printf "\e[32mSuccessfully purged sensitive files from $repo_name_display\e[0m\n"
+        else
+            printf "\e[31mError: Rewrite failed for $repo_name_display:\n$error_message\e[0m\n\n"
+            exit 1
+        fi
+
+        # Re-add remote if there was one
+        if [ -n "$remote_url" ]; then
+            git remote add origin "$remote_url" 2>/dev/null
+        fi
+    )
 done
