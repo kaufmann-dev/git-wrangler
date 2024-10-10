@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Usage: ./rewrite-commits.sh
+# Rewrites commit messages to adhere to the Conventional Commits standard.
+
 # ==============================================================================
 # CATEGORIZATION RULES
 # ==============================================================================
@@ -169,7 +172,7 @@ echo "$git_repositories" | while read git_dir; do
         done < <(git rev-list --all)
 
         if [ "$needs_rewrite" = false ]; then
-            printf "\e[33mNo commits require renaming in $repo_name_display (already format compliant). Skipping...\e[0m\n"
+            printf "\e[33mNo commits require rewriting in $repo_name_display (already format compliant). Skipping...\e[0m\n"
             rm -f "$map_file"
             continue
         fi
