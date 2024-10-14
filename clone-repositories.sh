@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# ==============================================================================
+# Usage: ./clone-repositories.sh --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+# 
+# Description:
+# Clones GitHub repositories based on specified criteria (visibility, user, limit) 
+# and organizes them into a designated directory, checking for existing 
+# repositories and displaying status messages.
+# ==============================================================================
+
 visibility="all"
 user=""
 limit=100
