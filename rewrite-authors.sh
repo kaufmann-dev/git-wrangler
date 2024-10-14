@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# ==============================================================================
+# Usage: ./rewrite-authors.sh --name <new_name> --email <new_email> [--force] [--repo <repository_name>]
+# 
+# Description:
+# Iterates through Git repositories found in the current directory and its 
+# immediate subdirectories, updates author and committer information, with 
+# optional force mode, allowing users to specify a new name and email.
+# ==============================================================================
+
 force=false
 repo=""
 NEW_NAME=""

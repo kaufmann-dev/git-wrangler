@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# ==============================================================================
+# Usage: ./add-license.sh --name <copyright_holder> [--overwrite] [--repo <repository_name>]
+# 
+# Description:
+# Iterates through Git repositories found in the current directory and creates 
+# or overwrites a license file with a given copyright holder's name. 
+# Uses the MIT license by default.
+# ==============================================================================
+
 repo=""
 copyright_holder=""
 overwrite=false
