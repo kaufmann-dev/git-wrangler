@@ -9,6 +9,7 @@
 # them on the local disk, and commits the removals automatically.
 # ==============================================================================
 
+# Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
@@ -18,11 +19,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
+# Find target repositories
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
@@ -30,8 +33,10 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$git_repositories" | while read git_dir; do
     (
+        # Get repository directory and name
         repo_dir=$(dirname "$git_dir")
 
         if [ "$repo_dir" = "." ]; then
@@ -42,12 +47,13 @@ echo "$git_repositories" | while read git_dir; do
 
         cd "$repo_dir" || exit
 
+        # Stop tracking files that match .gitignore patterns
         if [ -f ".gitignore" ]; then
-            # Identify files tracked in the index (--cached) that match ignore patterns (--ignored)
+            # Identify tracked files matching ignore patterns
             ignored_files=$(git ls-files --ignored --cached --exclude-standard)
             
             if [ -n "$ignored_files" ]; then
-                # Use -z and xargs -0 to safely handle any spaces or special characters in filenames
+                # Untrack and commit ignored files
                 if error_message=$(git ls-files --ignored --cached --exclude-standard -z | xargs -0 git rm --cached -q 2>&1); then
                     if commit_output=$(git commit -m "Stop tracking files defined in .gitignore" -q 2>&1); then
                         printf "\e[32mStopped tracking and committed ignored files for $repo_name_display\e[0m\n"
