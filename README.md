@@ -1,5 +1,5 @@
-# RepoManip
-Welcome to the RepoManip repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
+# Git Wrangler
+Welcome to the Git Wrangler repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
 * [`clone-repositories.sh`](#clone-repositories-sh): Clones multiple GitHub repositories.
 * [`push-repositories.sh`](#push-repositories-sh): Pushes multiple repositories.
 * [`repository-info.sh`](#repository-info-sh): Shows basic repository information.
