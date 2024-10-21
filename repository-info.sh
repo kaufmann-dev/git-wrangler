@@ -86,6 +86,11 @@ echo "$git_repositories" | while read git_dir; do
         current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
         printf "Current branch:     %s\n" "$current_branch"
 
+        has_commits=false
+        if git rev-parse HEAD >/dev/null 2>&1; then
+            has_commits=true
+        fi
+
         # Display ahead/behind status relative to upstream
         ahead_behind=$(git rev-list --left-right --count HEAD..."@{u}" 2>/dev/null)
         if [ -n "$ahead_behind" ]; then
@@ -113,7 +118,7 @@ echo "$git_repositories" | while read git_dir; do
 
         # Display initial commit information
         initial_commit=$(git log --reverse --format="%ci - %s" 2>/dev/null | head -n 1)
-        if [ -n "$initial_commit" ]; then
+        if [ "$has_commits" = true ] && [ -n "$initial_commit" ]; then
             printf "Initial commit:     %s\n" "$initial_commit"
         else
             printf "Initial commit:     None (repository is empty)\n"
@@ -132,14 +137,18 @@ echo "$git_repositories" | while read git_dir; do
         printf "Last commit:        %s\n" "$last_commit"
 
         # Display top authors
-        printf "Top authors:        "
-        git log --format='%an <%ae>' | sort | uniq -c | sort -rn | head -n 3 | awk '{
-            count = $1;                    # Store the commit count
-            sub(/^[ \t]*[0-9]+[ \t]*/, ""); # Remove count and surrounding whitespace
-            name_email = $0;               # Remaining is name and email
-            if (NR == 1) { printf "%s - %s\n", count, name_email }
-            else { printf "%-20s%s - %s\n", "", count, name_email }
-        }'
+        if [ "$has_commits" = true ]; then
+            printf "Top authors:        "
+            git log --format='%an <%ae>' 2>/dev/null | sort | uniq -c | sort -rn | head -n 3 | awk '{
+                count = $1;                    # Store the commit count
+                sub(/^[ \t]*[0-9]+[ \t]*/, ""); # Remove count and surrounding whitespace
+                name_email = $0;               # Remaining is name and email
+                if (NR == 1) { printf "%s - %s\n", count, name_email }
+                else { printf "%-20s%s - %s\n", "", count, name_email }
+            }'
+        else
+            printf "Top authors:        None (repository is empty)\n"
+        fi
 
         # Display largest files in history
         git rev-list --objects --all 2>/dev/null | git cat-file --batch-check='%(objectsize) %(objectname) %(rest)' | sort -nr | awk '

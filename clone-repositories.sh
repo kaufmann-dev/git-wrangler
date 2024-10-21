@@ -14,6 +14,23 @@ user=""
 limit=100
 into=""
 
+clone_repository() {
+    local repo="$1"
+    local repo_name
+    repo_name=$(basename "$repo")
+
+    if [[ -d "$into/$repo_name" ]]; then
+        printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
+        return
+    fi
+
+    if clone_output=$(gh repo clone "$repo" "$into/$repo_name" 2>&1); then
+        printf "\e[32mCloned $repo_name into $(realpath "$into/$repo_name")\e[0m\n"
+    else
+        printf "\e[31mError: Failed to clone $repo_name:\n$clone_output\e[0m\n\n"
+    fi
+}
+
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -104,22 +121,10 @@ fi
 # Clone repositories based on visibility
 if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
     while read -r repo _; do
-        repo_name=$(basename "$repo")
-        if [[ -d "$into/$repo_name" ]]; then
-            printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
-        else
-            gh repo clone "$repo" "$into/$repo_name" > /dev/null 2>&1
-            printf "\e[32mCloned $repo_name into $(realpath "$into/$repo_name")\e[0m\n"
-        fi
+        clone_repository "$repo"
     done < <(gh repo list "$user" --visibility "$visibility" --limit "$limit")
 else
     while read -r repo _; do
-        repo_name=$(basename "$repo")
-        if [[ -d "$into/$repo_name" ]]; then
-            printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
-        else
-            gh repo clone "$repo" "$into/$repo_name" > /dev/null 2>&1
-            printf "\e[32mCloned $repo_name into $(realpath "$into/$repo_name")\e[0m\n"
-        fi
+        clone_repository "$repo"
     done < <(gh repo list "$user" --limit "$limit")
 fi
