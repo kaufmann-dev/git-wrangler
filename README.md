@@ -2,6 +2,7 @@
 Welcome to the Git Wrangler repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
 * [`clone-repositories.sh`](#clone-repositories-sh): Clones multiple GitHub repositories.
 * [`push-repositories.sh`](#push-repositories-sh): Pushes multiple repositories.
+* [`pull-repositories.sh`](#pull-repositories-sh): Pulls multiple repositories.
 * [`repository-info.sh`](#repository-info-sh): Shows basic repository information.
 * [`add-license.sh`](#add-license-sh): Adds or replaces a LICENSE file. Defaults to MIT.
 * [`rewrite-authors.sh`](#rewrite-authors-sh): Rewrites author and committer names and emails.
@@ -39,6 +40,19 @@ Iterates through Git repositories found in the current directory and its immedia
 #### Options
 * `--force` (optional): Forcefully pushes changes to Git repositories, overwriting remote branches if necessary.
 
+
+
+<a id="pull-repositories-sh"></a>
+
+## pull-repositories.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, and performs a Git pull operation to fetch and integrate changes from the remote repository.
+#### Syntax
+```
+./pull-repositories.sh [--rebase] [--force]
+```
+#### Options
+* `--rebase` (optional): Rebase local commits on top of the fetched remote branch instead of merging.
+* `--force` (optional): Forcefully pulls changes, overwriting local changes if necessary.
 
 
 <a id="repository-info-sh"></a>
