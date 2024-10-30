@@ -59,7 +59,7 @@ Iterates through Git repositories found in the current directory and its immedia
 Iterates through Git repositories found in the current directory and its immediate subdirectories, updates commit messages based on certain conditions. If only one file was changed in the commit, the script automatically detects what changes where made and changes updates the commit message accordingly, otherwise the default commit message is used.
 #### Syntax
 ```
-./git-rename-commits.sh [--messages <msg1>,<msg2>,...] [--minmsglength <number>] [--standardmsg <string>]
+./git-rename-commits.sh [--messages "<msg1>,<msg2>,..."] [--minmsglength <number>] [--standardmsg <string>]
 ```
 #### Options
 * `--messages` (optional): Allows the user to provide a list of specific commit messages to target for replacement.
