@@ -32,7 +32,7 @@ if ! command -v git &> /dev/null; then
 fi
 
 if ! command -v git-filter-repo &> /dev/null; then
-    printf "\e[31mGit filter-repo is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git filter-repo' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
