@@ -8,6 +8,7 @@ Welcome to the Git Wrangler repository! In this repository, you will find a coll
 * [`rewrite-authors.sh`](#rewrite-authors-sh): Rewrites author and committer names and emails.
 * [`remove-secrets.sh`](#remove-secrets-sh): Permanently purges files containing sensitive data from the entire Git history.
 * [`untrack-ignored-files.sh`](#untrack-ignored-files-sh): Removes tracked files that match exclusion rules in .gitignore.
+* [`fix-gitignore-files.sh`](#fix-gitignore-files-sh): Audits and fixes .gitignore files by adding missing entries for tracked files.
 * [`rename-branches.sh`](#rename-branches-sh): Renames a specified branch to a new name.
 * [`rewrite-commits.sh`](#rewrite-commits-sh): Rewrites commit messages to adhere to the Conventional Commits standard.
 
@@ -123,6 +124,18 @@ Removes files from the Git index that are actively tracked but match exclusion r
 #### Options
 This script takes no arguments.
 
+
+
+<a id="fix-gitignore-files-sh"></a>
+
+## fix-gitignore-files.sh
+Audits and fixes .gitignore files across Git repositories found in the current directory and its immediate subdirectories. Adds missing entries for tracked files that match common candidates (build artifacts, dependencies, IDE files, etc.) but are not yet covered by .gitignore. Does not untrack files, commit changes, or touch secrets.
+#### Syntax
+```
+./fix-gitignore-files.sh
+```
+#### Options
+This script takes no arguments.
 
 
 <a id="rename-branches-sh"></a>
