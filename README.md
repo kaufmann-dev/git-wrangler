@@ -3,6 +3,7 @@ Welcome to the Git Wrangler repository! In this repository, you will find a coll
 * [`clone-repositories.sh`](#clone-repositories-sh): Clones multiple GitHub repositories.
 * [`push-repositories.sh`](#push-repositories-sh): Pushes multiple repositories.
 * [`pull-repositories.sh`](#pull-repositories-sh): Pulls multiple repositories.
+* [`add-commit.sh`](#add-commit-sh): Stages all changes and creates a commit across multiple repositories.
 * [`repository-info.sh`](#repository-info-sh): Shows basic repository information.
 * [`add-license.sh`](#add-license-sh): Adds or replaces a LICENSE file. Defaults to MIT.
 * [`rewrite-authors.sh`](#rewrite-authors-sh): Rewrites author and committer names and emails.
@@ -54,6 +55,18 @@ Iterates through Git repositories found in the current directory and its immedia
 #### Options
 * `--rebase` (optional): Rebase local commits on top of the fetched remote branch instead of merging.
 * `--force` (optional): Forcefully pulls changes, overwriting local changes if necessary.
+
+
+<a id="add-commit-sh"></a>
+
+## add-commit.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, stages all changes, and creates a commit with the provided message.
+#### Syntax
+```
+./add-commit.sh --message <commit_message>
+```
+#### Options
+* `--message <commit_message>` (required): Specifies the commit message to use for all repositories.
 
 
 <a id="repository-info-sh"></a>
