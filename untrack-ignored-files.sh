@@ -13,7 +13,7 @@
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
     esac
@@ -34,7 +34,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository directory and name
         repo_dir=$(dirname "$git_dir")
@@ -54,18 +54,18 @@ echo "$git_repositories" | while read git_dir; do
                 # Untrack and commit ignored files
                 if error_message=$(git ls-files --ignored --cached --exclude-standard -z | xargs -0 -r git rm --cached -q -- 2>&1); then
                     if commit_output=$(git commit -q -m "Stop tracking files defined in .gitignore" 2>&1); then
-                        printf "\e[32mStopped tracking and committed ignored files for $repo_name_display\e[0m\n"
+                        printf "\e[32mStopped tracking and committed ignored files for %s\e[0m\n" "$repo_name_display"
                     else
-                        printf "\e[31mError: Could not commit changes for $repo_name_display:\n$commit_output\e[0m\n\n"
+                        printf "\e[31mError: Could not commit changes for %s:\n%s\e[0m\n\n" "$repo_name_display" "$commit_output"
                     fi
                 else
-                    printf "\e[31mError: Could not untrack files for $repo_name_display:\n$error_message\e[0m\n\n"
+                    printf "\e[31mError: Could not untrack files for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message"
                 fi
             else
-                printf "\e[33mNo currently tracked files match .gitignore in $repo_name_display. Skipping...\e[0m\n"
+                printf "\e[33mNo currently tracked files match .gitignore in %s. Skipping...\e[0m\n" "$repo_name_display"
             fi
         else
-            printf "\e[33mNo .gitignore file found for $repo_name_display. Skipping...\e[0m\n"
+            printf "\e[33mNo .gitignore file found for %s. Skipping...\e[0m\n" "$repo_name_display"
         fi
     )
-done
+done <<< "$git_repositories"
