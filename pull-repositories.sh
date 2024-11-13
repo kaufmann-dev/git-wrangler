@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      printf "\e[31mUnknown option: $1\e[0m\n"
+      printf "\e[31mUnknown option: %s\e[0m\n" "$1"
       exit 1
       ;;
   esac
@@ -45,7 +45,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository path and display name
         repo_path=$(dirname "$git_dir")
@@ -70,12 +70,12 @@ echo "$git_repositories" | while read git_dir; do
         # Perform Git pull
         if pull_output=$(git pull$pull_args 2>&1); then
             if ! printf "$pull_output" | grep -q "Already up to date"; then
-                printf "\e[32mGit pull completed for $repo_name_display\e[0m\n"
+                printf "\e[32mGit pull completed for %s\e[0m\n" "$repo_name_display"
             else
-                printf "\e[33mAlready up to date for $repo_name_display. Skipping...\e[0m\n"
+                printf "\e[33mAlready up to date for %s. Skipping...\e[0m\n" "$repo_name_display"
             fi
         else
-            printf "\e[31mError: Git pull failed for $repo_name_display:\n$pull_output\e[0m\n\n"
+            printf "\e[31mError: Git pull failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$pull_output"
         fi
     )
-done
+done <<< "$git_repositories"

@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
     esac
@@ -44,7 +44,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository directory
         repo_name=$(dirname "$git_dir")
@@ -53,9 +53,9 @@ echo "$git_repositories" | while read git_dir; do
 
         # Display repository name
         if [ "$repo_name" = "." ]; then
-            printf "Repository:         \e[1;34m${PWD##*/}\e[0m\n"
+            printf "Repository:         \e[1;34m%s\e[0m\n" "${PWD##*/}"
         else
-            printf "Repository:         \e[1;34m$(basename "$repo_name")\e[0m\n"
+            printf "Repository:         \e[1;34m%s\e[0m\n" "$(basename "$repo_name")"
         fi
 
         # Display Git status
@@ -126,7 +126,7 @@ echo "$git_repositories" | while read git_dir; do
 
         # Display total commit count
         commit_count=$(git rev-list --all --count)
-        printf "Total commits:      $commit_count\n"
+        printf "Total commits:      %s\n" "$commit_count"
 
         # Display commit frequency (last month)
         commit_freq=$(git log --since="1 month ago" --format="%ci" 2>/dev/null | wc -l | tr -d '[:space:]')
@@ -175,4 +175,4 @@ echo "$git_repositories" | while read git_dir; do
         
         printf -- "\n"
     )
-done
+done <<< "$git_repositories"
