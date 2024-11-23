@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# ==============================================================================
-# Usage: ./rename-branches.sh --oldbranch <old_name> --newbranch <new_name>
-# 
-# Description:
-# Renames a specified branch to a new name across all managed Git repositories.
-# ==============================================================================
+# ====
+# Usage: wrangler rename-branch --oldbranch <old_name> --newbranch <new_name>
+# Description: Renames a specified branch to a new name across repositories
+# Category: Local Operations
+# ====
 
 oldbranch=""
 newbranch=""
