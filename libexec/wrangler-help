@@ -4,6 +4,16 @@
 # Usage: wrangler help [<subcommand>]
 # Description: Displays help information for wrangler and its subcommands
 # Category: Utility
+#
+# When run without arguments, displays a categorized overview of all
+# available subcommands. When a subcommand name is provided, displays
+# detailed documentation for that specific command including its usage,
+# description, options, and examples.
+#
+# Examples:
+#     wrangler help
+#     wrangler help clone
+#     wrangler help rewrite-authors
 # ====
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -18,8 +28,52 @@ if [ -n "$1" ]; then
         exit 1
     fi
 
-    # Extract documentation between # ==== boundaries, strip # prefix, print cleanly
-    awk '/^# ====/{found++; next} found==1{sub(/^# ?/, ""); print} found>=2{exit}' "$target"
+    # Extract documentation between # ==== boundaries, strip # prefix, render with formatting
+    raw_docs=$(awk '/^# ====/{found++; next} found==1{sub(/^# ?/, ""); print} found>=2{exit}' "$target")
+
+    printf "\n"
+
+    # Render each line with formatting
+    while IFS= read -r line; do
+        case "$line" in
+            "Usage: "*)
+                printf "  \e[1mUsage:\e[0m %s\n" "${line#Usage: }"
+                ;;
+            "Description: "*)
+                printf "  \e[1mDescription:\e[0m %s\n" "${line#Description: }"
+                ;;
+            "Category: "*)
+                printf "  \e[1mCategory:\e[0m %s\n" "${line#Category: }"
+                ;;
+            "Options:")
+                printf "\n  \e[1mOptions:\e[0m\n"
+                ;;
+            "Example:")
+                printf "\n  \e[1mExample:\e[0m\n"
+                ;;
+            "Examples:")
+                printf "\n  \e[1mExamples:\e[0m\n"
+                ;;
+            "  --"*)
+                # Option line: bold the flag name, dim the description
+                flag=$(printf '%s' "$line" | sed 's/^\(  --[^ ]*\).*/\1/')
+                rest="${line#$flag}"
+                printf "    \e[33m%s\e[0m%s\n" "$flag" "$rest"
+                ;;
+            "    "*)
+                # Indented continuation line (option description or example)
+                printf "  %s\n" "$line"
+                ;;
+            "")
+                printf "\n"
+                ;;
+            *)
+                printf "    %s\n" "$line"
+                ;;
+        esac
+    done <<< "$raw_docs"
+
+    printf "\n"
     exit 0
 fi
 
