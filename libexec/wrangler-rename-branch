@@ -4,6 +4,17 @@
 # Usage: wrangler rename-branch --oldbranch <old_name> --newbranch <new_name>
 # Description: Renames a specified branch to a new name across repositories
 # Category: Local Operations
+#
+# Renames a specified branch to a new name across all managed Git repositories.
+# Repositories where the old branch does not exist or the new branch name is
+# already taken are skipped automatically.
+#
+# Options:
+#   --oldbranch <old_name>  (required) The name of the existing branch to rename.
+#   --newbranch <new_name>  (required) The new name for the branch.
+#
+# Example:
+#     wrangler rename-branch --oldbranch master --newbranch main
 # ====
 
 oldbranch=""
