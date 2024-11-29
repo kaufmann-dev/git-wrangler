@@ -32,6 +32,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 | Subcommand | Description |
 |---|---|
 | `wrangler commit` | Stages all changes and creates a commit across multiple repositories |
+| `wrangler review` | Reviews committed changes before pushing across repositories |
 | `wrangler license` | Adds or replaces a LICENSE file across repositories |
 | `wrangler untrack` | Removes tracked files that match .gitignore exclusion rules |
 | `wrangler fix-gitignore` | Audits and fixes .gitignore files by adding missing entries |
@@ -100,6 +101,7 @@ libexec/
   wrangler-pull             # wrangler pull
   wrangler-push             # wrangler push
   wrangler-commit           # wrangler commit
+  wrangler-review           # wrangler review
   wrangler-license          # wrangler license
   wrangler-info             # wrangler info
   wrangler-help             # wrangler help

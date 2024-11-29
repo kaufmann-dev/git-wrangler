@@ -1,0 +1,162 @@
+#!/bin/bash
+
+# ====
+# Usage: wrangler review
+# Description: Reviews committed changes before pushing across repositories
+# Category: Local Operations
+#
+# Iterates through Git repositories and displays a summary of added, edited,
+# and removed files that have been committed but not yet pushed. If an entire
+# directory was deleted, it groups the changes and reports the directory deletion
+# instead of listing every individual file.
+#
+# This command takes no arguments.
+#
+# Example:
+#     wrangler review
+# ====
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            exit 1
+            ;;
+    esac
+done
+
+# Check prerequisites
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+# Find target repositories
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
+
+# Iterate through each repository
+while IFS= read -r git_dir; do
+    (
+        # Get repository path and display name
+        repo_path=$(dirname "$git_dir")
+
+        if [ "$repo_path" = "." ]; then
+            repo_name_display="${PWD##*/}"
+        else
+            repo_name_display=$(basename "$repo_path")
+        fi
+
+        cd "$repo_path" || exit
+
+        # Determine unpushed commits
+        unpushed_commits=$(git rev-list HEAD --not --remotes 2>/dev/null)
+        
+        if [ -z "$unpushed_commits" ]; then
+            printf "\e[33mNo unpushed changes for %s. Skipping...\e[0m\n" "$repo_name_display"
+            exit 0
+        fi
+
+        oldest_unpushed=$(printf "%s\n" "$unpushed_commits" | tail -n 1)
+        if ! base_commit=$(git rev-parse --verify "$oldest_unpushed^" 2>/dev/null); then
+            # Use empty tree hash for first commit
+            base_commit=$(git hash-object -t tree /dev/null)
+        fi
+
+        added_files=()
+        modified_files=()
+        deleted_files=()
+
+        # Parse the zero-delimited output from git diff
+        while IFS= read -r -d '' status && IFS= read -r -d '' file; do
+            status_char="${status:0:1}"
+            if [ "$status_char" = "A" ]; then
+                added_files+=("$file")
+            elif [ "$status_char" = "M" ]; then
+                modified_files+=("$file")
+            elif [ "$status_char" = "D" ]; then
+                deleted_files+=("$file")
+            fi
+        done < <(git diff --name-status -z --no-renames "$base_commit"..HEAD)
+
+        if [ ${#added_files[@]} -eq 0 ] && [ ${#modified_files[@]} -eq 0 ] && [ ${#deleted_files[@]} -eq 0 ]; then
+            printf "\e[33mNo unpushed changes for %s. Skipping...\e[0m\n" "$repo_name_display"
+            exit 0
+        fi
+
+        # Process deleted files to group by deleted folders
+        deleted_folders=()
+        individual_deleted_files=()
+        
+        for file in "${deleted_files[@]}"; do
+            # Skip if this file is already covered by a known deleted folder
+            covered=false
+            for df in "${deleted_folders[@]}"; do
+                if [[ "$file" == "$df/"* ]]; then
+                    covered=true
+                    break
+                fi
+            done
+            if [ "$covered" = true ]; then
+                continue
+            fi
+            
+            dir=$(dirname "$file")
+            if [ "$dir" = "." ]; then
+                individual_deleted_files+=("$file")
+                continue
+            fi
+            
+            IFS='/' read -ra parts <<< "$dir"
+            current=""
+            deleted_folder=""
+            for part in "${parts[@]}"; do
+                if [ -z "$current" ]; then current="$part"; else current="$current/$part"; fi
+                # Check if this directory exists in HEAD
+                if ! git ls-tree -d HEAD "$current" 2>/dev/null | grep -q .; then
+                    deleted_folder="$current"
+                    break
+                fi
+            done
+            
+            if [ -n "$deleted_folder" ]; then
+                deleted_folders+=("$deleted_folder")
+            else
+                individual_deleted_files+=("$file")
+            fi
+        done
+
+        printf "\e[1;34m%s:\e[0m\n" "$repo_name_display"
+
+        if [ ${#added_files[@]} -gt 0 ]; then
+            for f in "${added_files[@]}"; do
+                printf "  \e[32mAdded:\e[0m    %s\n" "$f"
+            done
+        fi
+
+        if [ ${#modified_files[@]} -gt 0 ]; then
+            for f in "${modified_files[@]}"; do
+                printf "  \e[33mEdited:\e[0m   %s\n" "$f"
+            done
+        fi
+
+        if [ ${#deleted_folders[@]} -gt 0 ]; then
+            for f in "${deleted_folders[@]}"; do
+                printf "  \e[31mRemoved:\e[0m  %s/ (entire folder)\n" "$f"
+            done
+        fi
+
+        if [ ${#individual_deleted_files[@]} -gt 0 ]; then
+            for f in "${individual_deleted_files[@]}"; do
+                printf "  \e[31mRemoved:\e[0m  %s\n" "$f"
+            done
+        fi
+        
+        printf "\n"
+    )
+done <<< "$git_repositories"
