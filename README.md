@@ -6,7 +6,7 @@ A unified CLI tool for managing multiple Git repositories at once. Wrangler prov
 
 For all subcommands to work, make sure you have the following installed:
 - `git`
-- `gh` (GitHub CLI) — required for `wrangler clone`
+- `gh` (GitHub CLI) — required for `wrangler clone` and `wrangler rename-repo`
 - `git-filter-repo` — required for `wrangler rewrite-authors`, `wrangler rewrite-commits`, and `wrangler remove-secrets`
 
 ## Usage
@@ -24,6 +24,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 | Subcommand | Description |
 |---|---|
 | `wrangler clone` | Clones multiple GitHub repositories for a given user |
+| `wrangler rename-repo` | Bulk renames GitHub repositories and optionally their descriptions |
 | `wrangler pull` | Pulls the latest changes for all tracked repositories |
 | `wrangler push` | Pushes local commits to remote for all tracked repositories |
 
@@ -99,6 +100,7 @@ The `wrangler` script in the repository root is a thin dispatcher. It resolves t
 wrangler                    # Dispatcher (repository root)
 libexec/
   wrangler-clone            # wrangler clone
+  wrangler-rename-repo      # wrangler rename-repo
   wrangler-pull             # wrangler pull
   wrangler-push             # wrangler push
   wrangler-commit           # wrangler commit
