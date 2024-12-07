@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# ====
+# Usage: wrangler rename-repo [--description]
+# Description: Bulk renames GitHub repositories and optionally updates their descriptions.
+# Category: Remote Operations
+#
+# Iterates through Git repositories found in the current directory and its
+# immediate subdirectories. For each repository, it retrieves the current name
+# from GitHub and prompts for a new name. If --description is provided, it
+# also retrieves the current description and prompts for a new one.
+#
+# Options:
+#   --description  (optional) Also prompt to update the repository description.
+#
+# Examples:
+#     wrangler rename-repo
+#     wrangler rename-repo --description
+# ====
+
+edit_description=false
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --description)
+            edit_description=true
+            shift
+            ;;
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            exit 1
+            ;;
+    esac
+done
+
+# Check prerequisites
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+if ! command -v gh &> /dev/null; then
+    printf "\e[31mError: 'gh' (GitHub CLI) is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+# Find target repositories
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the current directory or its immediate subdirectories.\e[0m\n"
+    exit 0
+fi
+
+# Iterate through each repository
+while IFS= read -r git_dir; do
+    (
+        repo_dir=$(dirname "$git_dir")
+        cd "$repo_dir" || exit
+
+        if [ "$repo_dir" = "." ]; then
+            repo_name_display="${PWD##*/}"
+        else
+            repo_name_display=$(basename "$repo_dir")
+        fi
+
+        # Get old name from github
+        if ! old_name=$(gh repo view --json name -q .name 2>/dev/null); then
+            printf "\e[33mSkipping %s: No remote or not a GitHub repository.\e[0m\n" "$repo_name_display"
+            exit 0 # exit subshell, continuing loop
+        fi
+
+        printf "\n\e[1;34mRepository: %s\e[0m\n" "$old_name"
+        read -r -p "Enter new name (leave blank to skip): " new_name < /dev/tty
+
+        new_desc=""
+        if [ "$edit_description" = true ]; then
+            old_desc=$(gh repo view --json description -q .description 2>/dev/null)
+            if [ -z "$old_desc" ]; then
+                printf "Current description: <None>\n"
+            else
+                printf "Current description: %s\n" "$old_desc"
+            fi
+            read -r -p "Enter new description (leave blank to skip): " new_desc < /dev/tty
+        fi
+
+        if [ "$edit_description" = true ] && [ -n "$new_desc" ]; then
+            if command_output=$(gh repo edit --description "$new_desc" 2>&1); then
+                printf "\e[32mSuccessfully updated description for %s\e[0m\n" "$old_name"
+            else
+                printf "\e[31mError: Failed to update description for %s:\n%s\e[0m\n" "$old_name" "$command_output"
+            fi
+        fi
+
+        if [ -n "$new_name" ]; then
+            if command_output=$(gh repo rename "$new_name" --yes 2>&1); then
+                printf "\e[32mSuccessfully renamed %s to %s\e[0m\n" "$old_name" "$new_name"
+            else
+                printf "\e[31mError: Failed to rename %s:\n%s\e[0m\n" "$old_name" "$command_output"
+            fi
+        fi
+    )
+done <<< "$git_repositories"
