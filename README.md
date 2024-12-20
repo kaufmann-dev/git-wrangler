@@ -1,4 +1,12 @@
 # BashScripts
+* gh-clone.sh
+* git-info.sh
+* git-push.sh
+* git-remove-secrets.sh
+* git-remove-tracked-gitignore.sh
+* git-rename-authors.sh
+* git-rename-branches.sh
+* git-rename-commits.sh
 ## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
