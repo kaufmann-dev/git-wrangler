@@ -11,6 +11,10 @@ while [[ $# -gt 0 ]]; do
             shift
             secrets_file="$1"
             ;;
+        --force)
+            force=true
+            shift
+            ;;
         *)
             printf "\e[31mUnknown option: $1\e[0m\n"
             exit 1
@@ -56,11 +60,19 @@ for repo in $(find . -maxdepth 2 -type d -name '.git'); do
     found_secret_files=$(find "$repo_path" -type f \( $secret_files \))
     
     if [ -n "$found_secret_files" ]; then
-        if git -C "$repo_path" filter-repo --path $found_secret_files --invert-paths; then
-            printf "\e[32mSecret files successfully removed from $repo_name_display\e[0m\n"
+        if [ "$force" = true ]; then
+            error_message=$(git -C "$repo_path" filter-repo --path $found_secret_files --invert-paths --force 2>&1 >/dev/null)
         else
-            printf "\e[31mError: Unable to remove secret files from $repo_name_display\e[0m\n"
+            error_message=$(git -C "$repo_path" filter-repo --path $found_secret_files --invert-paths 2>&1 >/dev/null)
         fi
+
+        if [ $? -ne 0 ]; then
+            printf "\e[31mError: Unable to remove secret files from $repo_name_displa: $(echo "$error_message" | tr '\n' ' ' | sed 's/ \{2,\}/ /g')\e[0m\n"
+            continue
+        fi
+
+        printf "\e[32mSecret files successfully removed from $repo_name_display\e[0m\n"
+
     else
         printf "\e[33mNo secret files found in $repo_name_display. Skipping...\e[0m\n"
     fi
