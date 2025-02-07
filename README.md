@@ -37,9 +37,10 @@ Iterates through Git repositories found in the current directory and its immedia
 Iterates through Git repositories found in the current directory and its immediate subdirectories, removes specified secret files from the history of the Git repositories.
 #### Syntax
 ```
-./git-remove-secrets.sh [--secrets <secrets_file>]
+./git-remove-secrets.sh [--secrets <secrets_file>] [--force]
 ```
 #### Options
+* `--force` (optional): Forcefully removes secrets.
 * `--secrets <secrets_file>` (optional): Specifies a file containing a list of secret file names to override the default list (default: see below).
 #### Default secrets
 * `appsettings.json`
@@ -101,9 +102,10 @@ Iterates through Git repositories found in the current directory and its immedia
 Iterates through Git repositories found in the current directory and its immediate subdirectories, updates commit messages based on certain conditions. If only one file was changed in the commit, the script automatically detects what changes where made and changes updates the commit message accordingly, otherwise the default commit message is used.
 #### Syntax
 ```
-./git-rename-commits.sh [--messages "<msg1>,<msg2>,..."] [--minmsglength <number>] [--standardmsg <string>]
+./git-rename-commits.sh [--messages "<msg1>,<msg2>,..."] [--minmsglength <number>] [--standardmsg <string>] [--force]
 ```
 #### Options
-* `--messages` (optional): Allows the user to provide a list of specific commit messages to target for replacement.
-* `--minmsglength` (optional): Sets the minimum length for commit messages to be considered for replacement (default: 5).
-* `--standardmsg` (optional): Specifies a default commit message to use when the existing message does not meet the criteria for replacement (default: Commit changes).
+* `--messages "<msg1>,<msg2>,..."` (optional): Allows the user to provide a list of specific commit messages to target for replacement.
+* `--minmsglength <number>` (optional): Sets the minimum length for commit messages to be considered for replacement (default: 5).
+* `--standardmsg <string>` (optional): Specifies a default commit message to use when the existing message does not meet the criteria for replacement (default: Commit changes).
+* `--force` (optional): Forcefully changes commit messages.
