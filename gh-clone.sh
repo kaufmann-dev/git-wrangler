@@ -30,7 +30,7 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-if [ -z "$user" ]; then
+if [[ -z "$user" ]]; then
     printf "\e[31mError: The --user option is required.\e[0m\n"
     exit 1
 fi
@@ -45,10 +45,23 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-repos_count=$(gh repo list "$user" --limit 1 | wc -l)
-if [ "$repos_count" -eq 0 ]; then
-    printf "\e[31mError: The specified user '$user' does not exist or has no repositories.\e[0m\n"
-    exit 1
+if [[ "$visibility" == "private" || "$visibility" == "all" ]]; then
+    if ! gh auth status | grep -q "Logged in to .* account $user "; then
+        printf "\e[31mError: You are not logged in as the specified user: $user. Set --visibility to 'public' or use 'gh auth login'.\e[0m\n"
+        exit 1
+    fi
+fi
+
+if [[ "$visibility" == "private" || "$visibility" == "public" ]]; then
+    if [[ "$(gh repo list "$user" --limit 1 --visibility "$visibility" 2>/dev/null | wc -l)" -eq 0 ]]; then
+        printf "\e[31mError: No $visibility repositories found for '$user'.\e[0m\n"
+        exit 1
+    fi
+else
+    if [[ "$(gh repo list "$user" --limit 1 2>/dev/null | wc -l)" -eq 0 ]]; then
+        printf "\e[31mError: No repositories found for '$user'.\e[0m\n"
+        exit 1
+    fi
 fi
 
 if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "private" ]]; then
@@ -56,16 +69,9 @@ if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "p
     exit 1
 fi
 
-if [ ! -d "$into" ] && ! mkdir -p "$into"; then
+if [[ ! -d "$into" ]] && ! mkdir -p "$into"; then
     printf "\e[31mError: Unable to create or access the specified directory '$into'.\e[0m\n"
     exit 1
-fi
-
-if [[ "$visibility" == "private" || "$visibility" == "all" ]]; then
-    if ! gh auth status | grep -q "Logged in to .* account $user "; then
-        printf "\e[31mError: You are not logged in as the specified user: $user. Set --visibility to 'public' or use 'gh auth login'.\e[0m\n"
-        exit 1
-    fi
 fi
 
 if [[ -z "$into" ]]; then
@@ -75,7 +81,7 @@ fi
 if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
     while read -r repo _; do
         repo_name=$(basename "$repo")
-        if [ -d "$into/$repo_name" ]; then
+        if [[ -d "$into/$repo_name" ]]; then
             printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
         else
             gh repo clone "$repo" "$into/$repo_name" > /dev/null 2>&1
@@ -85,7 +91,7 @@ if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
 else
     while read -r repo _; do
         repo_name=$(basename "$repo")
-        if [ -d "$into/$repo_name" ]; then
+        if [[ -d "$into/$repo_name" ]]; then
             printf "\e[33m$repo_name already exists in $(realpath "$into"). Skipping...\e[0m\n"
         else
             gh repo clone "$repo" "$into/$repo_name" > /dev/null 2>&1
