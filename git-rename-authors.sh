@@ -40,6 +40,11 @@ fi
 
 repos=$(find . -maxdepth 2 -type d -name ".git")
 
+if [ -z "$repos" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
+
 for repo in $repos; do
     (
         repo_dir=$(dirname "$repo")
