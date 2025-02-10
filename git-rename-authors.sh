@@ -64,7 +64,7 @@ for repo in $repos; do
         fi
 
         if [ $? -ne 0 ]; then
-            printf "\e[31mError: Could not update git author and commiter information for $repo_name_display: $(echo "$error_message" | tr '\n' ' ' | sed 's/ \{2,\}/ /g')\e[0m\n"
+            printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
             continue
         fi
 
