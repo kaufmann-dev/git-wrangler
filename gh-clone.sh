@@ -45,6 +45,11 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
+if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
+    printf "\e[31mError: --limit must be 1 or greater.\e[0m\n"
+    exit 1
+fi
+
 if [[ "$visibility" == "private" || "$visibility" == "all" ]]; then
     if ! gh auth status | grep -q "Logged in to .* account $user "; then
         printf "\e[31mError: You are not logged in as the specified user: $user. Set --visibility to 'public' or use 'gh auth login'.\e[0m\n"
@@ -69,13 +74,13 @@ if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "p
     exit 1
 fi
 
-if [[ ! -d "$into" ]] && ! mkdir -p "$into"; then
-    printf "\e[31mError: Unable to create or access the specified directory '$into'.\e[0m\n"
-    exit 1
-fi
-
 if [[ -z "$into" ]]; then
     into="$user"
+fi
+
+if [[ -d "$into" && ! -w "$into" ]] || ! mkdir -p "$into"; then
+    printf "\e[31mError: Unable to create or access the specified directory '$into'.\e[0m\n"
+    exit 1
 fi
 
 if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
