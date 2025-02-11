@@ -1,13 +1,13 @@
 # BashScripts
 Welcome to the BashScripts repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
-* `gh-clone.sh`: Clone multiple GitHub repositories.
-* `git-info.sh`: Display information about git repositories.
-* `git-push.sh`: Push multiple git repositories.
-* `git-remove-secrets.sh`: Remove secret files.
-* `git-remove-tracked-gitignore.sh`: Remove untracked files defined in .gitignore.
-* `git-rename-authors.sh`: Change name and email of authors and commiters.
-* `git-rename-branches.sh`: Rename git branches.
-* `git-rename-commits.sh`: Rename commit messages.
+* ✅ `gh-clone.sh`: Clone multiple GitHub repositories.
+* 🚧 `git-info.sh`: Display information about git repositories.
+* ✅ `git-push.sh`: Push multiple git repositories.
+* 🚧 `git-remove-secrets.sh`: Remove secret files.
+* 🚧 `git-remove-tracked-gitignore.sh`: Remove untracked files defined in .gitignore.
+* 🚧 `git-rename-authors.sh`: Change name and email of authors and commiters.
+* 🚧 `git-rename-branches.sh`: Rename git branches.
+* 🚧 `git-rename-commits.sh`: Rename commit messages.
 ## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
 #### Syntax
