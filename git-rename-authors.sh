@@ -58,17 +58,18 @@ for repo in $repos; do
         cd "$repo_dir" || exit
 
         if [ "$force" = true ]; then
-            error_message=$(git filter-repo --partial --force --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null)
+            if error_message=$(git filter-repo --partial --force --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null); then
+                printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
+            else
+                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
+            fi
         else
-            error_message=$(git filter-repo --partial --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null)
+            if error_message=$(git filter-repo --partial --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null); then
+                printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
+            else
+                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
+            fi
         fi
-
-        if [ $? -ne 0 ]; then
-            printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n"
-            continue
-        fi
-
-        printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
 
         cd .. || exit
     )
