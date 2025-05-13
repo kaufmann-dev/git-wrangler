@@ -9,7 +9,7 @@ Welcome to the BashScripts repository! In this repository, you will find a colle
 * 🚧 `git-rename-branches.sh`: Rename git branches.
 * 🚧 `git-rename-commits.sh`: Rename commit messages.
 
-<h6>✅ ... Tested and working
+<h6 style="text-align: right">✅ ... Tested and working
   
 🚧 ... Work in progress - use with caution!</h6>
 
