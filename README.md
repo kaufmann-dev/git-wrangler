@@ -12,7 +12,7 @@ Welcome to the BashScripts repository! In this repository, you will find a colle
 <h6>
 ✅ → Tested and working
   
-🚧 →-> Work in progress
+🚧 → Work in progress
 </h6>
 
 ## gh-clone.sh
