@@ -49,8 +49,6 @@ echo "$git_repositories" | while read git_dir; do
         commit_count=$(git rev-list --all --count)
         printf "Total commits:      $commit_count\n"
 
-        cd .. || exit
-
         printf -- "──────────────────────────────────────────────────────────────────\n"
     )
 done
