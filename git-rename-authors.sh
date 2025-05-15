@@ -45,7 +45,7 @@ if [ -z "$repos" ]; then
     exit 0
 fi
 
-for repo in $repos; do
+echo "$repos" | while read repo; do
     (
         repo_dir=$(dirname "$repo")
 
