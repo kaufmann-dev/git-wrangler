@@ -42,13 +42,13 @@ if [ -n "$secrets_file" ]; then
     fi
 fi
 
-for repo in $(find . -maxdepth 2 -type d -name '.git'); do
+find . -maxdepth 2 -type d -name '.git' | while read repo; do
     repo_path=$(dirname "$repo")
 
-    if [ "$repo_dir" = "." ]; then
+    if [ "$repo_path" = "." ]; then
         repo_name_display="${PWD##*/}"
     else
-        repo_name_display=$(basename "$repo_dir")
+        repo_name_display=$(basename "$repo_path")
     fi
     
     secret_files=""
