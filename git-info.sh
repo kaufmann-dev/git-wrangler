@@ -30,7 +30,7 @@ echo "$git_repositories" | while read git_dir; do
         cd "$repo_name" || exit
 
         if [ "$repo_name" = "." ]; then
-            printf "Repository:         \e[1;32m"${PWD##*/}"\e[0m\n"
+            printf "Repository:         \e[1;32m${PWD##*/}\e[0m\n"
         else
             printf "Repository:         \e[1;32m$(basename "$repo_name")\e[0m\n"
         fi
