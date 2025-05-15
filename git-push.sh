@@ -60,7 +60,5 @@ echo "$git_repositories" | while read git_dir; do
                 printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n"
             fi
         fi
-    
-        cd .. || exit
     )
 done
