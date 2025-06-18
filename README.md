@@ -1,17 +1,21 @@
 # BashScripts
 Welcome to the BashScripts repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
-* `gh-clone.sh`: Clone multiple GitHub repositories. ✅
-* `git-info.sh`: Display information about git repositories.
-* `git-push.sh`: Push multiple git repositories. ✅
-* `git-remove-secrets.sh`: Remove secret files.
-* `git-remove-tracked-gitignore.sh`: Remove untracked files defined in .gitignore.
-* `git-rename-authors.sh`: Change name and email of authors and commiters. ✅
-* `git-rename-branches.sh`: Rename git branches.
-* `git-rename-commits.sh`: Rename commit messages.
+* [`gh-clone.sh`](#gh-clone-sh): Clone multiple GitHub repositories. *
+* [`git-push.sh`](#git-push-sh): Push multiple git repositories. *
+* [`git-rename-authors.sh`](#git-rename-authors-sh): Change name and email of authors and commiters. *
+* [`git-info.sh`](#git-info-sh): Display information about git repositories.
+* [`git-remove-secrets.sh`](#git-remove-secrets-sh): Remove secret files.
+* [`git-remove-tracked-gitignore.sh`](#git-remove-tracked-gitignore-sh): Remove untracked files defined in .gitignore.
+* [`git-rename-branches.sh`](#git-rename-branches-sh): Rename git branches.
+* [`git-rename-commits.sh`](#git-rename-commits-sh): Rename commit messages.
 
 <h6>
-✅ → The script has been thoroughly tested; please use others at your own risk.
+* The script has been thoroughly tested; please use others at your own risk.
 </h6>
+
+
+
+<a id="gh-clone-sh"></a>
 
 ## gh-clone.sh
 Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
@@ -24,12 +28,11 @@ Clones GitHub repositories based on specified criteria (visibility, user, limit)
 * `--visibility <all|public|private>` (optional): Set the visibility of repositories to clone (default: "all").
 * `--limit <number>` (optional): Set the maximum number of repositories to clone (default: 100).
 * `--into <directory>` (optional): Specify the target directory to organize cloned repositories (default: username).
-## git-info.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, branch count, list of branches, authors and committers, and total commit count.
-#### Syntax
-```
-./git-info.sh
-```
+
+
+
+<a id="git-push-sh"></a>
+
 ## git-push.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, checks if there are changes to push, and performs a Git push operation with optional force flag.
 #### Syntax
@@ -38,6 +41,37 @@ Iterates through Git repositories found in the current directory and its immedia
 ```
 #### Options
 * `--force` (optional): Forcefully pushes changes to Git repositories, overwriting remote branches if necessary.
+
+
+
+<a id="git-rename-authors-sh"></a>
+
+## git-rename-authors.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, updates author and committer information, with optional force mode, allowing users to specify a new name and email.
+#### Syntax
+```
+./git-rename-authors.sh --name <new_name> --email <new_email> [--force]
+```
+#### Options
+* `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
+* `--email <new_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
+* `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
+
+
+
+<a id="git-info-sh"></a>
+
+## git-info.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, branch count, list of branches, authors and committers, and total commit count.
+#### Syntax
+```
+./git-info.sh
+```
+
+
+
+<a id="git-remove-secrets-sh"></a>
+
 ## git-remove-secrets.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, removes specified secret files from the history of the Git repositories.
 #### Syntax
@@ -76,6 +110,11 @@ Iterates through Git repositories found in the current directory and its immedia
 * `firebase-adminsdk.json`
 * `firebase-service-account.json`
 * `client_secret.json`
+
+
+
+<a id="git-remove-tracked-gitignore-sh"></a>
+
 ## git-remove-tracked-gitignore.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, identifies and stops tracking files defined in their respective .gitignore files, and optionally performs a Git commit.
 #### Syntax
@@ -84,16 +123,11 @@ Iterates through Git repositories found in the current directory and its immedia
 ```
 #### Options
 * `--commit` (optional): Perform a Git commit after removing cached files defined in the .gitignore.
-## git-rename-authors.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, updates author and committer information, with optional force mode, allowing users to specify a new name and email.
-#### Syntax
-```
-./git-rename-authors.sh --name <new_name> --email <new_email> [--force]
-```
-#### Options
-* `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
-* `--email <new_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
-* `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
+
+
+
+<a id="git-rename-branches-sh"></a>
+
 ## git-rename-branches.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, renames a specified branch (--oldbranch) to a new branch (--newbranch) across all repositories.
 #### Syntax
@@ -103,6 +137,11 @@ Iterates through Git repositories found in the current directory and its immedia
 #### Options
 * `--oldbranch <old_branch_name>` (required): Specifies the name of the existing Git branches that needs to be renamed.
 * `--newbranch <new_branch_name>` (required): Specifies the new name for the Git branches.
+
+
+
+<a id="git-rename-commits-sh"></a>
+
 ## git-rename-commits.sh
 Iterates through Git repositories found in the current directory and its immediate subdirectories, updates commit messages based on certain conditions. If only one file was changed in the commit, the script automatically detects what changes where made and changes updates the commit message accordingly, otherwise the default commit message is used.
 #### Syntax
