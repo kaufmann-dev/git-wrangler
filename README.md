@@ -2,8 +2,8 @@
 Welcome to the BashScripts repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
 * [`gh-clone.sh`](#gh-clone-sh): Clone multiple GitHub repositories. *
 * [`git-push.sh`](#git-push-sh): Push multiple git repositories. *
+* [`git-info.sh`](#git-info-sh): Display information about git repositories. *
 * [`git-rename-authors.sh`](#git-rename-authors-sh): Change name and email of authors and commiters. *
-* [`git-info.sh`](#git-info-sh): Display information about git repositories.
 * [`git-remove-secrets.sh`](#git-remove-secrets-sh): Remove secret files.
 * [`git-remove-tracked-gitignore.sh`](#git-remove-tracked-gitignore-sh): Remove untracked files defined in .gitignore.
 * [`git-rename-branches.sh`](#git-rename-branches-sh): Rename git branches.
@@ -44,6 +44,19 @@ Iterates through Git repositories found in the current directory and its immedia
 
 
 
+<a id="git-info-sh"></a>
+
+## git-info.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, status, license, branches, remotes, commits and files.
+#### Syntax
+```
+./git-info.sh
+```
+#### Options
+* `--repo <repository_name>` (optional): Specifies a single repository to analyze, instead of analyzing all repositories in the current directory.
+
+
+
 <a id="git-rename-authors-sh"></a>
 
 ## git-rename-authors.sh
@@ -56,17 +69,6 @@ Iterates through Git repositories found in the current directory and its immedia
 * `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
 * `--email <new_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
 * `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
-
-
-
-<a id="git-info-sh"></a>
-
-## git-info.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, branch count, list of branches, authors and committers, and total commit count.
-#### Syntax
-```
-./git-info.sh
-```
 
 
 
