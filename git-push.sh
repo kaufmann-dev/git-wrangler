@@ -47,7 +47,7 @@ echo "$git_repositories" | while read git_dir; do
                     printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
                 fi
             else
-                printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n"
+                printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n\n"
             fi
         else
             if push_output=$(git push origin HEAD 2>&1); then
@@ -57,7 +57,7 @@ echo "$git_repositories" | while read git_dir; do
                     printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
                 fi
             else
-                printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n"
+                printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n\n"
             fi
         fi
     )
