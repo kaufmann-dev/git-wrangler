@@ -89,7 +89,7 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
             fi
 
             if [ $? -ne 0 ]; then
-                printf "\e[31mError: Could not update commit message for $commit_hash in $repo_name_display:\n$error_message\e[0m\n"
+                printf "\e[31mError: Could not update commit message for $commit_hash in $repo_name_display:\n$error_message\e[0m\n\n"
                 continue
             fi
 
@@ -103,7 +103,7 @@ find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
             fi
 
             if [ $? -ne 0 ]; then
-                printf "\e[31mError: Could not update commit message for $commit_hash in $repo_name_display:\n$error_message\e[0m\n"
+                printf "\e[31mError: Could not update commit message for $commit_hash in $repo_name_display:\n$error_message\e[0m\n\n"
                 continue
             fi
 
