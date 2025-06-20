@@ -73,7 +73,7 @@ echo "$git_repositories" | while read git_dir; do
         printf "Current branch:     %s\n" "$current_branch"
 
         # Ahead/Behind
-        ahead_behind=$(git rev-list --left-right --count HEAD...@{u} 2>/dev/null)
+        ahead_behind=$(git rev-list --left-right --count HEAD..."@{u}" 2>/dev/null)
         if [ -n "$ahead_behind" ]; then
             ahead=$(echo "$ahead_behind" | awk '{print $1}')
             behind=$(echo "$ahead_behind" | awk '{print $2}')
