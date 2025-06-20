@@ -46,6 +46,19 @@ Iterates through Git repositories found in the current directory and its immedia
 <a id="git-info-sh"></a>
 
 ## git-info.sh
+Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, status, license, branches, remotes, commits and files.
+#### Syntax
+```
+./git-info.sh
+```
+#### Options
+* `--repo <repository_name>` (optional): Specifies a single repository to analyze, instead of analyzing all repositories in the current directory.
+
+
+
+<a id="git-add-mit-sh"></a>
+
+## git-add-mit.sh
 Iterates through Git repositories found in the current directory and creates or overwrites an MIT license file with a given copyright holder's name.
 #### Syntax
 ```
@@ -55,19 +68,6 @@ Iterates through Git repositories found in the current directory and creates or 
 * `--name <copyright_holder>` (required): Specifies the copyright holder's name.
 * `--overwrite` (optional): If provided, replaces existing LICENSE files instead of skipping them.
 * `--repo <repository_name>` (optional): Specifies a single repository to create a LICENSE file, instead of all repositories in the current directory.
-
-
-
-<a id="git-add-mit-sh"></a>
-
-## git-add-mit.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, status, license, branches, remotes, commits and files.
-#### Syntax
-```
-./git-info.sh
-```
-#### Options
-* `--repo <repository_name>` (optional): Specifies a single repository to analyze, instead of analyzing all repositories in the current directory.
 
 
 
