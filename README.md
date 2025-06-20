@@ -1,5 +1,5 @@
-# BashScripts
-Welcome to the BashScripts repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
+# RepoManip
+Welcome to the RepoManip repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
 * [`gh-clone.sh`](#gh-clone-sh): Clone multiple GitHub repositories.
 * [`git-push.sh`](#git-push-sh): Push multiple git repositories.
 * [`git-info.sh`](#git-info-sh): Display information about git repositories.
