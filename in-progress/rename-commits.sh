@@ -1,35 +1,106 @@
 #!/bin/bash
 
-min_msg_length=5
-standard_msg="Commit changes"
-force=false
+# ==============================================================================
+# CATEGORIZATION RULES
+# ==============================================================================
+# This function reads 'git diff-tree --name-status' output from stdin and
+# determines the conventional commit components based on file paths and statuses.
+# Outputs: "<type>: <action> <target>"
+# ==============================================================================
+categorize_commit() {
+    local first_file=""
+    local has_docs=false
+    local has_tests=false
+    local has_config=false
+    local has_src=false
+    local additions=0
+    local deletions=0
+    local modifications=0
+
+    while read -r status filepath; do
+        if [[ -z "$status" ]]; then continue; fi
+        
+        # Grab first character of status (A, D, M, R, etc.)
+        status="${status:0:1}"
+        
+        if [[ -z "$first_file" ]]; then
+            first_file="$filepath"
+        fi
+
+        case "$status" in
+            A) additions=$((additions + 1)) ;;
+            D) deletions=$((deletions + 1)) ;;
+            *) modifications=$((modifications + 1)) ;;
+        esac
+
+        # File classification
+        if [[ "$filepath" =~ \.md$|\.txt$|\.rst$|^LICENSE|^docs/ ]]; then
+            has_docs=true
+        elif [[ "$filepath" =~ ^test/|^spec/|_test\.|spec\.|\.test\. ]]; then
+            has_tests=true
+        elif [[ "$filepath" =~ ^\.github/|^Makefile$|^Dockerfile$|\.yml$|^\w+\.json$ ]]; then
+            has_config=true
+        else
+            has_src=true
+        fi
+    done
+
+    # 1. Determine Type
+    local type="chore"
+    if [[ "$has_src" == false && "$has_config" == false && "$has_tests" == false && "$has_docs" == true ]]; then
+        type="docs"
+    elif [[ "$has_src" == false && "$has_config" == false && "$has_docs" == false && "$has_tests" == true ]]; then
+        type="test"
+    elif [[ "$has_src" == false && "$has_tests" == false && "$has_docs" == false && "$has_config" == true ]]; then
+        type="chore"
+    elif [[ "$additions" -gt 0 && "$deletions" -eq 0 && "$has_src" == true ]]; then
+        type="feat"
+    elif [[ "$deletions" -gt 0 && "$additions" -eq 0 && "$modifications" -eq 0 ]]; then
+        type="chore"
+    elif [[ "$has_src" == true && ( "$modifications" -gt 0 || ( "$additions" -gt 0 && "$deletions" -gt 0 ) ) ]]; then
+        type="fix"
+    else
+        type="chore" # Anything else or ambiguous -> chore
+    fi
+
+    # 2. Determine Action & Target (Scope)
+    # Scope is derived from the most-changed file or directory name
+    local total_files=$((additions + deletions + modifications))
+    
+    # If no files were processed (e.g., empty commit), return empty to skip
+    if [[ "$total_files" -eq 0 ]]; then
+        return
+    fi
+    
+    local target="$first_file"
+    if [[ "$total_files" -gt 1 ]]; then
+        target=$(dirname "$first_file")
+        if [[ "$target" == "." ]]; then
+            target=$(basename "$first_file")
+        else
+            target="$target/"
+        fi
+    fi
+
+    local action="update"
+    if [[ "$additions" -gt 0 && "$deletions" -eq 0 && "$modifications" -eq 0 ]]; then
+        action="add"
+    elif [[ "$deletions" -gt 0 && "$additions" -eq 0 && "$modifications" -eq 0 ]]; then
+        action="remove"
+    fi
+
+    echo "${type}: ${action} ${target}"
+}
+# ==============================================================================
 
 while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --messages)
-      tmp_messages=$2
-      shift 2
-      ;;
-    --minmsglength)
-      min_msg_length=$2
-      shift 2
-      ;;
-    --standardmsg)
-      standard_msg=$2
-      shift 2
-      ;;
-    --force)
-      force=true
-      shift
-      ;;
-    *)
-      printf "\e[31mUnknown option: $1\e[0m\n"
-      exit 1
-      ;;
-  esac
+    case "$1" in
+        *)
+            printf "\e[31mUnknown option: $1\e[0m\n"
+            exit 1
+            ;;
+    esac
 done
-
-IFS=',' read -r -a messages <<< "$tmp_messages"
 
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
@@ -41,82 +112,97 @@ if ! command -v git-filter-repo &> /dev/null; then
     exit 1
 fi
 
-find . -maxdepth 2 -type d -name '.git' | while read -r git_dir; do
-  (
-    repo_path=$(dirname "$git_dir")
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
-    if [ "$repo_path" = "." ]; then
-        repo_name_display="${PWD##*/}"
-    else
-        repo_name_display=$(basename "$repo_path")
-    fi
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
 
-    printf "Processing repository: $repo_name_display\n"
+echo "$git_repositories" | while read git_dir; do
+    (
+        repo_path=$(dirname "$git_dir")
 
-    cd "$repo_path" || exit
-
-    commit_changed_flag=false
-
-    git log --pretty=format:%H --reverse | while read -r commit_hash; do
-      file_count=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | grep -E '^[ADRM]\s+[^[:space:]]+$' | wc -l)
-      old_message=$(git log --pretty=format:%B -1 "$commit_hash")
-      message_length=${#old_message}
-
-      if ((message_length <= min_msg_length)) || { [[ ${messages[*]} =~ $old_message ]]; }; then
-        if ((file_count == 1)); then
-            file_status=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | awk '{print $1}')
-            file_name=$(git log --pretty=format:%n --name-status -1 "$commit_hash" | awk '{print $2}')
-
-            case "$file_status" in
-                'A')
-                    new_message="Added $file_name"
-                    ;;
-                'D')
-                    new_message="Removed $file_name"
-                    ;;
-                'M')
-                    new_message="Changed $file_name"
-                    ;;
-                *)
-                    new_message="$standard_msg"
-                    ;;
-            esac
-
-            if [ "$force" = true ]; then
-                error_message=$(git filter-repo --partial --message-callback 'return message.decode("utf-8").replace("'"$old_message"'", "'"$new_message"'").encode("utf-8")' --force 2>&1 >/dev/null)
-            else
-                error_message=$(git filter-repo --partial --message-callback 'return message.decode("utf-8").replace("'"$old_message"'", "'"$new_message"'").encode("utf-8")' 2>&1 >/dev/null)
-            fi
-
-            if [ $? -ne 0 ]; then
-                printf "\e[31mError: Could not update commit message for $commit_hash in $repo_name_display:\n$error_message\e[0m\n\n"
-                continue
-            fi
-
-            printf "Commit message of commit $commit_hash changed from '$old_message' to '$new_message'\n"
-            commit_changed_flag=true
+        if [ "$repo_path" = "." ]; then
+            repo_name_display="${PWD##*/}"
         else
-            if [ "$force" = true ]; then
-                error_message=$(git filter-repo --partial --message-callback 'return message.decode("utf-8").replace("'"$old_message"'", "'"$standard_msg"'").encode("utf-8")' --force 2>&1 >/dev/null)
-            else
-                error_message=$(git filter-repo --partial --message-callback 'return message.decode("utf-8").replace("'"$old_message"'", "'"$standard_msg"'").encode("utf-8")' 2>&1 >/dev/null)
-            fi
+            repo_name_display=$(basename "$repo_path")
+        fi
 
-            if [ $? -ne 0 ]; then
-                printf "\e[31mError: Could not update commit message for $commit_hash in $repo_name_display:\n$error_message\e[0m\n\n"
+        cd "$repo_path" || exit
+
+        # Check if repository actually has any commits
+        if ! git rev-parse HEAD &> /dev/null; then
+            printf "\e[33mRepository has no commits in $repo_name_display. Skipping...\e[0m\n"
+            continue
+        fi
+
+        # Find original remote to re-add later
+        remote_url=$(git remote get-url origin 2>/dev/null)
+        
+        map_file=$(mktemp)
+        needs_rewrite=false
+
+        while read -r commit_hash; do
+            original_msg=$(git log -1 --format="%B" "$commit_hash")
+            
+            # Check if commit message already complies with Conventional Commits
+            # Only checking the first line for the typical structure: type(scope): prefix or type: prefix.
+            first_line=$(echo "$original_msg" | head -n 1)
+            if [[ "$first_line" =~ ^(feat|fix|docs|chore|test|build|ci|perf|refactor|style)(\(.*\))?:\  ]]; then
                 continue
             fi
 
-            printf "Commit message of commit $commit_hash changed from '$old_message' to '$standard_msg'\n"
-            commit_changed_flag=true
-        fi
-    fi
-    done
+            # Check diff
+            diff_output=$(git diff-tree --no-commit-id --name-status -r "$commit_hash" 2>/dev/null)
+            if [[ -z "$diff_output" ]]; then
+                # Empty commit (touches no files), keep original message unchanged
+                continue
+            fi
+            
+            new_msg=$(echo "$diff_output" | categorize_commit)
+            if [[ -n "$new_msg" && "$new_msg" != "$original_msg" ]]; then
+                # Output format: <commit-sha>|<new-message>
+                echo "${commit_hash}|${new_msg}" >> "$map_file"
+                needs_rewrite=true
+            fi
+        done < <(git rev-list --all)
 
-    if $commit_changed_flag; then
-      printf "\e[32mChanged commit messages for $repo_name_display successfully.\e[0m\n"
-    else
-      printf "\e[33mNo comit messages changed in $repo_name_display. Skipping...\e[0m\n"
-    fi
-  )
+        if [ "$needs_rewrite" = false ]; then
+            printf "\e[33mNo commits require renaming in $repo_name_display (already format compliant). Skipping...\e[0m\n"
+            rm -f "$map_file"
+            continue
+        fi
+
+        # We inject the mapping directly into Python for the commit-callback
+        callback_script="
+import os
+map_file = '$map_file'
+mapping = {}
+if os.path.exists(map_file):
+    with open(map_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            parts = line.rstrip('\n').split('|', 1)
+            if len(parts) == 2:
+                mapping[parts[0].encode('utf-8')] = parts[1].encode('utf-8') + b'\n'
+
+if commit.original_id in mapping:
+    commit.message = mapping[commit.original_id]
+"
+
+        # Apply using git filter-repo
+        if filter_output=$(git filter-repo --partial --commit-callback "$callback_script" --force 2>&1); then
+            printf "\e[32mRewrote commit messages for $repo_name_display\e[0m\n"
+            
+            # git filter-repo deletes origins, so we have to restore origin if it was set
+            if [ -n "$remote_url" ]; then
+                git remote add origin "$remote_url" 2>/dev/null
+            fi
+        else
+            printf "\e[31mError: Could not update commit messages for $repo_name_display:\n$filter_output\e[0m\n\n"
+        fi
+
+        rm -f "$map_file"
+
+    )
 done
