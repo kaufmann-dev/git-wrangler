@@ -1,10 +1,10 @@
 # RepoManip
 Welcome to the RepoManip repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
-* [`clone-repositories.sh`](#clone-repositories-sh): Clone multiple GitHub repositories.
-* [`push-repositories.sh`](#push-repositories-sh): Push multiple git repositories.
-* [`repository-info.sh`](#repository-info-sh): Display information about git repositories.
-* [`add-license.sh`](#add-license-sh): Add the MIT license to your repositories.
-* [`rewrite-authors.sh`](#rewrite-authors-sh): Change name and email of authors and commiters.
+* [`clone-repositories.sh`](#clone-repositories-sh): Clones multiple GitHub repositories.
+* [`push-repositories.sh`](#push-repositories-sh): Pushes multiple repositories.
+* [`repository-info.sh`](#repository-info-sh): Shows basic repository information.
+* [`add-license.sh`](#add-license-sh): Adds or replaces a LICENSE file. Defaults to MIT.
+* [`rewrite-authors.sh`](#rewrite-authors-sh): Rewrites author and committer names and emails.
 <!--
 * [`git-remove-secrets.sh`](#git-remove-secrets-sh): Remove secret files.
 * [`git-remove-tracked-gitignore.sh`](#git-remove-tracked-gitignore-sh): Remove untracked files defined in .gitignore.
@@ -59,7 +59,7 @@ Iterates through Git repositories found in the current directory and its immedia
 <a id="add-license-sh"></a>
 
 ## add-license.sh
-Iterates through Git repositories found in the current directory and creates or overwrites an MIT license file with a given copyright holder's name.
+Iterates through Git repositories found in the current directory and creates or overwrites a license file with a given copyright holder's name. Uses the MIT license by default. You can change the license by editing the script.
 #### Syntax
 ```
 ./add-license.sh
