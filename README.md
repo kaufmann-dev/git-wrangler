@@ -5,12 +5,10 @@ Welcome to the RepoManip repository! In this repository, you will find a collect
 * [`repository-info.sh`](#repository-info-sh): Shows basic repository information.
 * [`add-license.sh`](#add-license-sh): Adds or replaces a LICENSE file. Defaults to MIT.
 * [`rewrite-authors.sh`](#rewrite-authors-sh): Rewrites author and committer names and emails.
-<!--
-* [`git-remove-secrets.sh`](#git-remove-secrets-sh): Remove secret files.
-* [`git-remove-tracked-gitignore.sh`](#git-remove-tracked-gitignore-sh): Remove untracked files defined in .gitignore.
-* [`git-rename-branches.sh`](#git-rename-branches-sh): Rename git branches.
-* [`git-rename-commits.sh`](#git-rename-commits-sh): Rename commit messages.
--->
+* [`remove-secrets.sh`](#remove-secrets-sh): Permanently purges files containing sensitive data from the entire Git history.
+* [`untrack-ignored-files.sh`](#untrack-ignored-files-sh): Removes tracked files that match exclusion rules in .gitignore.
+* [`rename-branches.sh`](#rename-branches-sh): Renames a specified branch to a new name.
+* [`rewrite-commits.sh`](#rewrite-commits-sh): Rewrites commit messages to adhere to the Conventional Commits standard.
 
 
 
@@ -87,88 +85,53 @@ Iterates through Git repositories found in the current directory and its immedia
 
 
 
-<!--
-<a id="git-remove-secrets-sh"></a>
+<a id="remove-secrets-sh"></a>
 
-## git-remove-secrets.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, removes specified secret files from the history of the Git repositories.
+## remove-secrets.sh
+Permanently purges files containing sensitive data from the entire Git history of all managed repositories (across all branches and tags). It operates on all `.git` repositories found within a depth of 2.
 #### Syntax
 ```
-./git-remove-secrets.sh [--secrets <secrets_file>] [--force]
+./remove-secrets.sh
 ```
 #### Options
-* `--force` (optional): Forcefully removes secrets.
-* `--secrets <secrets_file>` (optional): Specifies a file containing a list of secret file names to override the default list (default: see below).
-#### Default secrets
-* `appsettings.json`
-* `.env`
-* `.env.production`
-* `.env.development`
-* `.env.local`
-* `config.js`
-* `config.json`
-* `database.yml`
-* `secrets.yml`
-* `credentials.json`
-* `key.json`
-* `key.txt`
-* `settings.xml`
-* `private.key`
-* `private.pem`
-* `id_rsa`
-* `id_dsa`
-* `access_token`
-* `oauth_token`
-* `auth.config`
-* `docker-compose.override.yml`
-* `.dockerenv`
-* `aws-credentials`
-* `google-credentials.json`
-* `serviceAccountKey.json`
-* `firebase-adminsdk.json`
-* `firebase-service-account.json`
-* `client_secret.json`
+This script takes no arguments.
 
 
 
-<a id="git-remove-tracked-gitignore-sh"></a>
+<a id="untrack-ignored-files-sh"></a>
 
-## git-remove-tracked-gitignore.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, identifies and stops tracking files defined in their respective .gitignore files, and optionally performs a Git commit.
+## untrack-ignored-files.sh
+Removes files from the Git index that are actively tracked but match exclusion rules in `.gitignore`. It untracks the files safely while leaving them on the local disk, and commits the removals automatically.
 #### Syntax
 ```
-./git-remove-tracked-gitignore.sh [--commit]
+./untrack-ignored-files.sh
 ```
 #### Options
-* `--commit` (optional): Perform a Git commit after removing cached files defined in the .gitignore.
+This script takes no arguments.
 
 
 
-<a id="git-rename-branches-sh"></a>
+<a id="rename-branches-sh"></a>
 
-## git-rename-branches.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, renames a specified branch (--oldbranch) to a new branch (--newbranch) across all repositories.
+## rename-branches.sh
+Renames a specified branch to a new name across all managed Git repositories.
 #### Syntax
 ```
-./git-rename-branches.sh --oldbranch <old_branch_name> --newbranch <new_branch_name>
+./rename-branches.sh --oldbranch <old_name> --newbranch <new_name>
 ```
 #### Options
-* `--oldbranch <old_branch_name>` (required): Specifies the name of the existing Git branches that needs to be renamed.
-* `--newbranch <new_branch_name>` (required): Specifies the new name for the Git branches.
+* `--oldbranch <old_name>` (required): Specifies the name of the existing Git branch to be renamed.
+* `--newbranch <new_name>` (required): Specifies the new name for the Git branch.
 
 
 
-<a id="git-rename-commits-sh"></a>
+<a id="rewrite-commits-sh"></a>
 
-## git-rename-commits.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, updates commit messages based on certain conditions. If only one file was changed in the commit, the script automatically detects what changes where made and changes updates the commit message accordingly, otherwise the default commit message is used.
+## rewrite-commits.sh
+Rewrites the commit messages of Git repositories to adhere to the Conventional Commits standard. It categorizes commits based on file paths and statuses to automatically determine the type (e.g., feat, fix, docs, chore) and scope.
 #### Syntax
 ```
-./git-rename-commits.sh [--messages "<msg1>,<msg2>,..."] [--minmsglength <number>] [--standardmsg <string>] [--force]
+./rewrite-commits.sh
 ```
 #### Options
-* `--messages "<msg1>,<msg2>,..."` (optional): Allows the user to provide a list of specific commit messages to target for replacement.
-* `--minmsglength <number>` (optional): Sets the minimum length for commit messages to be considered for replacement (default: 5).
-* `--standardmsg <string>` (optional): Specifies a default commit message to use when the existing message does not meet the criteria for replacement (default: Commit changes).
-* `--force` (optional): Forcefully changes commit messages.
--->
+This script takes no arguments.
