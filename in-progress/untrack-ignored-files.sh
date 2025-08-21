@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./remove-tracked-gitignore.sh
+# Usage: ./untrack-ignored-files.sh
 # Removes files from the Git index that are actively tracked but match 
 # exclusion rules in .gitignore. Commits the removals. Takes no arguments.
 
