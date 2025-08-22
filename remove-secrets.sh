@@ -9,9 +9,7 @@
 # on all '.git' repositories found within a depth of 2.
 # ==============================================================================
 
-# ==============================================================================
-# EDITABLE PATTERNS BLOCK
-# ==============================================================================
+# List of files and patterns to purge from Git history
 TARGET_PATTERNS=(
     ".env"
     ".env.*"
@@ -28,13 +26,13 @@ TARGET_PATTERNS=(
     "credentials.json"
     "*.secret"
 )
-# ==============================================================================
-
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
+# Find target repositories
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
@@ -42,8 +40,10 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$git_repositories" | while read git_dir; do
     (
+        # Get repository path and display name
         repo_path=$(dirname "$git_dir")
 
         if [ "$repo_path" = "." ]; then
@@ -58,7 +58,7 @@ echo "$git_repositories" | while read git_dir; do
             exit 1
         fi
 
-        # Check for git-filter-repo per repository as requested by edge cases
+        # Ensure git-filter-repo is installed
         if ! command -v git-filter-repo &> /dev/null; then
             printf "\e[31mError: 'git-filter-repo' is not installed. Skipping $repo_name_display...\e[0m\n"
             exit 1
@@ -77,6 +77,7 @@ echo "$git_repositories" | while read git_dir; do
             exit 0
         fi
 
+        # Prepare filter-repo arguments
         filter_repo_args=()
         for pattern in "${matched_patterns[@]}"; do
             filter_repo_args+=(--path-glob "$pattern")
@@ -85,7 +86,7 @@ echo "$git_repositories" | while read git_dir; do
         # Capture remote origin URL before rewriting (filter-repo drops it)
         remote_url=$(git remote get-url origin 2>/dev/null)
 
-        # Execute rewrite
+        # Execute history rewrite using git filter-repo
         # We pass --force to git-filter-repo to bypass the fresh-clone requirement. The script is
         # explicitly intended to run on the current working repositories without user friction.
         if error_message=$(git filter-repo "${filter_repo_args[@]}" --invert-paths --use-base-name --force 2>&1 >/dev/null); then
@@ -95,7 +96,7 @@ echo "$git_repositories" | while read git_dir; do
             exit 1
         fi
 
-        # Re-add remote if there was one
+        # Restore original remote origin if applicable
         if [ -n "$remote_url" ]; then
             git remote add origin "$remote_url" 2>/dev/null
         fi

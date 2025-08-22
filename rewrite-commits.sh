@@ -9,9 +9,7 @@
 # to automatically determine the type (e.g., feat, fix, docs, chore) and scope.
 # ==============================================================================
 
-# ==============================================================================
-# CATEGORIZATION RULES
-# ==============================================================================
+# Function to determine conventional commit components based on file diffs
 # This function reads 'git diff-tree --name-status' output from stdin and
 # determines the conventional commit components based on file paths and statuses.
 # Outputs: "<type>: <action> <target>"
@@ -100,8 +98,7 @@ categorize_commit() {
 
     echo "${type}: ${action} ${target}"
 }
-# ==============================================================================
-
+# Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
@@ -111,6 +108,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
@@ -121,6 +119,7 @@ if ! command -v git-filter-repo &> /dev/null; then
     exit 1
 fi
 
+# Find target repositories
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
@@ -128,8 +127,10 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$git_repositories" | while read git_dir; do
     (
+        # Get repository path and display name
         repo_path=$(dirname "$git_dir")
 
         if [ "$repo_path" = "." ]; then
@@ -146,9 +147,10 @@ echo "$git_repositories" | while read git_dir; do
             continue
         fi
 
-        # Find original remote to re-add later
+        # Capture remote origin URL to restore later
         remote_url=$(git remote get-url origin 2>/dev/null)
-        
+
+        # Generate commit mapping for historical rewrite
         map_file=$(mktemp)
         needs_rewrite=false
 
@@ -183,6 +185,7 @@ echo "$git_repositories" | while read git_dir; do
             continue
         fi
 
+        # Prepare callback script for git-filter-repo
         # We inject the mapping directly into Python for the commit-callback
         callback_script="
 import os
@@ -199,11 +202,11 @@ if commit.original_id in mapping:
     commit.message = mapping[commit.original_id]
 "
 
-        # Apply using git filter-repo
+        # Execute historical rewrite using git-filter-repo
         if filter_output=$(git filter-repo --partial --commit-callback "$callback_script" --force 2>&1); then
             printf "\e[32mRewrote commit messages for $repo_name_display\e[0m\n"
             
-            # git filter-repo deletes origins, so we have to restore origin if it was set
+            # Restore original remote origin if applicable
             if [ -n "$remote_url" ]; then
                 git remote add origin "$remote_url" 2>/dev/null
             fi
