@@ -1,8 +1,13 @@
 #!/bin/bash
 
+# ==============================================================================
 # Usage: ./untrack-ignored-files.sh
+# 
+# Description:
 # Removes files from the Git index that are actively tracked but match 
-# exclusion rules in .gitignore. Commits the removals. Takes no arguments.
+# exclusion rules in .gitignore. It untracks the files safely while leaving 
+# them on the local disk, and commits the removals automatically.
+# ==============================================================================
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

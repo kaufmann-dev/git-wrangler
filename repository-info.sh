@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# ==============================================================================
+# Usage: ./repository-info.sh [--repo <repository_name>]
+# 
+# Description:
+# Iterates through Git repositories found in the current directory and its 
+# immediate subdirectories, and provides information about each repository 
+# including name, status, license, branches, remotes, commits and files.
+# ==============================================================================
+
 repo=""
 
 while [[ $# -gt 0 ]]; do
