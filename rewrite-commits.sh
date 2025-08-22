@@ -1,7 +1,13 @@
 #!/bin/bash
 
+# ==============================================================================
 # Usage: ./rewrite-commits.sh
-# Rewrites commit messages to adhere to the Conventional Commits standard.
+# 
+# Description:
+# Rewrites the commit messages of Git repositories to adhere to the Conventional 
+# Commits standard. It categorizes commits based on file paths and statuses 
+# to automatically determine the type (e.g., feat, fix, docs, chore) and scope.
+# ==============================================================================
 
 # ==============================================================================
 # CATEGORIZATION RULES

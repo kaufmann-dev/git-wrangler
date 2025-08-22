@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# ==============================================================================
+# Usage: ./push-repositories.sh [--force]
+# 
+# Description:
+# Iterates through Git repositories found in the current directory and its 
+# immediate subdirectories, checks if there are changes to push, and performs 
+# a Git push operation with optional force flag.
+# ==============================================================================
+
 force=false
 
 while [[ $# -gt 0 ]]; do
