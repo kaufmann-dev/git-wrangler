@@ -1,6 +1,11 @@
 #!/bin/bash
+
+# ==============================================================================
 # Usage: ./rename-branches.sh --oldbranch <old_name> --newbranch <new_name>
+# 
+# Description:
 # Renames a specified branch to a new name across all managed Git repositories.
+# ==============================================================================
 
 oldbranch=""
 newbranch=""

@@ -5,10 +5,8 @@
 # 
 # Description:
 # Permanently purges files containing sensitive data from the entire Git history
-# of all managed repositories (across all branches and tags).
-#
-# This script takes no arguments. It operates on all '.git' repositories found
-# within a depth of 2 from the current directory.
+# of all managed repositories (across all branches and tags). It operates 
+# on all '.git' repositories found within a depth of 2.
 # ==============================================================================
 
 # ==============================================================================
