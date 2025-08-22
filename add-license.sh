@@ -13,6 +13,7 @@ repo=""
 copyright_holder=""
 overwrite=false
 
+# Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
@@ -34,16 +35,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate required arguments
 if [ -z "$copyright_holder" ]; then
     printf "\e[31mError: Copyright holder name is required. Use --name <NAME>.\e[0m\n"
     exit 1
 fi
 
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
+# Find target repositories
 if [ -n "$repo" ]; then
     git_repositories=$(find "$repo" -maxdepth 2 -type d -name '.git')
 else
@@ -55,8 +59,10 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$git_repositories" | while read git_dir; do
     (
+        # Get repository directory and name
         repo_root=$(dirname "$git_dir")
 
         repo_name=$(basename "$(dirname "$git_dir")")
@@ -64,8 +70,10 @@ echo "$git_repositories" | while read git_dir; do
             repo_name="${PWD##*/}"
         fi
 
+        # Define license file path
         license_file="$repo_root/LICENSE"
 
+        # Create or overwrite LICENSE file
         if [ -f "$license_file" ]; then
             if [ "$overwrite" = true ]; then
                 cat > "$license_file" <<EOL
