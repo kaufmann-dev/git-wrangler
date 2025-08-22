@@ -14,6 +14,7 @@ repo=""
 NEW_NAME=""
 NEW_EMAIL=""
 
+# Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --name)
@@ -39,11 +40,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate required arguments
 if [[ -z "$NEW_NAME" || -z "$NEW_EMAIL" ]]; then
     printf "\e[31mError: Both --name and --email options must be provided.\e[0m\n"
     exit 1
 fi
 
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
@@ -54,6 +57,7 @@ if ! command -v git-filter-repo &> /dev/null; then
     exit 1
 fi
 
+# Find target repositories
 if [ -n "$repo" ]; then
     repos=$(find "$repo" -maxdepth 2 -type d -name '.git')
 else
@@ -65,8 +69,10 @@ if [ -z "$repos" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$repos" | while read repo; do
     (
+        # Get repository directory and name
         repo_dir=$(dirname "$repo")
 
         if [ "$repo_dir" = "." ]; then
@@ -77,6 +83,7 @@ echo "$repos" | while read repo; do
 
         cd "$repo_dir" || exit
 
+        # Update author and committer information using git-filter-repo
         if [ "$force" = true ]; then
             if error_message=$(git filter-repo --partial --force --email-callback "return b'$NEW_EMAIL'" --name-callback "return b'$NEW_NAME'" 2>&1 >/dev/null); then
                 printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"

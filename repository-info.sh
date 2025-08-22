@@ -11,6 +11,7 @@
 
 repo=""
 
+# Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
@@ -24,11 +25,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
+# Find target repositories
 if [ -n "$repo" ]; then
     git_repositories=$(find "$repo" -maxdepth 2 -type d -name '.git')
 else
@@ -40,20 +43,22 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$git_repositories" | while read git_dir; do
     (
+        # Get repository directory
         repo_name=$(dirname "$git_dir")
 
         cd "$repo_name" || exit
 
-        # Name
+        # Display repository name
         if [ "$repo_name" = "." ]; then
             printf "Repository:         \e[1;34m${PWD##*/}\e[0m\n"
         else
             printf "Repository:         \e[1;34m$(basename "$repo_name")\e[0m\n"
         fi
 
-        # Status
+        # Display Git status
         status=$(git status --porcelain 2>/dev/null)
         if [ -z "$status" ]; then
             printf "Status:             \e[32mClean\e[0m\n"
@@ -61,7 +66,7 @@ echo "$git_repositories" | while read git_dir; do
             printf "Status:             \e[33mDirty (uncommitted changes or untracked files)\e[0m\n"
         fi
 
-        # License
+        # Display License information
         printf "License:            "
         if [ -f "LICENSE" ]; then
             first_line=$(head -n 1 "LICENSE")
@@ -77,11 +82,11 @@ echo "$git_repositories" | while read git_dir; do
             printf "\e[33mNone\e[0m\n"
         fi
 
-        # Current Branch
+        # Display current branch
         current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
         printf "Current branch:     %s\n" "$current_branch"
 
-        # Ahead/Behind
+        # Display ahead/behind status relative to upstream
         ahead_behind=$(git rev-list --left-right --count HEAD..."@{u}" 2>/dev/null)
         if [ -n "$ahead_behind" ]; then
             ahead=$(echo "$ahead_behind" | awk '{print $1}')
@@ -91,14 +96,14 @@ echo "$git_repositories" | while read git_dir; do
             printf "Ahead/behind:       No upstream set\n"
         fi
 
-        # Branches
+        # Display local and remote branches
         branch_count=$(git branch -a | grep -v 'remotes' | wc -l | tr -d '[:space:]')
         printf "Branches ($branch_count):       "
         branches=$(git branch -a | grep -v 'remotes' | sed 's/^\* //;s/^[[:space:]]*//')
         printf "%s\n" "$(echo "$branches" | head -1)"
         echo "$branches" | tail -n +2 | sed 's/^/                    /'
 
-        # Remotes
+        # Display repository remotes
         remotes=$(git remote -v | awk '{print $1 " " $2}' | sort -u)
         if [ -n "$remotes" ]; then
             printf "Remotes:            %s\n" "$(echo "$remotes" | awk 'NR==1{print $2} NR>1{printf "%-20s%s\n", "", $2}')"
@@ -106,7 +111,7 @@ echo "$git_repositories" | while read git_dir; do
             printf "Remotes:            None\n"
         fi
 
-        # Initial commit
+        # Display initial commit information
         initial_commit=$(git log --reverse --format="%ci - %s" 2>/dev/null | head -n 1)
         if [ -n "$initial_commit" ]; then
             printf "Initial commit:     %s\n" "$initial_commit"
@@ -114,19 +119,19 @@ echo "$git_repositories" | while read git_dir; do
             printf "Initial commit:     None (repository is empty)\n"
         fi
 
-        # Total commits
+        # Display total commit count
         commit_count=$(git rev-list --all --count)
         printf "Total commits:      $commit_count\n"
 
-        # Commits last month
+        # Display commit frequency (last month)
         commit_freq=$(git log --since="1 month ago" --format="%ci" 2>/dev/null | wc -l | tr -d '[:space:]')
         printf "Commits last month: %s\n" "$commit_freq"
 
-        # Last commit
+        # Display last commit details
         last_commit=$(git log -1 --format="%ci - %s" 2>/dev/null)
         printf "Last commit:        %s\n" "$last_commit"
 
-        # Top Authors
+        # Display top authors
         printf "Top authors:        "
         git log --format='%an <%ae>' | sort | uniq -c | sort -rn | head -n 3 | awk '{
             count = $1;                    # Store the commit count
@@ -136,7 +141,7 @@ echo "$git_repositories" | while read git_dir; do
             else { printf "%-20s%s - %s\n", "", count, name_email }
         }'
 
-        # Largest Files
+        # Display largest files in history
         git rev-list --objects --all 2>/dev/null | git cat-file --batch-check='%(objectsize) %(objectname) %(rest)' | sort -nr | awk '
         BEGIN { first = 1 }  # Track if this is the first row
         {

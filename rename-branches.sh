@@ -10,6 +10,7 @@
 oldbranch=""
 newbranch=""
 
+# Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --oldbranch)
@@ -27,16 +28,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate required arguments
 if [[ -z "$oldbranch" || -z "$newbranch" ]]; then
     printf "\e[31mError: Both --oldbranch and --newbranch options must be provided.\e[0m\n"
     exit 1
 fi
 
+# Check prerequisites
 if ! command -v git &> /dev/null; then
     printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
     exit 1
 fi
 
+# Find target repositories
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
@@ -44,8 +48,10 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
+# Iterate through each repository
 echo "$git_repositories" | while read git_dir; do
     (
+        # Get repository directory and name
         repo_dir=$(dirname "$git_dir")
 
         if [ "$repo_dir" = "." ]; then
@@ -54,6 +60,7 @@ echo "$git_repositories" | while read git_dir; do
             repo_name_display=$(basename "$repo_dir")
         fi
 
+        # Validate Git repository accessibility
         if ! cd "$repo_dir" >/dev/null 2>&1; then
             printf "\e[31mError: Directory is inaccessible: $repo_name_display\e[0m\n"
             exit 1
@@ -64,16 +71,19 @@ echo "$git_repositories" | while read git_dir; do
             exit 1
         fi
 
+        # Check if the old branch exists
         if ! git rev-parse --verify --quiet "refs/heads/$oldbranch" >/dev/null 2>&1; then
             printf "\e[33mOld branch '$oldbranch' does not exist in $repo_name_display. Skipping...\e[0m\n"
             exit 0
         fi
 
+        # Check if the new branch name is already taken
         if git rev-parse --verify --quiet "refs/heads/$newbranch" >/dev/null 2>&1; then
             printf "\e[33mNew branch '$newbranch' already exists in $repo_name_display. Skipping...\e[0m\n"
             exit 0
         fi
 
+        # Perform branch rename
         if rename_output=$(git branch -m "$oldbranch" "$newbranch" 2>&1); then
             printf "\e[32mBranch renamed from '$oldbranch' to '$newbranch' for $repo_name_display\e[0m\n"
         else
