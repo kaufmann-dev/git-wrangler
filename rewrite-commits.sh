@@ -165,7 +165,7 @@ echo "$git_repositories" | while read git_dir; do
             fi
 
             # Check diff
-            diff_output=$(git diff-tree --no-commit-id --name-status -r "$commit_hash" 2>/dev/null)
+            diff_output=$(git diff-tree --root --no-commit-id --name-status -r "$commit_hash" 2>/dev/null)
             if [[ -z "$diff_output" ]]; then
                 # Empty commit (touches no files), keep original message unchanged
                 continue
