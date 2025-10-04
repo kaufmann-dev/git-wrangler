@@ -185,11 +185,18 @@ echo "$git_repositories" | while read git_dir; do
             continue
         fi
 
-        # Prepare callback script for git-filter-repo
-        # We inject the mapping directly into Python for the commit-callback
-        callback_script="
+        # Convert temp-file paths for Python on Git Bash for Windows.
+        python_map_file="$map_file"
+        if command -v cygpath >/dev/null 2>&1; then
+            python_map_file=$(cygpath -am "$map_file")
+        fi
+
+        # Prepare callback script for git-filter-repo.
+        # Passing a callback file is more reliable here than an inline multiline string.
+        callback_file=$(mktemp)
+        cat > "$callback_file" <<EOF
 import os
-map_file = '$map_file'
+map_file = '$python_map_file'
 mapping = {}
 if os.path.exists(map_file):
     with open(map_file, 'r', encoding='utf-8') as f:
@@ -200,10 +207,10 @@ if os.path.exists(map_file):
 
 if commit.original_id in mapping:
     commit.message = mapping[commit.original_id]
-"
+EOF
 
         # Execute historical rewrite using git-filter-repo
-        if filter_output=$(git filter-repo --partial --commit-callback "$callback_script" --force 2>&1); then
+        if filter_output=$(git filter-repo --partial --commit-callback "$callback_file" --force 2>&1); then
             printf "\e[32mRewrote commit messages for $repo_name_display\e[0m\n"
             
             # Restore original remote origin if applicable
@@ -214,7 +221,7 @@ if commit.original_id in mapping:
             printf "\e[31mError: Could not update commit messages for $repo_name_display:\n$filter_output\e[0m\n\n"
         fi
 
-        rm -f "$map_file"
+        rm -f "$map_file" "$callback_file"
 
     )
 done
