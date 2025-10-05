@@ -29,7 +29,8 @@ CANDIDATE_ENTRIES=(
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
+            # FIX 3: Use %s to avoid treating $1 as a printf format string.
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
     esac
@@ -49,8 +50,10 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
-# Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+# FIX 2: Use IFS= and -r to correctly handle paths containing backslashes or
+# leading/trailing whitespace. Process substitution avoids running the loop
+# in a subshell (which the original pipe-into-while pattern would cause).
+while IFS= read -r git_dir; do
     (
         # Get repository path and display name
         repo_path=$(dirname "$git_dir")
@@ -90,10 +93,17 @@ echo "$git_repositories" | while read git_dir; do
             fi
 
             # Check if tracked files are already covered by .gitignore rules.
-            # Limit to first 10 files and use check-ignore with -n (show non-ignored).
-            # Returns 0 if at least one tracked file is NOT ignored.
-            if printf '%s\n' "$tracked_files" | head -10 | git check-ignore --stdin -n -q 2>/dev/null; then
-                # At least one tracked file is not yet covered.
+            # Limit to first 10 files and use check-ignore with -q (quiet).
+            #
+            # FIX 1: git check-ignore exits 0 when at least one path IS ignored,
+            # and exits 1 when NO paths are ignored. The original code entered the
+            # "not yet covered" branch on exit 0 — exactly backwards. The negation
+            # (!) corrects this: we enter the branch only when exit code is 1,
+            # meaning none of the sampled files are currently ignored.
+            # The -n flag was also removed; it only affects output alongside
+            # --verbose and has no effect under -q.
+            if ! printf '%s\n' "$tracked_files" | head -10 | git check-ignore --stdin -q 2>/dev/null; then
+                # No tracked files are covered yet — candidate for addition.
                 # Double-check: is this literal entry already present in .gitignore?
                 # Catches cases where files remain tracked despite existing gitignore entry.
                 if [ -f ".gitignore" ] && grep -qxF "$entry" .gitignore 2>/dev/null; then
@@ -141,4 +151,4 @@ echo "$git_repositories" | while read git_dir; do
             printf "  \e[33mNo changes needed.\e[0m\n"
         fi
     )
-done
+done < <(echo "$git_repositories")
