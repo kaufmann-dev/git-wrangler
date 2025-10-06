@@ -50,12 +50,10 @@ echo "$git_repositories" | while read git_dir; do
         # Stop tracking files that match .gitignore patterns
         if [ -f ".gitignore" ]; then
             # Identify tracked files matching ignore patterns
-            mapfile -d '' -t ignored_files < <(git ls-files --ignored --cached --exclude-standard -z)
-
-            if [ ${#ignored_files[@]} -gt 0 ]; then
+            if git ls-files --ignored --cached --exclude-standard | grep -q .; then
                 # Untrack and commit ignored files
-                if error_message=$(git rm --cached -q -- "${ignored_files[@]}" 2>&1); then
-                    if commit_output=$(git commit -q -m "Stop tracking files defined in .gitignore" -- "${ignored_files[@]}" 2>&1); then
+                if error_message=$(git ls-files --ignored --cached --exclude-standard -z | xargs -0 -r git rm --cached -q -- 2>&1); then
+                    if commit_output=$(git commit -q -m "Stop tracking files defined in .gitignore" 2>&1); then
                         printf "\e[32mStopped tracking and committed ignored files for $repo_name_display\e[0m\n"
                     else
                         printf "\e[31mError: Could not commit changes for $repo_name_display:\n$commit_output\e[0m\n\n"
