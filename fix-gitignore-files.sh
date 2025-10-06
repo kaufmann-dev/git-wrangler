@@ -2,12 +2,12 @@
 
 # ==============================================================================
 # Usage: ./fix-gitignore-files.sh
-# 
+#
 # Description:
-# Audits and fixes .gitignore files across Git repositories found in the 
-# current directory and its immediate subdirectories. Adds missing entries 
-# for tracked files that match common candidates (build artifacts, 
-# dependencies, IDE files, etc.) but are not yet covered by .gitignore.
+# Audits and fixes .gitignore files across Git repositories found in the
+# current directory and its immediate subdirectories. Adds missing entries
+# for files and directories that physically exist in the repo but are not
+# yet covered by .gitignore rules.
 # ==============================================================================
 
 # Candidate entries to audit and add to .gitignore if needed
@@ -29,7 +29,6 @@ CANDIDATE_ENTRIES=(
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            # FIX 3: Use %s to avoid treating $1 as a printf format string.
             printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
@@ -50,9 +49,30 @@ if [ -z "$git_repositories" ]; then
     exit 0
 fi
 
-# FIX 2: Use IFS= and -r to correctly handle paths containing backslashes or
-# leading/trailing whitespace. Process substitution avoids running the loop
-# in a subshell (which the original pipe-into-while pattern would cause).
+# Returns the first path (file or directory) within the repo that matches the
+# candidate entry, excluding anything inside .git/ itself.
+#
+# Directory candidates (trailing slash): searched as -type d by bare name.
+# File/glob candidates: searched as -type f by name pattern.
+find_existing_match() {
+    local entry="$1"
+
+    case "$entry" in
+        */)
+            # Strip trailing slash to get the bare directory name
+            local dir_name="${entry%/}"
+            find . -type d -name "$dir_name" \
+                ! -path '*/.git/*' \
+                2>/dev/null | head -1
+            ;;
+        *)
+            find . -type f -name "$entry" \
+                ! -path '*/.git/*' \
+                2>/dev/null | head -1
+            ;;
+    esac
+}
+
 while IFS= read -r git_dir; do
     (
         # Get repository path and display name
@@ -68,58 +88,48 @@ while IFS= read -r git_dir; do
 
         added=()
         skipped_covered=()
-        skipped_untracked=()
+        skipped_not_present=()
 
         for entry in "${CANDIDATE_ENTRIES[@]}"; do
-            # Build appropriate pathspec for git ls-files
-            case "$entry" in
-                */)
-                    # Directory pattern: match all tracked files under that directory
-                    ls_files_pathspec="$entry"
-                    ;;
-                *)
-                    # File or glob pattern: match recursively across all directories
-                    ls_files_pathspec=":(glob)**/$entry"
-                    ;;
-            esac
 
-            # Check if any files matching this entry are tracked in the index
-            tracked_files=$(git ls-files --cached -- "$ls_files_pathspec" 2>/dev/null)
+            # ----------------------------------------------------------------
+            # Step 1: Check whether anything matching this entry actually
+            # exists on disk inside the repository. If nothing is found, there
+            # is nothing to ignore — skip immediately.
+            # ----------------------------------------------------------------
+            existing_path=$(find_existing_match "$entry")
 
-            if [ -z "$tracked_files" ]; then
-                # Not tracked at all, nothing to ignore
-                skipped_untracked+=("$entry")
+            if [ -z "$existing_path" ]; then
+                skipped_not_present+=("$entry")
                 continue
             fi
 
-            # Check if tracked files are already covered by .gitignore rules.
-            # Limit to first 10 files and use check-ignore with -q (quiet).
-            #
-            # FIX 1: git check-ignore exits 0 when at least one path IS ignored,
-            # and exits 1 when NO paths are ignored. The original code entered the
-            # "not yet covered" branch on exit 0 — exactly backwards. The negation
-            # (!) corrects this: we enter the branch only when exit code is 1,
-            # meaning none of the sampled files are currently ignored.
-            # The -n flag was also removed; it only affects output alongside
-            # --verbose and has no effect under -q.
-            if ! printf '%s\n' "$tracked_files" | head -10 | git check-ignore --stdin -q 2>/dev/null; then
-                # No tracked files are covered yet — candidate for addition.
-                # Double-check: is this literal entry already present in .gitignore?
-                # Catches cases where files remain tracked despite existing gitignore entry.
-                if [ -f ".gitignore" ] && grep -qxF "$entry" .gitignore 2>/dev/null; then
-                    skipped_covered+=("$entry")
-                else
-                    added+=("$entry")
-                fi
-            else
-                # All checked tracked files are already ignored
+            # ----------------------------------------------------------------
+            # Step 2: Check whether the found path is already covered by the
+            # active .gitignore rules. git check-ignore exits 0 when the path
+            # IS ignored, 1 when it is not.
+            # ----------------------------------------------------------------
+            if git check-ignore -q "$existing_path" 2>/dev/null; then
                 skipped_covered+=("$entry")
+                continue
+            fi
+
+            # ----------------------------------------------------------------
+            # Step 3: The path exists and is not ignored. Check whether the
+            # literal entry is already present in .gitignore as a line — this
+            # catches cases where the entry is written but the file is still
+            # tracked (i.e. needs `git rm --cached`).
+            # ----------------------------------------------------------------
+            if [ -f ".gitignore" ] && grep -qxF "$entry" .gitignore 2>/dev/null; then
+                skipped_covered+=("$entry")
+            else
+                added+=("$entry")
             fi
         done
 
         # Write new entries to .gitignore if any need to be added
         if [ ${#added[@]} -gt 0 ]; then
-            # Ensure .gitignore ends with a newline if it already has content
+            # Ensure .gitignore ends with a newline before appending
             if [ -f ".gitignore" ] && [ -s ".gitignore" ] && [ "$(tail -c 1 .gitignore | wc -l)" -eq 0 ]; then
                 printf '\n' >> .gitignore
             fi
@@ -139,15 +149,15 @@ while IFS= read -r git_dir; do
 
         if [ ${#skipped_covered[@]} -gt 0 ]; then
             covered_list=$(printf '%s, ' "${skipped_covered[@]}")
-            printf "  \e[33mSkipped (tracked but covered):\e[0m %s\n" "${covered_list%, }"
+            printf "  \e[33mSkipped (already covered):\e[0m %s\n" "${covered_list%, }"
         fi
 
-        if [ ${#skipped_untracked[@]} -gt 0 ]; then
-            untracked_list=$(printf '%s, ' "${skipped_untracked[@]}")
-            printf "  \e[33mSkipped (not tracked):\e[0m %s\n" "${untracked_list%, }"
+        if [ ${#skipped_not_present[@]} -gt 0 ]; then
+            not_present_list=$(printf '%s, ' "${skipped_not_present[@]}")
+            printf "  \e[33mSkipped (not present on disk):\e[0m %s\n" "${not_present_list%, }"
         fi
 
-        if [ ${#added[@]} -eq 0 ] && [ ${#skipped_covered[@]} -eq 0 ] && [ ${#skipped_untracked[@]} -eq 0 ]; then
+        if [ ${#added[@]} -eq 0 ] && [ ${#skipped_covered[@]} -eq 0 ] && [ ${#skipped_not_present[@]} -eq 0 ]; then
             printf "  \e[33mNo changes needed.\e[0m\n"
         fi
     )
