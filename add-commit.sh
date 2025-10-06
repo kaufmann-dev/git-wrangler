@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# ==============================================================================
+# Usage: ./add-commit.sh --message <commit_message>
+# 
+# Description:
+# Iterates through Git repositories found in the current directory and its 
+# immediate subdirectories, stages all changes, and creates a commit with 
+# the provided message.
+# ==============================================================================
+
+message=""
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --message)
+            message="$2"
+            shift 2
+            ;;
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate required arguments
+if [ -z "$message" ]; then
+    printf "\e[31mError: A commit message is required. Use --message <commit_message>.\e[0m\n"
+    exit 1
+fi
+
+# Check prerequisites
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+# Find target repositories
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
+
+# Iterate through each repository
+while IFS= read -r git_dir; do
+    (
+        # Get repository path and display name
+        repo_path=$(dirname "$git_dir")
+
+        if [ "$repo_path" = "." ]; then
+            repo_name_display="${PWD##*/}"
+        else
+            repo_name_display=$(basename "$repo_path")
+        fi
+
+        cd "$repo_path" || exit
+
+        # Stage all changes
+        if ! git add -A 2>/dev/null; then
+            printf "\e[31mError: Could not stage changes for $repo_name_display\e[0m\n"
+            exit 1
+        fi
+
+        # Check if there are any staged changes
+        if git diff --cached --quiet; then
+            printf "\e[33mNo changes to commit for $repo_name_display. Skipping...\e[0m\n"
+            exit 0
+        fi
+
+        # Create the commit
+        if commit_output=$(git commit -m "$message" 2>&1); then
+            printf "\e[32mCommit created for $repo_name_display\e[0m\n"
+        else
+            printf "\e[31mError: Could not commit changes for $repo_name_display:\n$commit_output\e[0m\n\n"
+        fi
+    )
+done < <(echo "$git_repositories")
