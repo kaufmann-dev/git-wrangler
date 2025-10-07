@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      printf "\e[31mUnknown option: $1\e[0m\n"
+      printf "\e[31mUnknown option: %s\e[0m\n" "$1"
       exit 1
       ;;
   esac
@@ -40,7 +40,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository path and display name
         repo_path=$(dirname "$git_dir")
@@ -57,23 +57,23 @@ echo "$git_repositories" | while read git_dir; do
         if [ "$force" = true ]; then
             if push_output=$(git push --force origin HEAD 2>&1); then
                 if ! printf "$push_output" | grep -q "Everything up-to-date"; then
-                    printf "\e[32mGit push completed for $repo_name_display\e[0m\n"
+                    printf "\e[32mGit push completed for %s\e[0m\n" "$repo_name_display"
                 else
-                    printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
+                    printf "\e[33mNo changes to push for %s. Skipping...\e[0m\n" "$repo_name_display"
                 fi
             else
-                printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n\n"
+                printf "\e[31mError: Git push failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$push_output"
             fi
         else
             if push_output=$(git push origin HEAD 2>&1); then
                 if ! printf "$push_output" | grep -q "Everything up-to-date"; then
-                    printf "\e[32mGit push completed for $repo_name_display\e[0m\n"
+                    printf "\e[32mGit push completed for %s\e[0m\n" "$repo_name_display"
                 else
-                    printf "\e[33mNo changes to push for $repo_name_display. Skipping...\e[0m\n"
+                    printf "\e[33mNo changes to push for %s. Skipping...\e[0m\n" "$repo_name_display"
                 fi
             else
-                printf "\e[31mError: Git push failed for $repo_name_display:\n$push_output\e[0m\n\n"
+                printf "\e[31mError: Git push failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$push_output"
             fi
         fi
     )
-done
+done <<< "$git_repositories"
