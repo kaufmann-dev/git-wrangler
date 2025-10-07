@@ -61,21 +61,21 @@ while IFS= read -r git_dir; do
 
         # Stage all changes
         if ! git add -A 2>/dev/null; then
-            printf "\e[31mError: Could not stage changes for $repo_name_display\e[0m\n"
+            printf "\e[31mError: Could not stage changes for %s\e[0m\n" "$repo_name_display"
             exit 1
         fi
 
         # Check if there are any staged changes
         if git diff --cached --quiet; then
-            printf "\e[33mNo changes to commit for $repo_name_display. Skipping...\e[0m\n"
+            printf "\e[33mNo changes to commit for %s. Skipping...\e[0m\n" "$repo_name_display"
             exit 0
         fi
 
         # Create the commit
         if commit_output=$(git commit -m "$message" 2>&1); then
-            printf "\e[32mCommit created for $repo_name_display\e[0m\n"
+            printf "\e[32mCommit created for %s\e[0m\n" "$repo_name_display"
         else
-            printf "\e[31mError: Could not commit changes for $repo_name_display:\n$commit_output\e[0m\n\n"
+            printf "\e[31mError: Could not commit changes for %s:\n%s\e[0m\n\n" "$repo_name_display" "$commit_output"
         fi
     )
-done < <(echo "$git_repositories")
+done <<< "$git_repositories"
