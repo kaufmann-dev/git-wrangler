@@ -41,7 +41,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository path and display name
         repo_path=$(dirname "$git_dir")
@@ -54,13 +54,13 @@ echo "$git_repositories" | while read git_dir; do
 
         # Check repository accessibility
         if ! cd "$repo_path" 2>/dev/null || ! git rev-parse --is-inside-work-tree &> /dev/null; then
-            printf "\e[31mError: $repo_name_display is not a valid or accessible git repository. Skipping...\e[0m\n"
+            printf "\e[31mError: %s is not a valid or accessible git repository. Skipping...\e[0m\n" "$repo_name_display"
             exit 1
         fi
 
         # Ensure git-filter-repo is installed
         if ! command -v git-filter-repo &> /dev/null; then
-            printf "\e[31mError: 'git-filter-repo' is not installed. Skipping $repo_name_display...\e[0m\n"
+            printf "\e[31mError: 'git-filter-repo' is not installed. Skipping %s...\e[0m\n" "$repo_name_display"
             exit 1
         fi
 
@@ -73,7 +73,7 @@ echo "$git_repositories" | while read git_dir; do
         done
 
         if [ ${#matched_patterns[@]} -eq 0 ]; then
-            printf "\e[33mNo target patterns found in history. Skipping $repo_name_display cleanly...\e[0m\n"
+            printf "\e[33mNo target patterns found in history. Skipping %s cleanly...\e[0m\n" "$repo_name_display"
             exit 0
         fi
 
@@ -90,9 +90,9 @@ echo "$git_repositories" | while read git_dir; do
         # We pass --force to git-filter-repo to bypass the fresh-clone requirement. The script is
         # explicitly intended to run on the current working repositories without user friction.
         if error_message=$(git filter-repo "${filter_repo_args[@]}" --invert-paths --use-base-name --force 2>&1 >/dev/null); then
-            printf "\e[32mSuccessfully purged sensitive files from $repo_name_display\e[0m\n"
+            printf "\e[32mSuccessfully purged sensitive files from %s\e[0m\n" "$repo_name_display"
         else
-            printf "\e[31mError: Rewrite failed for $repo_name_display:\n$error_message\e[0m\n\n"
+            printf "\e[31mError: Rewrite failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message"
             exit 1
         fi
 
@@ -101,4 +101,4 @@ echo "$git_repositories" | while read git_dir; do
             git remote add origin "$remote_url" 2>/dev/null
         fi
     )
-done
+done <<< "$git_repositories"

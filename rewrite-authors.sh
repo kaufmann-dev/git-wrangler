@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
     esac
@@ -70,7 +70,7 @@ if [ -z "$repos" ]; then
 fi
 
 # Iterate through each repository
-echo "$repos" | while read repo; do
+while IFS= read -r repo; do
     (
         # Get repository directory and name
         repo_dir=$(dirname "$repo")
@@ -91,26 +91,26 @@ echo "$repos" | while read repo; do
             if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" git filter-repo --partial --force --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
                 if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                     if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
-                        printf "\e[31mWarning: Author rewrite completed for $repo_name_display, but origin could not be restored:\n$restore_output\e[0m\n\n"
+                        printf "\e[31mWarning: Author rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output"
                         exit 1
                     fi
                 fi
-                printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
+                printf "\e[32mAuthor and commiter information updated for %s\e[0m\n" "$repo_name_display"
             else
-                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n\n"
+                printf "\e[31mError: Could not update git author and commiter information for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message"
             fi
         else
             if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" git filter-repo --partial --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
                 if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                     if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
-                        printf "\e[31mWarning: Author rewrite completed for $repo_name_display, but origin could not be restored:\n$restore_output\e[0m\n\n"
+                        printf "\e[31mWarning: Author rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output"
                         exit 1
                     fi
                 fi
-                printf "\e[32mAuthor and commiter information updated for $repo_name_display\e[0m\n"
+                printf "\e[32mAuthor and commiter information updated for %s\e[0m\n" "$repo_name_display"
             else
-                printf "\e[31mError: Could not update git author and commiter information for $repo_name_display:\n$error_message\e[0m\n\n"
+                printf "\e[31mError: Could not update git author and commiter information for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message"
             fi
         fi
     )
-done
+done <<< "$repos"
