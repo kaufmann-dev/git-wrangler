@@ -102,7 +102,7 @@ categorize_commit() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
     esac
@@ -128,7 +128,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository path and display name
         repo_path=$(dirname "$git_dir")
@@ -143,7 +143,7 @@ echo "$git_repositories" | while read git_dir; do
 
         # Check if repository actually has any commits
         if ! git rev-parse HEAD &> /dev/null; then
-            printf "\e[33mRepository has no commits in $repo_name_display. Skipping...\e[0m\n"
+            printf "\e[33mRepository has no commits in %s. Skipping...\e[0m\n" "$repo_name_display"
             continue
         fi
 
@@ -180,7 +180,7 @@ echo "$git_repositories" | while read git_dir; do
         done < <(git rev-list --all)
 
         if [ "$needs_rewrite" = false ]; then
-            printf "\e[33mNo commits require rewriting in $repo_name_display (already format compliant). Skipping...\e[0m\n"
+            printf "\e[33mNo commits require rewriting in %s (already format compliant). Skipping...\e[0m\n" "$repo_name_display"
             rm -f "$map_file"
             continue
         fi
@@ -211,17 +211,17 @@ EOF
 
         # Execute historical rewrite using git-filter-repo
         if filter_output=$(git filter-repo --partial --commit-callback "$callback_file" --force 2>&1); then
-            printf "\e[32mRewrote commit messages for $repo_name_display\e[0m\n"
+            printf "\e[32mRewrote commit messages for %s\e[0m\n" "$repo_name_display"
             
             # Restore original remote origin if applicable
             if [ -n "$remote_url" ]; then
                 git remote add origin "$remote_url" 2>/dev/null
             fi
         else
-            printf "\e[31mError: Could not update commit messages for $repo_name_display:\n$filter_output\e[0m\n\n"
+            printf "\e[31mError: Could not update commit messages for %s:\n%s\e[0m\n\n" "$repo_name_display" "$filter_output"
         fi
 
         rm -f "$map_file" "$callback_file"
 
     )
-done
+done <<< "$git_repositories"

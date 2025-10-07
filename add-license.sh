@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
             shift 1
             ;;
         *)
-            printf "\e[31mUnknown option: $1\e[0m\n"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
             exit 1
             ;;
     esac
@@ -60,7 +60,7 @@ if [ -z "$git_repositories" ]; then
 fi
 
 # Iterate through each repository
-echo "$git_repositories" | while read git_dir; do
+while IFS= read -r git_dir; do
     (
         # Get repository directory and name
         repo_root=$(dirname "$git_dir")
@@ -99,9 +99,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 EOL
-                printf "\e[32mLICENSE file overwritten in repository: $repo_name\e[0m\n"
+                printf "\e[32mLICENSE file overwritten in repository: %s\e[0m\n" "$repo_name"
             else
-                printf "\e[33mLICENSE file already exists in repository: $repo_name (use --overwrite to replace it)\e[0m\n"
+                printf "\e[33mLICENSE file already exists in repository: %s (use --overwrite to replace it)\e[0m\n" "$repo_name"
             fi
         else
             cat > "$license_file" <<EOL
@@ -127,7 +127,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 EOL
-            printf "\e[32mLICENSE file created in repository: $repo_name\e[0m\n"
+            printf "\e[32mLICENSE file created in repository: %s\e[0m\n" "$repo_name"
         fi
     )
-done
+done <<< "$git_repositories"

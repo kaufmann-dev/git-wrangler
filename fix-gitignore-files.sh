@@ -161,4 +161,4 @@ while IFS= read -r git_dir; do
             printf "  \e[33mNo changes needed.\e[0m\n"
         fi
     )
-done < <(echo "$git_repositories")
+done <<< "$git_repositories"
