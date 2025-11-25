@@ -52,3 +52,62 @@ When checking if a file or folder physically exists on disk (e.g., before adding
 
 ## 6. `find` Depth Limitations
 When using `find` to discover files or directories (e.g., `dist/` or `node_modules/`), avoid hardcoded `-maxdepth` limits unless you are strictly trying to discover top-level directories (like `.git/` repository roots). An artificial depth cap will cause `find` to silently miss matched files nested deep within subdirectories.
+
+## 7. Standard Script Structure & Boilerplate
+All bash scripts in this repository follow a standardized structure to maintain consistency:
+1. **Shebang:** `#!/bin/bash`
+2. **Header Block:** A decorative comment block containing the `Usage:` and `Description:`.
+   ```bash
+   # ==============================================================================
+   # Usage: ./script-name.sh [--arg1 <value>] [--flag]
+   # 
+   # Description:
+   # Brief explanation of the script's purpose.
+   # ==============================================================================
+   ```
+3. **Variables & Argument Parsing:** Default variable assignments followed by a `while [[ $# -gt 0 ]]; do ... case ...` loop for argument parsing. Unknown arguments should throw a red error and exit 1.
+4. **Prerequisite Checks:** Use `command -v <cmd> &> /dev/null` to verify required tools (`git`, `gh`, `git-filter-repo`) are installed before executing logic.
+5. **Target Discovery:** Use `find` to locate target `.git` directories and store them in a variable. Exit gracefully with a yellow message if none are found.
+6. **Execution Loop:** Iterate over the repositories using the standardized `while IFS= read -r` and `<<< "$git_repositories"` here-string.
+
+## 8. Subshell Isolation for Repository Iteration
+When iterating over repositories, the body of the loop MUST be wrapped in a subshell `( ... )`. This safely isolates the `cd "$repo_dir"` command, ensuring that directory changes and local variables do not leak into the rest of the script or affect subsequent iterations.
+```bash
+while IFS= read -r git_dir; do
+    (
+        repo_dir=$(dirname "$git_dir")
+        cd "$repo_dir" || exit
+        
+        # ... core script logic ...
+    )
+done <<< "$git_repositories"
+```
+
+## 9. Standardized Repository Naming
+To display the repository name in log messages, correctly handle the case where the repository is the current working directory (`.`):
+```bash
+if [ "$repo_dir" = "." ]; then
+    repo_name_display="${PWD##*/}"
+else
+    repo_name_display=$(basename "$repo_dir")
+fi
+```
+Always use `$repo_name_display` in user-facing output.
+
+## 10. Output Formatting and Colors
+Scripts must use colored `printf` statements to provide clear visual feedback to the user:
+- **Red (`\e[31m`)**: Errors, failures, and missing prerequisites.
+- **Green (`\e[32m`)**: Success and completed operations.
+- **Yellow (`\e[33m`)**: Warnings, skipped operations, and "no changes needed" states.
+- **Reset (`\e[0m`)**: Always reset the color at the end of the string.
+Example: `printf "\e[32mSuccess message for %s\e[0m\n" "$repo_name_display"`
+
+## 11. Command Output Capture and Error Handling
+When running a command that might fail, capture its output (both stdout and stderr) and only display it if an error occurs. Never let command output bleed directly into the terminal unless intended.
+```bash
+if command_output=$(git commit -m "Message" 2>&1); then
+    printf "\e[32mCommit successful for %s\e[0m\n" "$repo_name_display"
+else
+    printf "\e[31mError: Commit failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$command_output"
+fi
+```
