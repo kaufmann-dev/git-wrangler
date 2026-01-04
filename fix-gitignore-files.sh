@@ -145,6 +145,14 @@ while IFS= read -r git_dir; do
         if [ ${#added[@]} -gt 0 ]; then
             added_list=$(printf '%s, ' "${added[@]}")
             printf "  \e[32mAdded:\e[0m %s\n" "${added_list%, }"
+
+            # Commit the changes
+            git add .gitignore 2>/dev/null
+            if commit_output=$(git commit -m "Update .gitignore with missing entries" 2>&1); then
+                printf "  \e[32mCommitted .gitignore updates\e[0m\n"
+            else
+                printf "  \e[31mError: Could not commit .gitignore:\n%s\e[0m\n" "$commit_output"
+            fi
         fi
 
         if [ ${#skipped_covered[@]} -gt 0 ]; then
