@@ -2,6 +2,11 @@
 
 This file documents critical bug classes and architectural decisions discovered during audits of the bash scripts in this repository. Any new scripts or modifications to existing scripts MUST adhere to these guidelines to ensure cross-platform compatibility, security, and correctness.
 
+## 0. Repository Architecture
+All subcommand scripts live in `libexec/` and follow the naming convention `wrangler-<subcommand>` (no `.sh` extension). The root `wrangler` dispatcher routes `wrangler <subcommand>` invocations to `libexec/wrangler-<subcommand>` via `exec bash`.
+
+When adding a new subcommand, create `libexec/wrangler-<subcommand>` and include the standard header block (see §7). The help system discovers subcommands dynamically — no registration step is needed.
+
 ## 1. `while read` Loop Safety (Whitespace and Backslashes)
 **DO NOT** use a bare `read` command (e.g., `while read var; do`). 
 Without `-r`, Bash interprets backslashes as escape characters, which will unexpectedly mangle Windows file paths. Without `IFS=`, Bash strips leading and trailing whitespace from the input.
@@ -54,17 +59,19 @@ When checking if a file or folder physically exists on disk (e.g., before adding
 When using `find` to discover files or directories (e.g., `dist/` or `node_modules/`), avoid hardcoded `-maxdepth` limits unless you are strictly trying to discover top-level directories (like `.git/` repository roots). An artificial depth cap will cause `find` to silently miss matched files nested deep within subdirectories.
 
 ## 7. Standard Script Structure & Boilerplate
-All bash scripts in this repository follow a standardized structure to maintain consistency:
+All subcommand scripts in `libexec/` follow a standardized structure to maintain consistency:
 1. **Shebang:** `#!/bin/bash`
-2. **Header Block:** A decorative comment block containing the `Usage:` and `Description:`.
+2. **Header Block:** A compact comment block delimited by `# ====` lines, containing `Usage:`, `Description:`, and `Category:` fields. The help system (`libexec/wrangler-help`) parses these fields dynamically.
    ```bash
-   # ==============================================================================
-   # Usage: ./script-name.sh [--arg1 <value>] [--flag]
-   # 
-   # Description:
-   # Brief explanation of the script's purpose.
-   # ==============================================================================
+   # ====
+   # Usage: wrangler <subcommand> [--arg1 <value>] [--flag]
+   # Description: Brief one-line explanation of the subcommand's purpose.
+   # Category: Remote Operations | Local Operations | History Rewriting | Utility
+   # ====
    ```
+   - **Usage** must use the `wrangler <subcommand>` syntax (not `./script.sh`).
+   - **Description** must be a single line.
+   - **Category** must be one of the logical grouping labels: `Remote Operations`, `Local Operations`, `History Rewriting`, or `Utility`.
 3. **Variables & Argument Parsing:** Default variable assignments followed by a `while [[ $# -gt 0 ]]; do ... case ...` loop for argument parsing. Unknown arguments should throw a red error and exit 1.
 4. **Prerequisite Checks:** Use `command -v <cmd> &> /dev/null` to verify required tools (`git`, `gh`, `git-filter-repo`) are installed before executing logic.
 5. **Target Discovery:** Use `find` to locate target `.git` directories and store them in a variable. Exit gracefully with a yellow message if none are found.

@@ -1,177 +1,114 @@
 # Git Wrangler
-Welcome to the Git Wrangler repository! In this repository, you will find a collection of a few useful scripts I have created for the management of git repositories. For all scripts to work, please make sure you have installed `gh`, `git` and `git filter-repo`. This repository contains the following scripts:
-* [`clone-repositories.sh`](#clone-repositories-sh): Clones multiple GitHub repositories.
-* [`push-repositories.sh`](#push-repositories-sh): Pushes multiple repositories.
-* [`pull-repositories.sh`](#pull-repositories-sh): Pulls multiple repositories.
-* [`add-commit.sh`](#add-commit-sh): Stages all changes and creates a commit across multiple repositories.
-* [`repository-info.sh`](#repository-info-sh): Shows basic repository information.
-* [`add-license.sh`](#add-license-sh): Adds or replaces a LICENSE file. Defaults to MIT.
-* [`rewrite-authors.sh`](#rewrite-authors-sh): Rewrites author and committer names and emails.
-* [`remove-secrets.sh`](#remove-secrets-sh): Permanently purges files containing sensitive data from the entire Git history.
-* [`untrack-ignored-files.sh`](#untrack-ignored-files-sh): Removes tracked files that match exclusion rules in .gitignore.
-* [`fix-gitignore-files.sh`](#fix-gitignore-files-sh): Audits and fixes .gitignore files by adding missing entries for tracked files.
-* [`rename-branches.sh`](#rename-branches-sh): Renames a specified branch to a new name.
-* [`rewrite-commits.sh`](#rewrite-commits-sh): Rewrites commit messages to adhere to the Conventional Commits standard.
 
+A unified CLI tool for managing multiple Git repositories at once. Wrangler provides a single entry point — `wrangler` — that dispatches to a collection of subcommands for cloning, pushing, pulling, committing, and rewriting history across all repositories in your working directory.
 
+## Prerequisites
 
-<a id="clone-repositories-sh"></a>
+For all subcommands to work, make sure you have the following installed:
+- `git`
+- `gh` (GitHub CLI) — required for `wrangler clone`
+- `git-filter-repo` — required for `wrangler rewrite-authors`, `wrangler rewrite-commits`, and `wrangler remove-secrets`
 
-## clone-repositories.sh
-Clones GitHub repositories based on specified criteria (visibility, user, limit) and organizes them into a designated directory, checking for existing repositories and displaying status messages.
-#### Syntax
+## Usage
+
 ```
-./clone-repositories.sh --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+wrangler <subcommand> [options]
 ```
-#### Options
-* `--user <username>` (required): Specify the GitHub username whose repositories to clone.
-* `--visibility <all|public|private>` (optional): Set the visibility of repositories to clone (default: "all").
-* `--limit <number>` (optional): Set the maximum number of repositories to clone (default: 100).
-* `--into <directory>` (optional): Specify the target directory to organize cloned repositories (default: username).
 
+Run `wrangler help` to see all available subcommands, or `wrangler help <subcommand>` for detailed documentation on a specific command.
 
+## Subcommands
 
-<a id="push-repositories-sh"></a>
+### Remote Operations
 
-## push-repositories.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, checks if there are changes to push, and performs a Git push operation with optional force flag.
-#### Syntax
+| Subcommand | Description |
+|---|---|
+| `wrangler clone` | Clones multiple GitHub repositories for a given user |
+| `wrangler pull` | Pulls the latest changes for all tracked repositories |
+| `wrangler push` | Pushes local commits to remote for all tracked repositories |
+
+### Local Operations
+
+| Subcommand | Description |
+|---|---|
+| `wrangler commit` | Stages all changes and creates a commit across multiple repositories |
+| `wrangler license` | Adds or replaces a LICENSE file across repositories |
+| `wrangler untrack` | Removes tracked files that match .gitignore exclusion rules |
+| `wrangler fix-gitignore` | Audits and fixes .gitignore files by adding missing entries |
+| `wrangler rename-branch` | Renames a specified branch to a new name across repositories |
+
+### History Rewriting
+
+| Subcommand | Description |
+|---|---|
+| `wrangler rewrite-authors` | Rewrites author and committer names and emails across repositories |
+| `wrangler rewrite-commits` | Rewrites commit messages to adhere to the Conventional Commits standard |
+| `wrangler remove-secrets` | Permanently purges sensitive files from the entire Git history |
+
+### Utility
+
+| Subcommand | Description |
+|---|---|
+| `wrangler info` | Displays detailed information about tracked repositories |
+| `wrangler help` | Displays help information for wrangler and its subcommands |
+
+## Examples
+
+Clone all repositories for a GitHub user:
+```bash
+wrangler clone --user myusername --visibility public --into ./repos
 ```
-./push-repositories.sh [--force]
+
+Pull latest changes across all repositories:
+```bash
+wrangler pull --rebase
 ```
-#### Options
-* `--force` (optional): Forcefully pushes changes to Git repositories, overwriting remote branches if necessary.
 
-
-
-<a id="pull-repositories-sh"></a>
-
-## pull-repositories.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, and performs a Git pull operation to fetch and integrate changes from the remote repository.
-#### Syntax
+Stage and commit across all repositories:
+```bash
+wrangler commit --message "chore: update dependencies"
 ```
-./pull-repositories.sh [--rebase] [--force]
+
+Add an MIT license to all repositories:
+```bash
+wrangler license --name "Your Name"
 ```
-#### Options
-* `--rebase` (optional): Rebase local commits on top of the fetched remote branch instead of merging.
-* `--force` (optional): Forcefully pulls changes, overwriting local changes if necessary.
 
-
-<a id="add-commit-sh"></a>
-
-## add-commit.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, stages all changes, and creates a commit with the provided message.
-#### Syntax
+Rewrite author information:
+```bash
+wrangler rewrite-authors --name "New Name" --email "new@email.com" --force
 ```
-./add-commit.sh --message <commit_message>
+
+View repository details:
+```bash
+wrangler info --repo my-project
 ```
-#### Options
-* `--message <commit_message>` (required): Specifies the commit message to use for all repositories.
 
-
-<a id="repository-info-sh"></a>
-
-## repository-info.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides information about each repository including name, status, license, branches, remotes, commits and files.
-#### Syntax
+Get help for a specific subcommand:
+```bash
+wrangler help clone
 ```
-./repository-info.sh
+
+## Architecture
+
+The `wrangler` script in the repository root is a thin dispatcher. It resolves the requested subcommand and hands off execution to the corresponding script in `libexec/`:
+
 ```
-#### Options
-* `--repo <repository_name>` (optional): Specifies a single repository to analyze, instead of analyzing all repositories in the current directory.
-
-
-
-<a id="add-license-sh"></a>
-
-## add-license.sh
-Iterates through Git repositories found in the current directory and creates or overwrites a license file with a given copyright holder's name. Uses the MIT license by default. You can change the license by editing the script.
-#### Syntax
+wrangler                  # Dispatcher (repository root)
+libexec/
+  wrangler-clone          # wrangler clone
+  wrangler-pull           # wrangler pull
+  wrangler-push           # wrangler push
+  wrangler-commit         # wrangler commit
+  wrangler-license        # wrangler license
+  wrangler-info           # wrangler info
+  wrangler-help           # wrangler help
+  wrangler-untrack        # wrangler untrack
+  wrangler-fix-gitignore  # wrangler fix-gitignore
+  wrangler-rename-branch  # wrangler rename-branch
+  wrangler-rewrite-authors  # wrangler rewrite-authors
+  wrangler-rewrite-commits  # wrangler rewrite-commits
+  wrangler-remove-secrets   # wrangler remove-secrets
 ```
-./add-license.sh
-```
-#### Options
-* `--name <copyright_holder>` (required): Specifies the copyright holder's name.
-* `--overwrite` (optional): If provided, replaces existing LICENSE files instead of skipping them.
-* `--repo <repository_name>` (optional): Specifies a single repository to create a LICENSE file, instead of all repositories in the current directory.
 
-
-
-<a id="rewrite-authors-sh"></a>
-
-## rewrite-authors.sh
-Iterates through Git repositories found in the current directory and its immediate subdirectories, updates author and committer information, with optional force mode, allowing users to specify a new name and email.
-#### Syntax
-```
-./rewrite-authors.sh --name <new_name> --email <new_email> [--force]
-```
-#### Options
-* `--name <new_name>` (required): Specifies the new name to be set as the author and committer in the Git repositories.
-* `--email <new_email>` (required): Specifies the new email address to be set as the author and committer in the Git repositories.
-* `--force` (optional): Enables force mode, allowing the script to update author and commiter information even if the repositories do not look like fresh clones.
-* `--repo <repository_name>` (optional): Specifies a single repository instead of going through all repositories in the current directory.
-
-
-
-<a id="remove-secrets-sh"></a>
-
-## remove-secrets.sh
-Permanently purges files containing sensitive data from the entire Git history of all managed repositories (across all branches and tags). It operates on all `.git` repositories found within a depth of 2.
-#### Syntax
-```
-./remove-secrets.sh
-```
-#### Options
-This script takes no arguments.
-
-
-
-<a id="untrack-ignored-files-sh"></a>
-
-## untrack-ignored-files.sh
-Removes files from the Git index that are actively tracked but match exclusion rules in `.gitignore`. It untracks the files safely while leaving them on the local disk, and commits the removals automatically.
-#### Syntax
-```
-./untrack-ignored-files.sh
-```
-#### Options
-This script takes no arguments.
-
-
-
-<a id="fix-gitignore-files-sh"></a>
-
-## fix-gitignore-files.sh
-Audits and fixes .gitignore files across Git repositories found in the current directory and its immediate subdirectories. Adds missing entries for tracked files that match common candidates (build artifacts, dependencies, IDE files, etc.) but are not yet covered by .gitignore. Does not untrack files, commit changes, or touch secrets.
-#### Syntax
-```
-./fix-gitignore-files.sh
-```
-#### Options
-This script takes no arguments.
-
-
-<a id="rename-branches-sh"></a>
-
-## rename-branches.sh
-Renames a specified branch to a new name across all managed Git repositories.
-#### Syntax
-```
-./rename-branches.sh --oldbranch <old_name> --newbranch <new_name>
-```
-#### Options
-* `--oldbranch <old_name>` (required): Specifies the name of the existing Git branch to be renamed.
-* `--newbranch <new_name>` (required): Specifies the new name for the Git branch.
-
-
-
-<a id="rewrite-commits-sh"></a>
-
-## rewrite-commits.sh
-Rewrites the commit messages of Git repositories to adhere to the Conventional Commits standard. It categorizes commits based on file paths and statuses to automatically determine the type (e.g., feat, fix, docs, chore) and scope.
-#### Syntax
-```
-./rewrite-commits.sh
-```
-#### Options
-This script takes no arguments.
+Each subcommand script in `libexec/` includes a structured header block with `Usage`, `Description`, and `Category` fields that the help system parses dynamically. Per-subcommand documentation is accessed via `wrangler help <subcommand>`.

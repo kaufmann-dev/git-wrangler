@@ -1,13 +1,10 @@
 #!/bin/bash
 
-# ==============================================================================
-# Usage: ./pull-repositories.sh [--rebase] [--force]
-# 
-# Description:
-# Iterates through Git repositories found in the current directory and its 
-# immediate subdirectories, and performs a Git pull operation to fetch and 
-# integrate changes from the remote repository.
-# ==============================================================================
+# ====
+# Usage: wrangler pull [--rebase] [--force]
+# Description: Pulls the latest changes for all tracked repositories
+# Category: Remote Operations
+# ====
 
 rebase=false
 force=false
