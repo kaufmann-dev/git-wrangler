@@ -1,14 +1,10 @@
 #!/bin/bash
 
-# ==============================================================================
-# Usage: ./fix-gitignore-files.sh
-#
-# Description:
-# Audits and fixes .gitignore files across Git repositories found in the
-# current directory and its immediate subdirectories. Adds missing entries
-# for files and directories that physically exist in the repo but are not
-# yet covered by .gitignore rules.
-# ==============================================================================
+# ====
+# Usage: wrangler fix-gitignore
+# Description: Audits and fixes .gitignore files by adding missing entries
+# Category: Local Operations
+# ====
 
 # Candidate entries to audit and add to .gitignore if needed
 CANDIDATE_ENTRIES=(

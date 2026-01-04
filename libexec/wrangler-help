@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# ====
+# Usage: wrangler help [<subcommand>]
+# Description: Displays help information for wrangler and its subcommands
+# Category: Utility
+# ====
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# If a subcommand argument is provided, show its documentation
+if [ -n "$1" ]; then
+    subcommand="$1"
+    target="$DIR/wrangler-$subcommand"
+
+    if [ ! -f "$target" ]; then
+        printf "\e[31mError: Unknown subcommand '%s'. Run 'wrangler help' for a list of available commands.\e[0m\n" "$subcommand"
+        exit 1
+    fi
+
+    # Extract documentation between # ==== boundaries, strip # prefix, print cleanly
+    awk '/^# ====/{found++; next} found==1{sub(/^# ?/, ""); print} found>=2{exit}' "$target"
+    exit 0
+fi
+
+# Top-level help: dynamically discover and display all subcommands grouped by category
+printf "\e[1mUsage:\e[0m wrangler <subcommand> [options]\n\n"
+printf "Available subcommands:\n\n"
+
+# Collect unique categories
+categories=""
+for file in "$DIR"/wrangler-*; do
+    [ -f "$file" ] || continue
+    category=$(awk '/^# Category:/{sub(/^# Category: */, ""); print; exit}' "$file")
+    if [ -n "$category" ]; then
+        categories=$(printf '%s\n%s' "$categories" "$category")
+    fi
+done
+categories=$(printf '%s' "$categories" | sort -u | sed '/^$/d')
+
+# Print subcommands grouped by category
+while IFS= read -r cat; do
+    printf "  \e[1;34m%s\e[0m\n" "$cat"
+    for file in "$DIR"/wrangler-*; do
+        [ -f "$file" ] || continue
+        file_category=$(awk '/^# Category:/{sub(/^# Category: */, ""); print; exit}' "$file")
+        if [ "$file_category" = "$cat" ]; then
+            subcmd=$(basename "$file")
+            subcmd="${subcmd#wrangler-}"
+            description=$(awk '/^# Description:/{sub(/^# Description: */, ""); print; exit}' "$file")
+            printf "    %-24s%s\n" "$subcmd" "$description"
+        fi
+    done
+    printf "\n"
+done <<< "$categories"
+
+printf "Run 'wrangler help <subcommand>' for detailed information about a specific command.\n"

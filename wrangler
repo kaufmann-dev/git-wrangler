@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Wrangler dispatcher — routes subcommands to libexec/wrangler-<subcommand>
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+subcommand="${1:-help}"
+
+# Validate subcommand contains no path separators
+if [[ "$subcommand" == */* || "$subcommand" == *\\* ]]; then
+    printf "\e[31mError: Invalid subcommand '%s'. Subcommand must not contain path separators.\e[0m\n" "$subcommand"
+    exit 1
+fi
+
+target="$DIR/libexec/wrangler-$subcommand"
+
+if [ -f "$target" ]; then
+    exec bash "$target" "${@:2}"
+else
+    printf "\e[31mError: Unknown subcommand '%s'. Run 'wrangler help' for a list of available commands.\e[0m\n" "$subcommand"
+    exit 1
+fi
