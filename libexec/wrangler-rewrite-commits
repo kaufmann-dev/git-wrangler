@@ -1,13 +1,10 @@
 #!/bin/bash
 
-# ==============================================================================
-# Usage: ./rewrite-commits.sh
-# 
-# Description:
-# Rewrites the commit messages of Git repositories to adhere to the Conventional 
-# Commits standard. It categorizes commits based on file paths and statuses 
-# to automatically determine the type (e.g., feat, fix, docs, chore) and scope.
-# ==============================================================================
+# ====
+# Usage: wrangler rewrite-commits
+# Description: Rewrites commit messages to adhere to the Conventional Commits standard
+# Category: History Rewriting
+# ====
 
 # Function to determine conventional commit components based on file diffs
 # This function reads 'git diff-tree --name-status' output from stdin and
@@ -43,7 +40,7 @@ categorize_commit() {
         # File classification
         if [[ "$filepath" =~ \.md$|\.txt$|\.rst$|^LICENSE|^docs/ ]]; then
             has_docs=true
-        elif [[ "$filepath" =~ ^test/|^spec/|_test\.|spec\.|\.test\. ]]; then
+        elif [[ "$filepath" =~ ^test/|^spec/|_test\.|spec\.|\\.test\. ]]; then
             has_tests=true
         elif [[ "$filepath" =~ ^\.github/|^Makefile$|^Dockerfile$|\.yml$|^\w+\.json$ ]]; then
             has_config=true
@@ -160,7 +157,7 @@ while IFS= read -r git_dir; do
             # Check if commit message already complies with Conventional Commits
             # Only checking the first line for the typical structure: type(scope): prefix or type: prefix.
             first_line=$(echo "$original_msg" | head -n 1)
-            if [[ "$first_line" =~ ^(feat|fix|docs|chore|test|build|ci|perf|refactor|style)(\(.*\))?:\  ]]; then
+            if [[ "$first_line" =~ ^(feat|fix|docs|chore|test|build|ci|perf|refactor|style)(\(.*\))?:\ ]]; then
                 continue
             fi
 
