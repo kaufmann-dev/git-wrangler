@@ -4,6 +4,17 @@
 # Usage: wrangler rewrite-commits
 # Description: Rewrites commit messages to adhere to the Conventional Commits standard
 # Category: History Rewriting
+#
+# Rewrites the commit messages of Git repositories to adhere to the
+# Conventional Commits standard. It categorizes commits based on file paths
+# and statuses to automatically determine the type (e.g., feat, fix, docs,
+# chore) and scope. Commits that already conform to the standard are left
+# unchanged. Requires 'git-filter-repo' to be installed.
+#
+# This command takes no arguments.
+#
+# Example:
+#     wrangler rewrite-commits
 # ====
 
 # Function to determine conventional commit components based on file diffs

@@ -61,17 +61,30 @@ When using `find` to discover files or directories (e.g., `dist/` or `node_modul
 ## 7. Standard Script Structure & Boilerplate
 All subcommand scripts in `libexec/` follow a standardized structure to maintain consistency:
 1. **Shebang:** `#!/bin/bash`
-2. **Header Block:** A compact comment block delimited by `# ====` lines, containing `Usage:`, `Description:`, and `Category:` fields. The help system (`libexec/wrangler-help`) parses these fields dynamically.
+2. **Header Block:** A comment block delimited by `# ====` lines. The first three lines are the machine-readable fields used by the top-level help menu. Everything after them is the human-readable documentation rendered by `wrangler help <subcommand>`.
    ```bash
    # ====
    # Usage: wrangler <subcommand> [--arg1 <value>] [--flag]
    # Description: Brief one-line explanation of the subcommand's purpose.
    # Category: Remote Operations | Local Operations | History Rewriting | Utility
+   #
+   # One or more sentences explaining what the subcommand does, any important
+   # prerequisites, and its default behaviour.
+   #
+   # Options:
+   #   --flag1 <value>  (required) What this flag does.
+   #   --flag2          (optional) What this flag does.
+   #
+   # Example:
+   #     wrangler <subcommand> --flag1 value
    # ====
    ```
    - **Usage** must use the `wrangler <subcommand>` syntax (not `./script.sh`).
-   - **Description** must be a single line.
-   - **Category** must be one of the logical grouping labels: `Remote Operations`, `Local Operations`, `History Rewriting`, or `Utility`.
+   - **Description** must be a single line — it is used verbatim in the top-level help menu.
+   - **Category** must be one of: `Remote Operations`, `Local Operations`, `History Rewriting`, or `Utility`.
+   - **Description paragraph** (below Category) should be one or more sentences explaining the command in plain language.
+   - **Options** section lists every accepted flag with its required/optional status and a short description. Omit this section for commands that take no arguments.
+   - **Example** / **Examples** section provides one or more ready-to-run usage examples.
 3. **Variables & Argument Parsing:** Default variable assignments followed by a `while [[ $# -gt 0 ]]; do ... case ...` loop for argument parsing. Unknown arguments should throw a red error and exit 1.
 4. **Prerequisite Checks:** Use `command -v <cmd> &> /dev/null` to verify required tools (`git`, `gh`, `git-filter-repo`) are installed before executing logic.
 5. **Target Discovery:** Use `find` to locate target `.git` directories and store them in a variable. Exit gracefully with a yellow message if none are found.
