@@ -94,18 +94,18 @@ wrangler help clone
 The `wrangler` script in the repository root is a thin dispatcher. It resolves the requested subcommand and hands off execution to the corresponding script in `libexec/`:
 
 ```
-wrangler                  # Dispatcher (repository root)
+wrangler                    # Dispatcher (repository root)
 libexec/
-  wrangler-clone          # wrangler clone
-  wrangler-pull           # wrangler pull
-  wrangler-push           # wrangler push
-  wrangler-commit         # wrangler commit
-  wrangler-license        # wrangler license
-  wrangler-info           # wrangler info
-  wrangler-help           # wrangler help
-  wrangler-untrack        # wrangler untrack
-  wrangler-fix-gitignore  # wrangler fix-gitignore
-  wrangler-rename-branch  # wrangler rename-branch
+  wrangler-clone            # wrangler clone
+  wrangler-pull             # wrangler pull
+  wrangler-push             # wrangler push
+  wrangler-commit           # wrangler commit
+  wrangler-license          # wrangler license
+  wrangler-info             # wrangler info
+  wrangler-help             # wrangler help
+  wrangler-untrack          # wrangler untrack
+  wrangler-fix-gitignore    # wrangler fix-gitignore
+  wrangler-rename-branch    # wrangler rename-branch
   wrangler-rewrite-authors  # wrangler rewrite-authors
   wrangler-rewrite-commits  # wrangler rewrite-commits
   wrangler-remove-secrets   # wrangler remove-secrets
