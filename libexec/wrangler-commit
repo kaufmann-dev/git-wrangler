@@ -4,6 +4,17 @@
 # Usage: wrangler commit --message <commit_message>
 # Description: Stages all changes and creates a commit across multiple repositories
 # Category: Local Operations
+#
+# Iterates through Git repositories found in the current directory and its
+# immediate subdirectories, stages all changes (git add -A), and creates a
+# commit with the provided message. Repositories with no staged changes are
+# skipped automatically.
+#
+# Options:
+#   --message <commit_message>  (required) The commit message to use for all repositories.
+#
+# Example:
+#     wrangler commit --message "chore: update dependencies"
 # ====
 
 message=""

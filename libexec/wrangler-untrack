@@ -4,6 +4,15 @@
 # Usage: wrangler untrack
 # Description: Removes tracked files that match .gitignore exclusion rules
 # Category: Local Operations
+#
+# Removes files from the Git index that are actively tracked but match
+# exclusion rules in .gitignore. It untracks the files safely while leaving
+# them on the local disk, and commits the removals automatically.
+#
+# This command takes no arguments.
+#
+# Example:
+#     wrangler untrack
 # ====
 
 # Parse command-line arguments
