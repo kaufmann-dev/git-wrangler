@@ -50,6 +50,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 
 | Subcommand | Description |
 |---|---|
+| `wrangler status` | Shows dirty/clean and ahead/behind status of tracked repositories |
 | `wrangler info` | Displays detailed information about tracked repositories |
 | `wrangler help` | Displays help information for wrangler and its subcommands |
 
@@ -108,6 +109,7 @@ libexec/
   wrangler-untrack          # wrangler untrack
   wrangler-fix-gitignore    # wrangler fix-gitignore
   wrangler-rename-branch    # wrangler rename-branch
+  wrangler-status           # wrangler status
   wrangler-rewrite-authors  # wrangler rewrite-authors
   wrangler-rewrite-commits  # wrangler rewrite-commits
   wrangler-remove-secrets   # wrangler remove-secrets
