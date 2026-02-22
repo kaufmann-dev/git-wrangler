@@ -1,0 +1,319 @@
+#!/bin/bash
+
+# ====
+# Usage: wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]
+# Description: Redistributes commit timestamps to mimic natural human activity
+# Category: History Rewriting
+#
+# Rewrites commit author and committer dates across all managed repositories
+# using a statistically natural redistribution algorithm. Timestamps are spread
+# across the given date range with stratified jitter, bimodal time-of-day
+# weighting peaking at 10am and 3pm, weekend dampening, and micro-clustering
+# of same-day commits. Requires 'git-filter-repo' to be installed.
+#
+# Options:
+#   --start-date <YYYY-MM-DD>  (optional) Earliest date for redistributed commits. Defaults to first commit date.
+#   --end-date <YYYY-MM-DD>    (optional) Latest date for redistributed commits. Defaults to last commit date.
+#   --confirm                  (optional) Skip the interactive confirmation prompt.
+#
+# Example:
+#     wrangler rewrite-dates --start-date 2024-01-01 --end-date 2024-12-31 --confirm
+# ====
+
+start_date=""
+end_date=""
+confirm=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --start-date)
+            start_date="$2"
+            shift 2
+            ;;
+        --end-date)
+            end_date="$2"
+            shift 2
+            ;;
+        --confirm)
+            confirm=true
+            shift
+            ;;
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            exit 1
+            ;;
+    esac
+done
+
+if [ -n "$start_date" ] && ! date -d "$start_date" &>/dev/null; then
+    printf "\e[31mError: --start-date must be in YYYY-MM-DD format.\e[0m\n"
+    exit 1
+fi
+if [ -n "$end_date" ] && ! date -d "$end_date" &>/dev/null; then
+    printf "\e[31mError: --end-date must be in YYYY-MM-DD format.\e[0m\n"
+    exit 1
+fi
+
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+if ! command -v git-filter-repo &> /dev/null; then
+    printf "\e[31mError: 'git filter-repo' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+
+if [ -z "$git_repositories" ]; then
+    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    exit 0
+fi
+
+while IFS= read -r git_dir; do
+    (
+        repo_dir=$(dirname "$git_dir")
+        cd "$repo_dir" || exit
+
+        if [ "$repo_dir" = "." ]; then
+            repo_name_display="${PWD##*/}"
+        else
+            repo_name_display=$(basename "$repo_dir")
+        fi
+
+        if ! git rev-parse HEAD &> /dev/null; then
+            printf "\e[33m%s has no commits. Skipping...\e[0m\n" "$repo_name_display"
+            exit 0
+        fi
+
+        printf "\e[33mProcessing %s...\e[0m\n" "$repo_name_display"
+
+        commit_count=$(git rev-list --all --count)
+        if [ "$commit_count" -lt 2 ]; then
+            printf "\e[33m%s has fewer than 2 commits. Skipping...\e[0m\n" "$repo_name_display"
+            exit 0
+        fi
+
+        if [ -n "$start_date" ]; then
+            start_epoch=$(date -d "$start_date" +%s)
+        else
+            start_epoch=$(git log --all --reverse --format="%at" | head -n 1)
+        fi
+
+        if [ -n "$end_date" ]; then
+            end_epoch=$(date -d "$end_date" +%s)
+        else
+            end_epoch=$(git log --all --format="%at" -1)
+        fi
+
+        if [ "$start_epoch" -ge "$end_epoch" ]; then
+            printf "\e[31mError: start date must be before end date in %s.\e[0m\n" "$repo_name_display"
+            exit 1
+        fi
+
+        remote_url=$(git remote get-url origin 2>/dev/null)
+
+        tz_offset=$(git log --all --format="%ai" | awk '{o=substr($0, length($0)-4); if (o ~ /^[+-][0-9]{4}$/) print o}' | sort | uniq -c | sort -rn | head -n 1 | awk '{print $2}')
+        if [ -z "$tz_offset" ]; then
+            tz_offset=$(date +%z)
+        fi
+
+        commits_file=$(mktemp)
+        git log --all --reverse --format="%H %at" > "$commits_file"
+
+        gen_script=$(mktemp)
+        cat > "$gen_script" <<'PYEOF'
+import sys
+import random
+import math
+
+def sample_bimodal_hour():
+    if random.random() < 0.5:
+        peak = 10.0
+    else:
+        peak = 15.0
+    u1 = random.random()
+    if u1 == 0.0:
+        u1 = 1e-10
+    u2 = random.random()
+    z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
+    hour = peak + 2.0 * z
+    if hour < 7.0:
+        hour = 7.0
+    if hour > 22.0:
+        hour = 22.0
+    return hour
+
+def weekday_from_epoch(ts):
+    return (ts // 86400 + 4) % 7
+
+def is_weekend_ts(ts):
+    wd = weekday_from_epoch(ts)
+    return wd == 2 or wd == 3
+
+def format_display(epoch, tz_offset):
+    import datetime
+    sign = 1 if tz_offset[0] == '+' else -1
+    hours = int(tz_offset[1:3])
+    minutes = int(tz_offset[3:5])
+    offset_seconds = sign * (hours * 3600 + minutes * 60)
+    tz = datetime.timezone(datetime.timedelta(seconds=offset_seconds))
+    dt = datetime.datetime.fromtimestamp(epoch, tz=tz)
+    return dt.strftime('%Y-%m-%d %H:%M:%S ') + tz_offset
+
+def main():
+    if len(sys.argv) < 7:
+        sys.exit(1)
+
+    start_epoch = int(sys.argv[1])
+    end_epoch = int(sys.argv[2])
+    tz_offset = sys.argv[3]
+    commits_file = sys.argv[4]
+    callback_file = sys.argv[5]
+    summary_file = sys.argv[6]
+
+    commits = []
+    with open(commits_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                commits.append((parts[0], int(parts[1])))
+
+    n = len(commits)
+    if n == 0:
+        sys.exit(1)
+
+    total_range = end_epoch - start_epoch
+    if total_range <= 0:
+        total_range = 86400
+
+    slot_width = total_range / n
+
+    timestamps = []
+
+    for i in range(n):
+        slot_start = start_epoch + i * slot_width
+        slot_center = slot_start + slot_width / 2.0
+        jitter = random.uniform(-0.4 * slot_width, 0.4 * slot_width)
+        raw_ts = slot_center + jitter
+        day_start = int(raw_ts // 86400) * 86400
+        hour = sample_bimodal_hour()
+        hour_int = int(hour)
+        ts = day_start + hour_int * 3600 + random.randint(0, 59) * 60 + random.randint(0, 59)
+        if is_weekend_ts(ts):
+            if random.random() < 0.65:
+                wd = weekday_from_epoch(ts)
+                if wd == 2:
+                    friday = day_start - 86400
+                    evening_h = random.randint(18, 22)
+                    ts = friday + evening_h * 3600 + random.randint(0, 59) * 60 + random.randint(0, 59)
+                else:
+                    monday = day_start + 86400
+                    morning_h = random.randint(7, 9)
+                    ts = monday + morning_h * 3600 + random.randint(0, 59) * 60 + random.randint(0, 59)
+        timestamps.append(int(ts))
+
+    day_groups = {}
+    for idx, ts in enumerate(timestamps):
+        day_key = ts // 86400
+        if day_key not in day_groups:
+            day_groups[day_key] = []
+        day_groups[day_key].append(idx)
+
+    for day_key, indices in day_groups.items():
+        if len(indices) < 2:
+            continue
+        day_midnight = day_key * 86400
+        random.shuffle(indices)
+        spacing_seconds = random.randint(25 * 60, 90 * 60)
+        start_hour = random.uniform(7.0, 22.0 - (len(indices) - 1) * spacing_seconds / 3600.0)
+        if start_hour < 7.0:
+            start_hour = 7.0
+        current_offset = int(start_hour * 3600)
+        for idx in indices:
+            timestamps[idx] = day_midnight + current_offset + random.randint(0, 59)
+            current_offset += spacing_seconds
+
+    sorted_ts = sorted(timestamps)
+    mapping = {}
+    for i in range(n):
+        mapping[commits[i][0]] = sorted_ts[i]
+
+    summary_lines = []
+    summary_lines.append("Commit summary (old -> new):")
+    summary_lines.append("-" * 70)
+    for commit_hash, old_ts in commits:
+        new_ts = mapping[commit_hash]
+        old_display = format_display(old_ts, tz_offset)
+        new_display = format_display(new_ts, tz_offset)
+        short_hash = commit_hash[:8]
+        summary_lines.append("  {}  {} -> {}".format(short_hash, old_display, new_display))
+
+    with open(summary_file, 'w') as f:
+        f.write('\n'.join(summary_lines))
+
+    with open(callback_file, 'w') as f:
+        f.write('import os\n')
+        f.write('mapping = {}\n')
+        for commit_hash, new_ts in mapping.items():
+            f.write("mapping[b'{}'] = b'{} {}'\n".format(commit_hash, int(new_ts), tz_offset))
+        f.write("if commit.original_id in mapping:\n")
+        f.write("    commit.author_date = mapping[commit.original_id]\n")
+        f.write("    commit.committer_date = mapping[commit.original_id]\n")
+
+if __name__ == '__main__':
+    main()
+PYEOF
+
+        callback_file=$(mktemp)
+        summary_file=$(mktemp)
+        python_cmd=""
+        if command -v python3 &> /dev/null; then
+            python_cmd="python3"
+        elif command -v python &> /dev/null; then
+            python_cmd="python"
+        else
+            printf "\e[31mError: Python is not available. Required by git-filter-repo.\e[0m\n"
+            rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
+            exit 1
+        fi
+
+        python_output=""
+        if ! python_output=$("$python_cmd" "$gen_script" "$start_epoch" "$end_epoch" "$tz_offset" "$commits_file" "$callback_file" "$summary_file" 2>&1); then
+            printf "\e[31mError: timestamp generation failed for %s:\n%s\e[0m\n" "$repo_name_display" "$python_output"
+            rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
+            exit 1
+        fi
+
+        if [ -f "$summary_file" ]; then
+            cat "$summary_file"
+        fi
+
+        printf "\e[31m\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.\e[0m\n\n"
+
+        if [ "$confirm" != true ]; then
+            printf "Proceed with rewrite for %s? [y/N] " "$repo_name_display"
+            read -r answer
+            if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+                printf "\e[33mSkipping %s.\e[0m\n" "$repo_name_display"
+                rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
+                exit 0
+            fi
+        fi
+
+        if filter_output=$(git filter-repo --partial --commit-callback "$callback_file" --force 2>&1); then
+            printf "\e[32mSuccessfully rewrote commit dates for %s\e[0m\n" "$repo_name_display"
+            if [ -n "$remote_url" ]; then
+                git remote add origin "$remote_url" 2>/dev/null
+            fi
+        else
+            printf "\e[31mError: rewrite failed for %s:\n%s\e[0m\n" "$repo_name_display" "$filter_output"
+        fi
+
+        rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
+    )
+done <<< "$git_repositories"
