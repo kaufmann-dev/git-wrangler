@@ -7,7 +7,7 @@ A unified CLI tool for managing multiple Git repositories at once. Wrangler prov
 For all subcommands to work, make sure you have the following installed:
 - `git`
 - `gh` (GitHub CLI) — required for `wrangler clone` and `wrangler rename-repo`
-- `git-filter-repo` — required for `wrangler rewrite-authors`, `wrangler rewrite-commits`, and `wrangler remove-secrets`
+- `git-filter-repo` — required for `wrangler rewrite-authors`, `wrangler rewrite-commits`, `wrangler rewrite-dates`, and `wrangler remove-secrets`
 
 ## Usage
 
@@ -45,6 +45,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 |---|---|
 | `wrangler rewrite-authors` | Rewrites author and committer names and emails across repositories |
 | `wrangler rewrite-commits` | Rewrites commit messages to adhere to the Conventional Commits standard |
+| `wrangler rewrite-dates` | Redistributes commit timestamps to mimic natural human activity |
 | `wrangler remove-secrets` | Permanently purges sensitive files from the entire Git history |
 
 ### Utility
@@ -82,6 +83,11 @@ Rewrite author information:
 wrangler rewrite-authors --name "New Name" --email "new@email.com" --force
 ```
 
+Redistribute commit dates across a date range:
+```bash
+wrangler rewrite-dates --start-date 2024-01-01 --end-date 2024-12-31 --confirm
+```
+
 View repository details:
 ```bash
 wrangler info --repo my-project
@@ -114,6 +120,7 @@ libexec/
   wrangler-status           # wrangler status
   wrangler-rewrite-authors  # wrangler rewrite-authors
   wrangler-rewrite-commits  # wrangler rewrite-commits
+  wrangler-rewrite-dates    # wrangler rewrite-dates
   wrangler-remove-secrets   # wrangler remove-secrets
 ```
 
