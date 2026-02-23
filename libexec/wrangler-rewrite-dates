@@ -297,7 +297,7 @@ PYEOF
 
         if [ "$confirm" != true ]; then
             printf "Proceed with rewrite for %s? [y/N] " "$repo_name_display"
-            read -r answer
+            read -r answer < /dev/tty
             if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
                 printf "\e[33mSkipping %s.\e[0m\n" "$repo_name_display"
                 rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
