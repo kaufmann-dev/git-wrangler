@@ -38,6 +38,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 | `wrangler untrack` | Removes tracked files that match .gitignore exclusion rules |
 | `wrangler fix-gitignore` | Audits and fixes .gitignore files by adding missing entries |
 | `wrangler rename-branch` | Renames a specified branch to a new name across repositories |
+| `wrangler reset` | Resets the current branch to exactly match its remote counterpart |
 
 ### History Rewriting
 
@@ -93,6 +94,11 @@ View repository details:
 wrangler info --repo my-project
 ```
 
+Reset branches to match remote:
+```bash
+wrangler reset --confirm
+```
+
 Get help for a specific subcommand:
 ```bash
 wrangler help clone
@@ -117,6 +123,7 @@ libexec/
   wrangler-untrack          # wrangler untrack
   wrangler-fix-gitignore    # wrangler fix-gitignore
   wrangler-rename-branch    # wrangler rename-branch
+  wrangler-reset            # wrangler reset
   wrangler-status           # wrangler status
   wrangler-rewrite-authors  # wrangler rewrite-authors
   wrangler-rewrite-commits  # wrangler rewrite-commits
