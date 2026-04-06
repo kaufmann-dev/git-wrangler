@@ -168,7 +168,7 @@ while IFS= read -r git_dir; do
             # Check if commit message already complies with Conventional Commits
             # Only checking the first line for the typical structure: type(scope): prefix or type: prefix.
             first_line=$(echo "$original_msg" | head -n 1)
-            if [[ "$first_line" =~ ^(feat|fix|docs|chore|test|build|ci|perf|refactor|style)(\(.*\))?:\ ]]; then
+            if [[ "$first_line" =~ ^(feat|fix|docs|chore|test|build|ci|perf|refactor|style)(\(.*\))?:\  ]]; then
                 continue
             fi
 
