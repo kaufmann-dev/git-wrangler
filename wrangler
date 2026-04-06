@@ -4,6 +4,10 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Restore original invocation directory if called via wrangler.cmd wrapper
+if [ -n "$WRANGLER_INVOCATION_DIR" ]; then
+    cd "$WRANGLER_INVOCATION_DIR" || exit 1
+fi
 subcommand="${1:-help}"
 
 # Validate subcommand contains no path separators
