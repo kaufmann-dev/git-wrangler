@@ -64,6 +64,13 @@ while IFS= read -r git_dir; do
             exit 0
         fi
 
+        if fetch_output=$(git fetch origin "$current_branch" 2>&1); then
+            :
+        else
+            printf "\e[31mError: Fetch failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$fetch_output"
+            exit 1
+        fi
+
         if ! git rev-parse --verify --quiet "origin/$current_branch" >/dev/null 2>&1; then
             printf "\e[33mBranch '%s' has no remote counterpart in %s. Skipping...\e[0m\n" "$current_branch" "$repo_name_display"
             exit 0
@@ -95,13 +102,6 @@ while IFS= read -r git_dir; do
                 printf "\e[33mSkipping %s.\e[0m\n" "$repo_name_display"
                 exit 0
             fi
-        fi
-
-        if fetch_output=$(git fetch origin "$current_branch" 2>&1); then
-            :
-        else
-            printf "\e[31mError: Fetch failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$fetch_output"
-            exit 1
         fi
 
         if reset_output=$(git reset --hard "origin/$current_branch" 2>&1); then
