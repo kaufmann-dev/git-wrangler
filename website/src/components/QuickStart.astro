@@ -1,0 +1,94 @@
+---
+// QuickStart.astro – Quick start section on the landing page
+---
+
+<section class="quickstart-section">
+  <div class="container quickstart-inner">
+    <div class="quickstart-text">
+      <h2 class="text-subheading">From zero to orchestration in 30 seconds.</h2>
+      <p class="text-body quickstart-body">
+        No configuration files. No daemon processes. Just a clean, Git-like CLI that
+        you can pipe, script, and automate immediately after install.
+      </p>
+      <div class="quickstart-actions">
+        <a href="/docs/introduction" class="btn-primary" id="quickstart-cta-docs">
+          Read the Docs
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 8h10M9 4l4 4-4 4"/>
+          </svg>
+        </a>
+        <a href="/docs/installation" class="btn-secondary" id="quickstart-cta-install">Installation Guide</a>
+      </div>
+    </div>
+
+    <div class="quickstart-terminal">
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dot terminal-dot--red"></span>
+          <span class="terminal-dot terminal-dot--yellow"></span>
+          <span class="terminal-dot terminal-dot--green"></span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line terminal-comment"># Clone all public repos for a GitHub user</div>
+          <div class="terminal-line">
+            <span class="terminal-prompt">$ </span>
+            <span class="terminal-command">wrangler clone --user myusername --visibility public</span>
+          </div>
+          <br />
+          <div class="terminal-line terminal-comment"># Commit across all repos at once</div>
+          <div class="terminal-line">
+            <span class="terminal-prompt">$ </span>
+            <span class="terminal-command">wrangler commit --message "chore: update deps"</span>
+          </div>
+          <br />
+          <div class="terminal-line terminal-comment"># Rewrite all commit authors</div>
+          <div class="terminal-line">
+            <span class="terminal-prompt">$ </span>
+            <span class="terminal-command">wrangler rewrite-authors --name "Jane" --email "jane@dev.io"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .quickstart-section {
+    border-top: 1px solid var(--color-gray-100);
+    padding-block: var(--space-11);
+  }
+
+  .quickstart-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-10);
+    align-items: center;
+  }
+
+  .quickstart-body {
+    margin-block: var(--space-6);
+  }
+
+  .quickstart-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .quickstart-terminal {
+    animation: fade-in 0.5s ease both;
+  }
+
+  @media (max-width: 900px) {
+    .quickstart-inner {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .quickstart-section {
+      padding-block: var(--space-8);
+    }
+  }
+</style>
