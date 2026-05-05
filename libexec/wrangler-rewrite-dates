@@ -39,28 +39,28 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
 done
 
 if [ -n "$start_date" ] && ! date -d "$start_date" &>/dev/null; then
-    printf "\e[31mError: --start-date must be in YYYY-MM-DD format.\e[0m\n"
+    printf "\e[31mError: --start-date must be in YYYY-MM-DD format.\e[0m\n" >&2
     exit 1
 fi
 if [ -n "$end_date" ] && ! date -d "$end_date" &>/dev/null; then
-    printf "\e[31mError: --end-date must be in YYYY-MM-DD format.\e[0m\n"
+    printf "\e[31mError: --end-date must be in YYYY-MM-DD format.\e[0m\n" >&2
     exit 1
 fi
 
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
 if ! command -v git-filter-repo &> /dev/null; then
-    printf "\e[31mError: 'git filter-repo' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git filter-repo' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -108,7 +108,7 @@ while IFS= read -r git_dir; do
         fi
 
         if [ "$start_epoch" -ge "$end_epoch" ]; then
-            printf "\e[31mError: start date must be before end date in %s.\e[0m\n" "$repo_name_display"
+            printf "\e[31mError: start date must be before end date in %s.\e[0m\n" "$repo_name_display" >&2
             exit 1
         fi
 
@@ -277,14 +277,14 @@ PYEOF
         elif command -v python &> /dev/null; then
             python_cmd="python"
         else
-            printf "\e[31mError: Python is not available. Required by git-filter-repo.\e[0m\n"
+            printf "\e[31mError: Python is not available. Required by git-filter-repo.\e[0m\n" >&2
             rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
             exit 1
         fi
 
         python_output=""
         if ! python_output=$("$python_cmd" "$gen_script" "$start_epoch" "$end_epoch" "$tz_offset" "$commits_file" "$callback_file" "$summary_file" 2>&1); then
-            printf "\e[31mError: timestamp generation failed for %s:\n%s\e[0m\n" "$repo_name_display" "$python_output"
+            printf "\e[31mError: timestamp generation failed for %s:\n%s\e[0m\n" "$repo_name_display" "$python_output" >&2
             rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
             exit 1
         fi
@@ -293,7 +293,7 @@ PYEOF
             cat "$summary_file"
         fi
 
-        printf "\e[31m\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.\e[0m\n\n"
+        printf "\e[31m\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.\e[0m\n\n" >&2
 
         if [ "$confirm" != true ]; then
             printf "Proceed with rewrite for %s? [y/N] " "$repo_name_display"
@@ -311,7 +311,7 @@ PYEOF
                 git remote add origin "$remote_url" 2>/dev/null
             fi
         else
-            printf "\e[31mError: rewrite failed for %s:\n%s\e[0m\n" "$repo_name_display" "$filter_output"
+            printf "\e[31mError: rewrite failed for %s:\n%s\e[0m\n" "$repo_name_display" "$filter_output" >&2
         fi
 
         rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"

@@ -38,7 +38,7 @@ clone_repository() {
     if clone_output=$(gh repo clone "$repo" "$into/$repo_name" 2>&1); then
         printf "\e[32mCloned %s into %s\e[0m\n" "$repo_name" "$(realpath "$into/$repo_name")"
     else
-        printf "\e[31mError: Failed to clone %s:\n%s\e[0m\n\n" "$repo_name" "$clone_output"
+        printf "\e[31mError: Failed to clone %s:\n%s\e[0m\n\n" "$repo_name" "$clone_output" >&2
     fi
 }
 
@@ -62,7 +62,7 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -70,31 +70,31 @@ done
 
 # Validate required arguments
 if [[ -z "$user" ]]; then
-    printf "\e[31mError: The --user option is required.\e[0m\n"
+    printf "\e[31mError: The --user option is required.\e[0m\n" >&2
     exit 1
 fi
 
 # Check prerequisites
 if ! command -v gh &> /dev/null; then
-    printf "\e[31mError: 'gh' (GitHub CLI) is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'gh' (GitHub CLI) is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
 # Validate limit option
 if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
-    printf "\e[31mError: --limit must be 1 or greater.\e[0m\n"
+    printf "\e[31mError: --limit must be 1 or greater.\e[0m\n" >&2
     exit 1
 fi
 
 # Check authentication for private repositories
 if [[ "$visibility" == "private" || "$visibility" == "all" ]]; then
     if ! gh auth status | grep -q "Logged in to .* account $user "; then
-        printf "\e[31mError: You are not logged in as the specified user: %s. Set --visibility to 'public' or use 'gh auth login'.\e[0m\n" "$user"
+        printf "\e[31mError: You are not logged in as the specified user: %s. Set --visibility to 'public' or use 'gh auth login'.\e[0m\n" "$user" >&2
         exit 1
     fi
 fi
@@ -102,19 +102,19 @@ fi
 # Check if repositories exist for the user
 if [[ "$visibility" == "private" || "$visibility" == "public" ]]; then
     if [[ "$(gh repo list "$user" --limit 1 --visibility "$visibility" 2>/dev/null | wc -l)" -eq 0 ]]; then
-        printf "\e[31mError: No %s repositories found for '%s'.\e[0m\n" "$visibility" "$user"
+        printf "\e[31mError: No %s repositories found for '%s'.\e[0m\n" "$visibility" "$user" >&2
         exit 1
     fi
 else
     if [[ "$(gh repo list "$user" --limit 1 2>/dev/null | wc -l)" -eq 0 ]]; then
-        printf "\e[31mError: No repositories found for '%s'.\e[0m\n" "$user"
+        printf "\e[31mError: No repositories found for '%s'.\e[0m\n" "$user" >&2
         exit 1
     fi
 fi
 
 # Validate visibility option
 if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "private" ]]; then
-    printf "\e[31mError: Invalid visibility option. Use 'all', 'public', or 'private'.\e[0m\n"
+    printf "\e[31mError: Invalid visibility option. Use 'all', 'public', or 'private'.\e[0m\n" >&2
     exit 1
 fi
 
@@ -125,7 +125,7 @@ fi
 
 # Create or access the target directory
 if [[ -d "$into" && ! -w "$into" ]] || ! mkdir -p "$into"; then
-    printf "\e[31mError: Unable to create or access the specified directory '%s'.\e[0m\n" "$into"
+    printf "\e[31mError: Unable to create or access the specified directory '%s'.\e[0m\n" "$into" >&2
     exit 1
 fi
 
