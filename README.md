@@ -8,7 +8,7 @@ A unified CLI tool for managing multiple Git repositories at once. Wrangler prov
 curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
 ```
 
-Installs to `~/.wrangler` and adds it to your `PATH`. Works on macOS, Linux, and Windows (Git Bash / WSL). Safe to re-run for updates. Uninstall with `rm -rf ~/.wrangler`.
+Installs to `~/.wrangler` and symlinks to `~/.local/bin`. Works on macOS, Linux, and Windows (Git Bash / WSL). Safe to re-run for updates. Uninstall with `WRANGLER_UNINSTALL=1 bash install.sh`.
 
 ## Prerequisites
 
