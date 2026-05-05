@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+      printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
       exit 1
       ;;
   esac
@@ -35,7 +35,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -70,7 +70,7 @@ while IFS= read -r git_dir; do
                     printf "\e[33mNo changes to push for %s. Skipping...\e[0m\n" "$repo_name_display"
                 fi
             else
-                printf "\e[31mError: Git push failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$push_output"
+                printf "\e[31mError: Git push failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$push_output" >&2
             fi
         else
             if push_output=$(git push origin HEAD 2>&1); then
@@ -80,7 +80,7 @@ while IFS= read -r git_dir; do
                     printf "\e[33mNo changes to push for %s. Skipping...\e[0m\n" "$repo_name_display"
                 fi
             else
-                printf "\e[31mError: Git push failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$push_output"
+                printf "\e[31mError: Git push failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$push_output" >&2
             fi
         fi
     )

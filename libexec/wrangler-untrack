@@ -19,7 +19,7 @@
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -27,7 +27,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -62,10 +62,10 @@ while IFS= read -r git_dir; do
                     if commit_output=$(git commit -q -m "Stop tracking files defined in .gitignore" 2>&1); then
                         printf "\e[32mStopped tracking and committed ignored files for %s\e[0m\n" "$repo_name_display"
                     else
-                        printf "\e[31mError: Could not commit changes for %s:\n%s\e[0m\n\n" "$repo_name_display" "$commit_output"
+                        printf "\e[31mError: Could not commit changes for %s:\n%s\e[0m\n\n" "$repo_name_display" "$commit_output" >&2
                     fi
                 else
-                    printf "\e[31mError: Could not untrack files for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message"
+                    printf "\e[31mError: Could not untrack files for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message" >&2
                 fi
             else
                 printf "\e[33mNo currently tracked files match .gitignore in %s. Skipping...\e[0m\n" "$repo_name_display"
