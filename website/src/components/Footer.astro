@@ -3,57 +3,6 @@
 ---
 
 <footer class="footer">
-  <div class="container footer-inner">
-    <div class="footer-brand">
-      <a href="/" class="footer-logo-link" aria-label="Git Wrangler home">
-        <img src="/logo.svg" alt="Git Wrangler" width="24" height="18" />
-        <span class="footer-wordmark">git-wrangler</span>
-      </a>
-      <p class="footer-tagline">Orchestrate Git at scale.</p>
-    </div>
-
-    <div class="footer-links">
-      <div class="footer-col">
-        <h3 class="footer-col-title">Documentation</h3>
-        <ul class="footer-col-list">
-          <li><a href="/docs/introduction" class="footer-link">Introduction</a></li>
-          <li><a href="/docs/installation" class="footer-link">Installation</a></li>
-          <li><a href="/docs/architecture" class="footer-link">Architecture</a></li>
-        </ul>
-      </div>
-      <div class="footer-col">
-        <h3 class="footer-col-title">Commands</h3>
-        <ul class="footer-col-list">
-          <li><a href="/docs/status" class="footer-link">status</a></li>
-          <li><a href="/docs/clone" class="footer-link">clone</a></li>
-          <li><a href="/docs/pull" class="footer-link">pull</a></li>
-          <li><a href="/docs/commit" class="footer-link">commit</a></li>
-        </ul>
-      </div>
-      <div class="footer-col">
-        <h3 class="footer-col-title">Project</h3>
-        <ul class="footer-col-list">
-          <li>
-            <a
-              href="https://github.com/kaufmann-dev/git-wrangler"
-              class="footer-link"
-              target="_blank"
-              rel="noopener noreferrer"
-            >GitHub</a>
-          </li>
-          <li>
-            <a
-              href="https://github.com/kaufmann-dev/git-wrangler/blob/main/LICENSE"
-              class="footer-link"
-              target="_blank"
-              rel="noopener noreferrer"
-            >License (MIT)</a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
   <div class="footer-bottom container">
     <p class="footer-copy">
       &copy; {new Date().getFullYear()} Git Wrangler. MIT License.
@@ -69,76 +18,9 @@
   .footer {
     border-top: 1px solid var(--color-gray-100);
     background: var(--color-white);
-    padding-top: var(--space-8);
   }
 
-  .footer-inner {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: var(--space-8);
-    padding-bottom: var(--space-8);
-  }
-
-  /* Brand */
-  .footer-logo-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    margin-bottom: var(--space-5);
-  }
-
-  .footer-wordmark {
-    font-family: var(--font-mono);
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-black);
-  }
-
-  .footer-tagline {
-    font-size: 0.875rem;
-    color: var(--color-gray-500);
-    line-height: 1.5;
-  }
-
-  /* Link grid */
-  .footer-links {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-7);
-  }
-
-  .footer-col-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-black);
-    margin-bottom: var(--space-5);
-    font-family: var(--font-mono);
-  }
-
-  .footer-col-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .footer-link {
-    font-size: 0.875rem;
-    color: var(--color-gray-500);
-    text-decoration: none;
-    transition: color 0.15s;
-  }
-
-  .footer-link:hover {
-    color: var(--color-black);
-  }
-
-  /* Bottom bar */
   .footer-bottom {
-    border-top: 1px solid var(--color-gray-100);
     padding-block: var(--space-5);
     display: flex;
     justify-content: space-between;
@@ -152,25 +34,20 @@
     line-height: 1.5;
   }
 
-  /* Responsive */
+  .footer-link {
+    color: var(--color-gray-500);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .footer-link:hover {
+    color: var(--color-black);
+  }
+
   @media (max-width: 768px) {
-    .footer-inner {
-      grid-template-columns: 1fr;
-    }
-
-    .footer-links {
-      grid-template-columns: repeat(2, 1fr);
-    }
-
     .footer-bottom {
       flex-direction: column;
       align-items: flex-start;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .footer-links {
-      grid-template-columns: 1fr;
     }
   }
 </style>
