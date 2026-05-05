@@ -8,7 +8,7 @@ A unified CLI tool for managing multiple Git repositories at once. Wrangler prov
 curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
 ```
 
-Installs to `~/.wrangler` and symlinks to `~/.local/bin`. Works on macOS, Linux, and Windows (Git Bash / WSL). Safe to re-run for updates. Uninstall with `wrangler uninstall`.
+Installs to `~/.wrangler` and symlinks to `~/.local/bin`. Works on macOS, Linux, and Windows (Git Bash / WSL). Update with `wrangler update`. Uninstall with `wrangler uninstall`.
 
 ## Prerequisites
 
@@ -63,6 +63,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 |---|---|
 | `wrangler status` | Shows dirty/clean and ahead/behind status of tracked repositories |
 | `wrangler info` | Displays detailed information about tracked repositories |
+| `wrangler update` | Updates Git Wrangler to the latest version |
 | `wrangler uninstall` | Uninstalls Git Wrangler from the system |
 | `wrangler help` | Displays help information for wrangler and its subcommands |
 
@@ -138,6 +139,7 @@ libexec/
   wrangler-rewrite-commits  # wrangler rewrite-commits
   wrangler-rewrite-dates    # wrangler rewrite-dates
   wrangler-remove-secrets   # wrangler remove-secrets
+  wrangler-update            # wrangler update
   wrangler-uninstall        # wrangler uninstall
 ```
 
