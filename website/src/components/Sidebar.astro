@@ -1,0 +1,256 @@
+---
+// Sidebar.astro – Documentation left sidebar, dynamically generated from content collections
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+  grouped: Record<string, CollectionEntry<'docs'>[]>;
+  orderedCategories: string[];
+  currentSlug?: string;
+}
+
+const { grouped, orderedCategories, currentSlug } = Astro.props;
+
+// Category icon mapping
+const categoryIcons: Record<string, string> = {
+  'General': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1L10.5 6h5.5l-4.5 3.5 1.5 5.5L8 12l-5 4 1.5-5.5L1 6.5H6.5L8 1z"/></svg>`,
+  'Utility': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l2.5 1.5"/></svg>`,
+  'Local Operations': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M5 3V2M11 3V2M2 7h12"/></svg>`,
+  'Remote Operations': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2a6 6 0 100 12"/><path d="M8 2c1.5 2 2.5 4 2.5 6s-1 4-2.5 6"/><path d="M2 8h12"/><path d="M12 5l2 3-2 3"/></svg>`,
+  'History Rewriting': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8a6 6 0 1012 0"/><path d="M2 8l2-2M2 8l2 2"/><path d="M8 5v3l2 1"/></svg>`,
+};
+---
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <button class="sidebar-close" id="sidebar-close" aria-label="Close sidebar">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M3 3l10 10M13 3L3 13"/>
+      </svg>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav" aria-label="Documentation navigation">
+    {orderedCategories.map((cat) => (
+      <div class="sidebar-group">
+        <div class="sidebar-group-label">
+          <span class="sidebar-group-icon" set:html={categoryIcons[cat] ?? ''} />
+          <span>{cat}</span>
+        </div>
+        <ul class="sidebar-list">
+          {grouped[cat].map((doc) => {
+            const slug = doc.id;
+            const isActive = currentSlug === slug;
+            return (
+              <li>
+                <a
+                  href={`/docs/${slug}`}
+                  class={`sidebar-link ${isActive ? 'sidebar-link--active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  {doc.data.title}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ))}
+  </nav>
+</aside>
+
+<!-- Mobile overlay -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- Mobile toggle button (rendered in page) -->
+<button class="sidebar-mobile-toggle" id="sidebar-mobile-toggle" aria-label="Open sidebar">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <path d="M2 4h12M2 8h8M2 12h10"/>
+  </svg>
+  Navigation
+</button>
+
+<script>
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  const toggleBtn = document.getElementById('sidebar-mobile-toggle');
+  const closeBtn = document.getElementById('sidebar-close');
+
+  function openSidebar() {
+    sidebar?.classList.add('sidebar--open');
+    overlay?.classList.add('sidebar-overlay--visible');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeSidebar() {
+    sidebar?.classList.remove('sidebar--open');
+    overlay?.classList.remove('sidebar-overlay--visible');
+    document.body.style.overflow = '';
+  }
+
+  toggleBtn?.addEventListener('click', openSidebar);
+  closeBtn?.addEventListener('click', closeSidebar);
+  overlay?.addEventListener('click', closeSidebar);
+</script>
+
+<style>
+  .sidebar {
+    position: sticky;
+    top: var(--nav-height);
+    height: calc(100vh - var(--nav-height));
+    overflow-y: auto;
+    padding: var(--space-6) 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-gray-100) transparent;
+  }
+
+  .sidebar-header {
+    display: none;
+    justify-content: flex-end;
+    padding: var(--space-4) var(--space-6) var(--space-3);
+  }
+
+  .sidebar-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-standard);
+    cursor: pointer;
+    color: var(--color-gray-500);
+    transition: background 0.15s;
+  }
+
+  .sidebar-close:hover {
+    background: var(--color-gray-50);
+    color: var(--color-black);
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-7);
+    padding: 0 var(--space-5);
+  }
+
+  .sidebar-group-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-gray-400);
+    margin-bottom: var(--space-3);
+    padding: 0 var(--space-3);
+  }
+
+  .sidebar-group-icon {
+    display: flex;
+    align-items: center;
+    color: var(--color-gray-400);
+  }
+
+  .sidebar-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sidebar-link {
+    display: block;
+    padding: 5px var(--space-3);
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--color-gray-600);
+    text-decoration: none;
+    border-radius: var(--radius-standard);
+    transition: background 0.1s ease, color 0.1s ease;
+    line-height: 1.5;
+  }
+
+  .sidebar-link:hover {
+    background: var(--color-gray-50);
+    color: var(--color-black);
+  }
+
+  .sidebar-link--active {
+    background: var(--color-gray-50);
+    color: var(--color-black);
+    font-weight: 600;
+    letter-spacing: -0.32px;
+    box-shadow: var(--shadow-border);
+  }
+
+  /* Mobile toggle */
+  .sidebar-mobile-toggle {
+    display: none;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 6px var(--space-5);
+    margin: var(--space-5) var(--space-6) 0;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-black);
+    background: var(--color-gray-50);
+    border: none;
+    border-radius: var(--radius-standard);
+    box-shadow: var(--shadow-border);
+    cursor: pointer;
+    width: calc(100% - 2 * var(--space-6));
+  }
+
+  /* Overlay */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 49;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  @media (max-width: 768px) {
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(var(--sidebar-width), 85vw);
+      height: 100vh;
+      background: var(--color-white);
+      z-index: 50;
+      border-right: 1px solid var(--color-gray-100);
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+      box-shadow: 4px 0 32px rgba(0,0,0,0.08);
+    }
+
+    .sidebar--open {
+      transform: translateX(0);
+    }
+
+    .sidebar-header {
+      display: flex;
+    }
+
+    .sidebar-overlay {
+      display: block;
+    }
+
+    .sidebar-overlay--visible {
+      opacity: 1;
+    }
+
+    .sidebar-mobile-toggle {
+      display: flex;
+    }
+  }
+</style>
