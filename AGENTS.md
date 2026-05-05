@@ -116,11 +116,11 @@ Always use `$repo_name_display` in user-facing output.
 
 ## 10. Output Formatting and Colors
 Scripts must use colored `printf` statements to provide clear visual feedback to the user:
-- **Red (`\e[31m`)**: Errors, failures, and missing prerequisites.
+- **Red (`\e[31m`)**: Errors, failures, and missing prerequisites. **Must be redirected to stderr using `>&2`.**
 - **Green (`\e[32m`)**: Success and completed operations.
 - **Yellow (`\e[33m`)**: Warnings, skipped operations, and "no changes needed" states.
 - **Reset (`\e[0m`)**: Always reset the color at the end of the string.
-Example: `printf "\e[32mSuccess message for %s\e[0m\n" "$repo_name_display"`
+Example: `printf "\e[31mError: Commit failed for %s\e[0m\n" "$repo_name_display" >&2``
 
 ## 11. Command Output Capture and Error Handling
 When running a command that might fail, capture its output (both stdout and stderr) and only display it if an error occurs. Never let command output bleed directly into the terminal unless intended.
@@ -128,6 +128,9 @@ When running a command that might fail, capture its output (both stdout and stde
 if command_output=$(git commit -m "Message" 2>&1); then
     printf "\e[32mCommit successful for %s\e[0m\n" "$repo_name_display"
 else
-    printf "\e[31mError: Commit failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$command_output"
+    printf "\e[31mError: Commit failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$command_output" >&2
 fi
 ```
+
+## 12. Error Streams and Pipe Safety
+When a script encounters a fatal error or a prerequisite failure, the output MUST be redirected to standard error (`>&2`). This ensures that if a user pipes a `wrangler` command (e.g., `wrangler status | grep "dirty"`), the error message still correctly appears on their screen instead of being swallowed by the pipe.

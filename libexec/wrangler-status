@@ -19,7 +19,7 @@
 while [[ $# -gt 0 ]]; do
   case "$1" in
     *)
-      printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+      printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
       exit 1
       ;;
   esac
@@ -27,7 +27,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -131,4 +131,4 @@ while read -r is_dirty is_behind has_no_remote; do
     fi
 done < "$tmp_counts"
 
-printf "Summary: \e[33m%d dirty\e[0m, \e[31m%d behind\e[0m, \e[90m%d no remote\e[0m\n" "$total_dirty" "$total_behind" "$total_no_remote"
+printf "Summary: \e[33m%d dirty\e[0m, \e[31m%d behind\e[0m, \e[90m%d no remote\e[0m\n" "$total_dirty" "$total_behind" "$total_no_remote" >&2

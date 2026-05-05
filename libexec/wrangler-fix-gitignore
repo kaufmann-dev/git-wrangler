@@ -37,7 +37,7 @@ CANDIDATE_ENTRIES=(
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -45,7 +45,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -159,7 +159,7 @@ while IFS= read -r git_dir; do
             if commit_output=$(git commit -m "Update .gitignore with missing entries" 2>&1); then
                 printf "  \e[32mCommitted .gitignore updates\e[0m\n"
             else
-                printf "  \e[31mError: Could not commit .gitignore:\n%s\e[0m\n" "$commit_output"
+                printf "  \e[31mError: Could not commit .gitignore:\n%s\e[0m\n" "$commit_output" >&2
             fi
         fi
 

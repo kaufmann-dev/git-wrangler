@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -40,13 +40,13 @@ done
 
 # Validate required arguments
 if [[ -z "$oldbranch" || -z "$newbranch" ]]; then
-    printf "\e[31mError: Both --oldbranch and --newbranch options must be provided.\e[0m\n"
+    printf "\e[31mError: Both --oldbranch and --newbranch options must be provided.\e[0m\n" >&2
     exit 1
 fi
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -72,12 +72,12 @@ while IFS= read -r git_dir; do
 
         # Validate Git repository accessibility
         if ! cd "$repo_dir" >/dev/null 2>&1; then
-            printf "\e[31mError: Directory is inaccessible: %s\e[0m\n" "$repo_name_display"
+            printf "\e[31mError: Directory is inaccessible: %s\e[0m\n" "$repo_name_display" >&2
             exit 1
         fi
 
         if ! git_output=$(git rev-parse --is-inside-work-tree 2>&1); then
-            printf "\e[31mError: Not a valid git repository for %s:\n%s\e[0m\n" "$repo_name_display" "$git_output"
+            printf "\e[31mError: Not a valid git repository for %s:\n%s\e[0m\n" "$repo_name_display" "$git_output" >&2
             exit 1
         fi
 
@@ -97,7 +97,7 @@ while IFS= read -r git_dir; do
         if rename_output=$(git branch -m "$oldbranch" "$newbranch" 2>&1); then
             printf "\e[32mBranch renamed from '%s' to '%s' for %s\e[0m\n" "$oldbranch" "$newbranch" "$repo_name_display"
         else
-            printf "\e[31mError: Failed to rename branch in %s:\n%s\e[0m\n\n" "$repo_name_display" "$rename_output"
+            printf "\e[31mError: Failed to rename branch in %s:\n%s\e[0m\n\n" "$repo_name_display" "$rename_output" >&2
         fi
     )
 done <<< "$git_repositories"

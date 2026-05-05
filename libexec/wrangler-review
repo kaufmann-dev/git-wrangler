@@ -20,7 +20,7 @@
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -28,7 +28,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -147,13 +147,13 @@ while IFS= read -r git_dir; do
 
         if [ ${#deleted_folders[@]} -gt 0 ]; then
             for f in "${deleted_folders[@]}"; do
-                printf "  \e[31mRemoved:\e[0m  %s/ (entire folder)\n" "$f"
+                printf "  \e[31mRemoved:\e[0m  %s/ (entire folder)\n" "$f" >&2
             done
         fi
 
         if [ ${#individual_deleted_files[@]} -gt 0 ]; then
             for f in "${individual_deleted_files[@]}"; do
-                printf "  \e[31mRemoved:\e[0m  %s\n" "$f"
+                printf "  \e[31mRemoved:\e[0m  %s\n" "$f" >&2
             done
         fi
         
