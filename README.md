@@ -8,7 +8,7 @@ A unified CLI tool for managing multiple Git repositories at once. Wrangler prov
 curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
 ```
 
-Installs to `~/.wrangler` and symlinks to `~/.local/bin`. Works on macOS, Linux, and Windows (Git Bash / WSL). Safe to re-run for updates. Uninstall with `WRANGLER_UNINSTALL=1 bash install.sh`.
+Installs to `~/.wrangler` and symlinks to `~/.local/bin`. Works on macOS, Linux, and Windows (Git Bash / WSL). Safe to re-run for updates. Uninstall with `wrangler uninstall`.
 
 ## Prerequisites
 
@@ -63,6 +63,7 @@ Run `wrangler help` to see all available subcommands, or `wrangler help <subcomm
 |---|---|
 | `wrangler status` | Shows dirty/clean and ahead/behind status of tracked repositories |
 | `wrangler info` | Displays detailed information about tracked repositories |
+| `wrangler uninstall` | Uninstalls Git Wrangler from the system |
 | `wrangler help` | Displays help information for wrangler and its subcommands |
 
 ## Examples
@@ -137,6 +138,7 @@ libexec/
   wrangler-rewrite-commits  # wrangler rewrite-commits
   wrangler-rewrite-dates    # wrangler rewrite-dates
   wrangler-remove-secrets   # wrangler remove-secrets
+  wrangler-uninstall        # wrangler uninstall
 ```
 
 Each subcommand script in `libexec/` includes a structured header block with `Usage`, `Description`, and `Category` fields that the help system parses dynamically. Per-subcommand documentation is accessed via `wrangler help <subcommand>`.

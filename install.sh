@@ -9,7 +9,6 @@
 #   WRANGLER_INSTALL_DIR  Override installation directory  [default: ~/.wrangler]
 #   WRANGLER_BIN_DIR      Override bin/symlink directory   [default: ~/.local/bin]
 #   WRANGLER_BRANCH       Override branch to install from  [default: main]
-#   WRANGLER_UNINSTALL    Set to 1 to uninstall
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -202,42 +201,13 @@ do_install() {
     printf "\n"
 }
 
-# ── Uninstall ────────────────────────────────────────────────────────────────
-
-do_uninstall() {
-    local install_dir="${WRANGLER_INSTALL_DIR:-$HOME/.wrangler}"
-    local bin_dir
-    bin_dir="$(resolve_bin_dir)"
-
-    info "Uninstalling Git Wrangler…"
-
-    local link_target="$bin_dir/wrangler"
-    if [ -L "$link_target" ]; then
-        rm "$link_target"
-        success "Removed symlink $link_target"
-    fi
-
-    if [ -d "$install_dir" ]; then
-        rm -rf "$install_dir"
-        success "Removed $install_dir"
-    fi
-
-    printf "\n"
-    success "Git Wrangler uninstalled."
-    printf "\n"
-}
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 # Wrapping in main() prevents partial execution if the download is interrupted.
 
 main() {
     setup_colors
-
-    if [ "${WRANGLER_UNINSTALL:-0}" = "1" ]; then
-        do_uninstall
-    else
-        do_install
-    fi
+    do_install
 }
 
 main "$@"

@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# ====
+# Usage: wrangler uninstall [--confirm]
+# Description: Uninstalls Git Wrangler from the system
+# Category: Utility
+#
+# Removes the Git Wrangler installation directory and the wrangler symlink
+# from the bin directory. Prompts for confirmation before proceeding unless
+# --confirm is supplied.
+#
+# Options:
+#   --confirm  (optional) Skip the interactive confirmation prompt.
+#
+# Example:
+#     wrangler uninstall
+#     wrangler uninstall --confirm
+# ====
+
+confirm=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --confirm)
+            confirm=true
+            shift
+            ;;
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            exit 1
+            ;;
+    esac
+done
+
+# ── Resolve install and bin directories ──────────────────────────────────────
+
+# The install dir is the parent of libexec/ (where this script lives)
+INSTALL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+
+# Resolve the bin dir using the same logic as install.sh
+if [ -n "${WRANGLER_BIN_DIR:-}" ]; then
+    BIN_DIR="$WRANGLER_BIN_DIR"
+else
+    local_bin="$HOME/.local/bin"
+    if [ -d "$local_bin" ]; then
+        BIN_DIR="$local_bin"
+    elif [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
+        BIN_DIR="/usr/local/bin"
+    else
+        BIN_DIR="$local_bin"
+    fi
+fi
+
+LINK_TARGET="$BIN_DIR/wrangler"
+
+# ── Show what will be removed ────────────────────────────────────────────────
+
+printf "\e[33mThis will remove Git Wrangler from your system:\e[0m\n\n"
+
+if [ -d "$INSTALL_DIR" ]; then
+    printf "  Installation directory: %s\n" "$INSTALL_DIR"
+fi
+
+if [ -L "$LINK_TARGET" ]; then
+    printf "  Symlink:               %s\n" "$LINK_TARGET"
+fi
+
+printf "\n"
+
+# ── Confirm ──────────────────────────────────────────────────────────────────
+
+if [ "$confirm" != true ]; then
+    printf "Are you sure you want to uninstall? [y/N] "
+    read -r answer < /dev/tty
+    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+        printf "\e[33mAborted.\e[0m\n"
+        exit 0
+    fi
+    printf "\n"
+fi
+
+# ── Remove symlink ───────────────────────────────────────────────────────────
+
+if [ -L "$LINK_TARGET" ]; then
+    rm "$LINK_TARGET"
+    printf "\e[32m✔ Removed symlink %s\e[0m\n" "$LINK_TARGET"
+elif [ -e "$LINK_TARGET" ]; then
+    printf "\e[33m⚠ %s exists but is not a symlink — skipping\e[0m\n" "$LINK_TARGET"
+fi
+
+# ── Remove installation directory ────────────────────────────────────────────
+
+if [ -d "$INSTALL_DIR" ]; then
+    rm -rf "$INSTALL_DIR"
+    printf "\e[32m✔ Removed %s\e[0m\n" "$INSTALL_DIR"
+fi
+
+printf "\n\e[32m✔ Git Wrangler uninstalled.\e[0m\n\n"
