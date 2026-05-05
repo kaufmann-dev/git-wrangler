@@ -10,14 +10,6 @@ interface Props {
 
 const { grouped, orderedCategories, currentSlug } = Astro.props;
 
-// Category icon mapping
-const categoryIcons: Record<string, string> = {
-  'General': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1L10.5 6h5.5l-4.5 3.5 1.5 5.5L8 12l-5 4 1.5-5.5L1 6.5H6.5L8 1z"/></svg>`,
-  'Utility': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l2.5 1.5"/></svg>`,
-  'Local Operations': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M5 3V2M11 3V2M2 7h12"/></svg>`,
-  'Remote Operations': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2a6 6 0 100 12"/><path d="M8 2c1.5 2 2.5 4 2.5 6s-1 4-2.5 6"/><path d="M2 8h12"/><path d="M12 5l2 3-2 3"/></svg>`,
-  'History Rewriting': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8a6 6 0 1012 0"/><path d="M2 8l2-2M2 8l2 2"/><path d="M8 5v3l2 1"/></svg>`,
-};
 ---
 
 <aside class="sidebar" id="sidebar">
@@ -33,7 +25,6 @@ const categoryIcons: Record<string, string> = {
     {orderedCategories.map((cat) => (
       <div class="sidebar-group">
         <div class="sidebar-group-label">
-          <span class="sidebar-group-icon" set:html={categoryIcons[cat] ?? ''} />
           <span>{cat}</span>
         </div>
         <ul class="sidebar-list">
@@ -138,7 +129,6 @@ const categoryIcons: Record<string, string> = {
   .sidebar-group-label {
     display: flex;
     align-items: center;
-    gap: 6px;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-weight: 500;
@@ -147,12 +137,6 @@ const categoryIcons: Record<string, string> = {
     color: var(--color-gray-400);
     margin-bottom: var(--space-3);
     padding: 0 var(--space-3);
-  }
-
-  .sidebar-group-icon {
-    display: flex;
-    align-items: center;
-    color: var(--color-gray-400);
   }
 
   .sidebar-list {
