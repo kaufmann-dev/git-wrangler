@@ -125,16 +125,12 @@ do_install() {
     # ── Clone or update ──────────────────────────────────────────────────
 
     if [ -d "$install_dir/.git" ]; then
-        info "Existing installation found — updating…"
-        local update_output
-        if update_output=$(git -C "$install_dir" fetch origin "$branch" 2>&1) && \
-           update_output=$(git -C "$install_dir" reset --hard "origin/$branch" 2>&1); then
-            success "Updated to latest $branch"
-        else
-            error "Failed to update existing installation:"
-            printf '%s\n' "$update_output" >&2
-            fatal "Remove $install_dir manually and re-run this script."
-        fi
+        printf "\n"
+        success "Git Wrangler is already installed at $install_dir"
+        printf "\n"
+        info "To update to the latest version, run:"
+        printf "\n    ${BOLD}wrangler update${RESET}\n\n"
+        exit 0
     elif [ -d "$install_dir" ]; then
         error "Directory $install_dir already exists but is not a git repository."
         fatal "Remove it manually and re-run this script."

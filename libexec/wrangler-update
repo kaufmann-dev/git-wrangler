@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# ====
+# Usage: wrangler update [--confirm]
+# Description: Updates Git Wrangler to the latest version
+# Category: Utility
+#
+# Checks if a newer version of Git Wrangler is available on GitHub by
+# comparing the local commit against the remote. If an update is available,
+# prompts for confirmation before applying it unless --confirm is supplied.
+#
+# Options:
+#   --confirm  (optional) Skip the interactive confirmation prompt.
+#
+# Examples:
+#     wrangler update
+#     wrangler update --confirm
+# ====
+
+confirm=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --confirm)
+            confirm=true
+            shift
+            ;;
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            exit 1
+            ;;
+    esac
+done
+
+if ! command -v git &> /dev/null; then
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    exit 1
+fi
+
+# ── Resolve the wrangler installation directory ──────────────────────────────
+# This script lives in libexec/, so the install root is one level up.
+
+INSTALL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+
+if [ ! -d "$INSTALL_DIR/.git" ]; then
+    printf "\e[31mError: %s is not a git repository. Cannot check for updates.\e[0m\n" "$INSTALL_DIR"
+    exit 1
+fi
+
+# ── Determine the current branch ────────────────────────────────────────────
+
+branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
+    printf "\e[31mError: Could not determine the current branch.\e[0m\n"
+    exit 1
+fi
+
+# ── Compare local vs remote ─────────────────────────────────────────────────
+
+printf "\e[1m\e[36m▸\e[0m Checking for updates on %s…\n" "$branch"
+
+local_sha=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null)
+
+remote_sha=$(git -C "$INSTALL_DIR" ls-remote origin "refs/heads/$branch" 2>/dev/null | cut -f1)
+
+if [ -z "$remote_sha" ]; then
+    printf "\e[31mError: Could not reach the remote repository. Check your network connection.\e[0m\n"
+    exit 1
+fi
+
+if [ "$local_sha" = "$remote_sha" ]; then
+    printf "\e[32m✔ Git Wrangler is already up to date.\e[0m\n"
+    exit 0
+fi
+
+# ── Update available ─────────────────────────────────────────────────────────
+
+printf "\n"
+printf "\e[33m⚠ A newer version is available.\e[0m\n"
+printf "\n"
+printf "  Local:  %s\n" "${local_sha:0:12}"
+printf "  Remote: %s\n" "${remote_sha:0:12}"
+printf "\n"
+
+if [ "$confirm" != true ]; then
+    printf "Update Git Wrangler? [y/N] "
+    read -r answer < /dev/tty
+    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+        printf "\e[33mAborted.\e[0m\n"
+        exit 0
+    fi
+    printf "\n"
+fi
+
+# ── Apply update ─────────────────────────────────────────────────────────────
+
+printf "\e[1m\e[36m▸\e[0m Updating…\n"
+
+if update_output=$(git -C "$INSTALL_DIR" fetch origin "$branch" 2>&1) && \
+   update_output=$(git -C "$INSTALL_DIR" reset --hard "origin/$branch" 2>&1); then
+    # Ensure scripts are executable after update
+    chmod +x "$INSTALL_DIR/wrangler" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR"/libexec/wrangler-* 2>/dev/null || true
+
+    printf "\e[32m✔ Git Wrangler updated successfully.\e[0m\n"
+else
+    printf "\e[31mError: Update failed:\n%s\e[0m\n" "$update_output"
+    exit 1
+fi
