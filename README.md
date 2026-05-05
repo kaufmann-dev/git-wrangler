@@ -5,7 +5,7 @@ A unified CLI tool for managing multiple Git repositories at once. Wrangler prov
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash
 ```
 
 Installs to `~/.wrangler` and symlinks to `~/.local/bin`. Works on macOS, Linux, and Windows (Git Bash / WSL). Update with `wrangler update`. Uninstall with `wrangler uninstall`.

@@ -3,7 +3,7 @@
 # Git Wrangler — Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
