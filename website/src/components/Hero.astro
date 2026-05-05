@@ -1,0 +1,200 @@
+---
+// Hero.astro – Landing page hero section
+---
+
+<section class="hero" id="hero">
+  <!-- Decorative gradient background -->
+  <div class="hero-gradient" aria-hidden="true"></div>
+
+  <div class="container hero-content">
+    <!-- Badge -->
+    <div class="hero-badge">
+      <span class="badge">Open Source</span>
+      <span class="hero-badge-text">Free forever · MIT Licensed</span>
+    </div>
+
+    <!-- Headline -->
+    <h1 class="text-display hero-headline">
+      Git operations,<br />
+      <span class="hero-headline-accent">orchestrated at scale.</span>
+    </h1>
+
+    <!-- Subhead -->
+    <p class="text-body-large hero-subhead">
+      Git Wrangler broadcasts everything from simple pulls to complex history rewrites
+      across dozens of repositories — in a single command.
+    </p>
+
+    <!-- CTAs -->
+    <div class="hero-ctas">
+      <a href="/docs/installation" class="btn-primary hero-cta-primary" id="hero-cta-start">
+        Get Started
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 8h10M9 4l4 4-4 4"/>
+        </svg>
+      </a>
+      <a
+        href="https://github.com/kaufmann-dev/git-wrangler"
+        class="btn-secondary hero-cta-secondary"
+        target="_blank"
+        rel="noopener noreferrer"
+        id="hero-cta-github"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+        </svg>
+        GitHub
+      </a>
+    </div>
+
+    <!-- Terminal showcase -->
+    <div class="hero-terminal" role="img" aria-label="Terminal showing Git Wrangler installation command">
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dot terminal-dot--red"></span>
+          <span class="terminal-dot terminal-dot--yellow"></span>
+          <span class="terminal-dot terminal-dot--green"></span>
+          <span class="terminal-bar-title text-mono-caption">bash</span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line">
+            <span class="terminal-prompt">~ </span>
+            <span class="terminal-command">curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash</span>
+          </div>
+          <div class="terminal-line">
+            <span class="terminal-comment"># One-liner install. That's it.</span>
+          </div>
+          <br />
+          <div class="terminal-line terminal-success">✔ Cloned to ~/.wrangler</div>
+          <div class="terminal-line terminal-success">✔ Symlinked to ~/.local/bin/wrangler</div>
+          <br />
+          <div class="terminal-line">
+            <span class="terminal-prompt">~/repos </span>
+            <span class="terminal-command">wrangler status</span>
+          </div>
+          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
+            REPOSITORY                     | STATE | TRACKING
+          </div>
+          <div class="terminal-line" style="color: rgba(255,255,255,0.3); font-size: 0.8125rem;">
+            ───────────────────────────────+───────+──────────────────
+          </div>
+          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
+            my-api                         | <span style="color: #28ca42">clean</span> | up to date
+          </div>
+          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
+            frontend-app                   | <span style="color: #ffbd2e">dirty</span> | <span style="color: #eb367f">behind 3</span>
+          </div>
+          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
+            design-system                  | <span style="color: #28ca42">clean</span> | ahead 2
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    padding-top: calc(var(--nav-height) + var(--space-10));
+    padding-bottom: var(--space-10);
+    overflow: hidden;
+  }
+
+  /* Decorative gradient wash */
+  .hero-gradient {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% -10%,
+      rgba(10, 114, 239, 0.06) 0%,
+      rgba(222, 29, 141, 0.04) 40%,
+      transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--space-7);
+  }
+
+  /* Badge row */
+  .hero-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .hero-badge-text {
+    font-size: 0.8125rem;
+    color: var(--color-gray-500);
+  }
+
+  /* Headline */
+  .hero-headline {
+    max-width: 680px;
+  }
+
+  .hero-headline-accent {
+    background: linear-gradient(135deg, var(--color-black) 0%, var(--color-gray-600) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Subhead */
+  .hero-subhead {
+    max-width: 540px;
+    color: var(--color-gray-600);
+  }
+
+  /* CTAs */
+  .hero-ctas {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .hero-cta-primary {
+    padding: 10px 20px;
+    font-size: 0.9375rem;
+  }
+
+  .hero-cta-secondary {
+    padding: 10px 20px;
+    font-size: 0.9375rem;
+  }
+
+  /* Terminal */
+  .hero-terminal {
+    width: 100%;
+    max-width: 680px;
+    animation: fade-in 0.6s ease 0.2s both;
+  }
+
+  .terminal-bar-title {
+    color: rgba(255,255,255,0.4);
+    margin-left: auto;
+    font-size: 0.75rem;
+  }
+
+  .terminal-line {
+    line-height: 1.7;
+  }
+
+  @media (max-width: 768px) {
+    .hero {
+      padding-top: calc(var(--nav-height) + var(--space-7));
+      padding-bottom: var(--space-7);
+    }
+
+    .hero-terminal {
+      text-align: left;
+    }
+  }
+</style>
