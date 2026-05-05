@@ -27,14 +27,14 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
 done
 
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -67,7 +67,7 @@ while IFS= read -r git_dir; do
         if fetch_output=$(git fetch origin "$current_branch" 2>&1); then
             :
         else
-            printf "\e[31mError: Fetch failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$fetch_output"
+            printf "\e[31mError: Fetch failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$fetch_output" >&2
             exit 1
         fi
 
@@ -86,14 +86,14 @@ while IFS= read -r git_dir; do
             exit 0
         fi
 
-        printf "Divergence: \e[36mahead %s\e[0m, \e[31mbehind %s\e[0m\n" "$ahead_count" "$behind_count"
+        printf "Divergence: \e[36mahead %s\e[0m, \e[31mbehind %s\e[0m\n" "$ahead_count" "$behind_count" >&2
 
         dirty_check=$(git status --porcelain 2>/dev/null)
         if [ -n "$dirty_check" ]; then
-            printf "\e[31mWarning: Working tree has uncommitted changes that will be discarded.\e[0m\n"
+            printf "\e[31mWarning: Working tree has uncommitted changes that will be discarded.\e[0m\n" >&2
         fi
 
-        printf "\e[31mThis will hard reset %s to origin/%s, discarding %s local commit(s).\e[0m\n" "$current_branch" "$current_branch" "$ahead_count"
+        printf "\e[31mThis will hard reset %s to origin/%s, discarding %s local commit(s).\e[0m\n" "$current_branch" "$current_branch" "$ahead_count" >&2
 
         if [ "$confirm" != true ]; then
             printf "Proceed with reset for %s? [y/N] " "$repo_name_display"
@@ -107,7 +107,7 @@ while IFS= read -r git_dir; do
         if reset_output=$(git reset --hard "origin/$current_branch" 2>&1); then
             printf "\e[32mSuccessfully reset %s to origin/%s\e[0m\n" "$repo_name_display" "$current_branch"
         else
-            printf "\e[31mError: Reset failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$reset_output"
+            printf "\e[31mError: Reset failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$reset_output" >&2
         fi
     )
 done <<< "$git_repositories"
