@@ -13,9 +13,9 @@ Before installing Git Wrangler, make sure you have:
 
 | Dependency | Required for | Install |
 |---|---|---|
-| [`git`](https://git-scm.com/) | All operations | [git-scm.com](https://git-scm.com/) |
-| [`gh`](https://cli.github.com/) | `clone`, `rename-repo` | [cli.github.com](https://cli.github.com/) |
-| [`git-filter-repo`](https://github.com/newren/git-filter-repo) | History rewriting | [GitHub](https://github.com/newren/git-filter-repo) |
+| `git` | All operations | [git-scm.com](https://git-scm.com/) |
+| `gh` | `clone`, `rename-repo` | [cli.github.com](https://cli.github.com/) |
+| `git-filter-repo` | History rewriting | [GitHub](https://github.com/newren/git-filter-repo) |
 
 `git` is required for everything. `gh` and `git-filter-repo` are only needed if you plan to use their respective commands.
 
