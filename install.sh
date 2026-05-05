@@ -173,7 +173,7 @@ main() {
         if [ -n "$rc_file" ]; then
             if [ -f "$rc_file" ] && grep -qF "$bin_dir" "$rc_file" 2>/dev/null; then
                 path_configured=true
-            elif ! $path_configured; then
+            elif [ "$path_configured" = false ]; then
                 printf "\n# Git Wrangler\n%s\n" "$line_to_add" >> "$rc_file"
                 path_configured=true
                 info "Added wrangler to PATH in $rc_file"
