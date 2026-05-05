@@ -619,12 +619,6 @@ a {
   color: var(--color-black);
 }
 
-.prose pre {
-  margin-bottom: var(--space-6);
-  border-radius: var(--radius-comfortable);
-  overflow-x: auto;
-  box-shadow: var(--shadow-card);
-}
 
 .prose pre code {
   background: none;
@@ -634,15 +628,6 @@ a {
   color: inherit;
 }
 
-.prose pre > * {
-  padding: 20px 24px;
-}
-
-/* shiki pre override */
-.prose pre.astro-code {
-  padding: 20px 24px;
-  background-color: var(--color-black) !important;
-}
 
 .prose table {
   width: 100%;
