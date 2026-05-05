@@ -1,0 +1,86 @@
+---
+// DocsLayout.astro – Documentation page layout with sidebar
+import BaseLayout from './BaseLayout.astro';
+import Navbar from '../components/Navbar.astro';
+import Sidebar from '../components/Sidebar.astro';
+import Footer from '../components/Footer.astro';
+import { getCollection } from 'astro:content';
+
+interface Props {
+  title: string;
+  description?: string;
+  currentSlug?: string;
+}
+
+const { title, description, currentSlug } = Astro.props;
+
+// Load all docs to build the sidebar dynamically
+const allDocs = await getCollection('docs');
+
+// Sort entries: put General / meta pages first, then alphabetically within category
+const categoryOrder = ['General', 'Utility', 'Local Operations', 'Remote Operations', 'History Rewriting'];
+
+const grouped: Record<string, typeof allDocs> = {};
+for (const doc of allDocs) {
+  const cat = doc.data.category || 'General';
+  if (!grouped[cat]) grouped[cat] = [];
+  grouped[cat].push(doc);
+}
+
+// Sort pages within each group by order then title
+for (const cat of Object.keys(grouped)) {
+  grouped[cat].sort((a, b) => {
+    const ao = a.data.order ?? 999;
+    const bo = b.data.order ?? 999;
+    if (ao !== bo) return ao - bo;
+    return a.data.title.localeCompare(b.data.title);
+  });
+}
+
+const orderedCategories = categoryOrder.filter(c => grouped[c]);
+---
+
+<BaseLayout title={title} description={description}>
+  <Navbar />
+  <div class="docs-layout">
+    <Sidebar grouped={grouped} orderedCategories={orderedCategories} currentSlug={currentSlug} />
+    <main class="docs-main" id="main-content">
+      <article class="docs-article prose">
+        <slot />
+      </article>
+    </main>
+  </div>
+  <Footer />
+</BaseLayout>
+
+<style>
+  .docs-layout {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    min-height: calc(100vh - var(--nav-height));
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding-top: var(--nav-height);
+  }
+
+  .docs-main {
+    min-width: 0;
+    padding: var(--space-8) var(--space-8) var(--space-11);
+    border-left: 1px solid var(--color-gray-100);
+  }
+
+  .docs-article {
+    max-width: 72ch;
+  }
+
+  @media (max-width: 768px) {
+    .docs-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .docs-main {
+      padding: var(--space-6);
+      border-left: none;
+    }
+  }
+</style>

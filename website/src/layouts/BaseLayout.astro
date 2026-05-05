@@ -1,0 +1,42 @@
+---
+// BaseLayout.astro – Root layout with ViewTransitions
+import { ClientRouter } from 'astro:transitions';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  ogType?: string;
+}
+
+const {
+  title,
+  description = 'Git Wrangler – A command-line orchestrator that broadcasts Git operations across an entire directory of repositories simultaneously.',
+  ogType = 'website',
+} = Astro.props;
+
+const fullTitle = title === 'Git Wrangler'
+  ? 'Git Wrangler'
+  : `${title} – Git Wrangler`;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={ogType} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <title>{fullTitle}</title>
+    <ClientRouter />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
