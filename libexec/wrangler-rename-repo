@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -36,12 +36,12 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
 if ! command -v gh &> /dev/null; then
-    printf "\e[31mError: 'gh' (GitHub CLI) is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'gh' (GitHub CLI) is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
@@ -89,7 +89,7 @@ while IFS= read -r git_dir; do
             if command_output=$(gh repo edit --description "$new_desc" 2>&1); then
                 printf "\e[32mSuccessfully updated description for %s\e[0m\n" "$old_name"
             else
-                printf "\e[31mError: Failed to update description for %s:\n%s\e[0m\n" "$old_name" "$command_output"
+                printf "\e[31mError: Failed to update description for %s:\n%s\e[0m\n" "$old_name" "$command_output" >&2
             fi
         fi
 
@@ -97,7 +97,7 @@ while IFS= read -r git_dir; do
             if command_output=$(gh repo rename "$new_name" --yes 2>&1); then
                 printf "\e[32mSuccessfully renamed %s to %s\e[0m\n" "$old_name" "$new_name"
             else
-                printf "\e[31mError: Failed to rename %s:\n%s\e[0m\n" "$old_name" "$command_output"
+                printf "\e[31mError: Failed to rename %s:\n%s\e[0m\n" "$old_name" "$command_output" >&2
             fi
         fi
     )

@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
             shift 1
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1"
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
             exit 1
             ;;
     esac
@@ -49,13 +49,13 @@ done
 
 # Validate required arguments
 if [ -z "$copyright_holder" ]; then
-    printf "\e[31mError: Copyright holder name is required. Use --name <NAME>.\e[0m\n"
+    printf "\e[31mError: Copyright holder name is required. Use --name <NAME>.\e[0m\n" >&2
     exit 1
 fi
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n"
+    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
     exit 1
 fi
 
