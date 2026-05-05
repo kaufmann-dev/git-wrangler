@@ -2,6 +2,47 @@
 
 A unified CLI tool for managing multiple Git repositories at once. Wrangler provides a single entry point — `wrangler` — that dispatches to a collection of subcommands for cloning, pushing, pulling, committing, and rewriting history across all repositories in your working directory.
 
+## Installation
+
+### Quick Install (macOS, Linux, WSL, Git Bash)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
+```
+
+This will:
+1. Clone the repository to `~/.wrangler`
+2. Add `wrangler` to your `PATH` (via `.bashrc`, `.zshrc`, or `config.fish`)
+3. Make all subcommand scripts executable
+
+> To override the install location, set `WRANGLER_INSTALL_DIR` before running:
+> ```bash
+> WRANGLER_INSTALL_DIR="$HOME/tools/wrangler" curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
+> ```
+
+### Manual Install
+
+```bash
+git clone https://github.com/kaufmann-dev/git-wrangler.git ~/.wrangler
+export PATH="$HOME/.wrangler:$PATH"
+# Add the export line to your shell's rc file to make it permanent
+```
+
+### Updating
+
+Re-run the install command — the installer is idempotent and will pull the latest changes:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install.sh | bash
+```
+
+### Uninstalling
+
+```bash
+rm -rf ~/.wrangler
+# Then remove the "# Git Wrangler" PATH line from your shell rc file
+```
+
 ## Prerequisites
 
 For all subcommands to work, make sure you have the following installed:
