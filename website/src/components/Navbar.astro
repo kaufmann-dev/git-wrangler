@@ -16,14 +16,8 @@ const isActive = (path: string) =>
 
     <!-- Primary navigation -->
     <nav class="navbar-nav" aria-label="Primary navigation">
-      <a href="/docs/introduction" class={`navbar-link ${isActive('/docs') ? 'navbar-link--active' : ''}`}>Docs</a>
       <a href="/#features" class="navbar-link">Features</a>
-      <a
-        href="https://github.com/kaufmann-dev/git-wrangler"
-        class="navbar-link"
-        target="_blank"
-        rel="noopener noreferrer"
-      >GitHub</a>
+      <a href="/docs/introduction" class={`navbar-link ${isActive('/docs') ? 'navbar-link--active' : ''}`}>Docs</a>
     </nav>
 
     <!-- CTAs -->
@@ -59,8 +53,8 @@ const isActive = (path: string) =>
   <!-- Mobile menu -->
   <div class="navbar-mobile-menu" id="navbar-mobile-menu" hidden>
     <nav class="mobile-nav" aria-label="Mobile navigation">
-      <a href="/docs/introduction" class="mobile-nav-link">Docs</a>
       <a href="/#features" class="mobile-nav-link">Features</a>
+      <a href="/docs/introduction" class="mobile-nav-link">Docs</a>
       <a href="https://github.com/kaufmann-dev/git-wrangler" class="mobile-nav-link" target="_blank" rel="noopener noreferrer">GitHub</a>
       <div class="mobile-nav-actions">
         <a href="/docs/installation" class="btn-primary" style="width: 100%; justify-content: center;">Get Started</a>
