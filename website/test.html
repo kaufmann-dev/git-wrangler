@@ -1,0 +1,997 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Redistributes commit timestamps to mimic natural human activity."><meta property="og:title" content="rewrite-dates – Git Wrangler"><meta property="og:description" content="Redistributes commit timestamps to mimic natural human activity."><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="rewrite-dates – Git Wrangler"><meta name="twitter:description" content="Redistributes commit timestamps to mimic natural human activity."><link rel="icon" href="/favicon.svg" type="image/svg+xml"><title>rewrite-dates – Git Wrangler</title><meta name="astro-view-transitions-enabled" content="true"><meta name="astro-view-transitions-fallback" content="animate"><script type="module" src="/node_modules/astro/components/ClientRouter.astro?astro&type=script&index=0&lang.ts"></script><style data-vite-dev-id="C:/Users/serbi/Documents/software-projects/git-wrangler/website/node_modules/astro/components/ClientRouter.astro?astro&#38;type=style&#38;index=0&#38;lang.css">/* Route announcer */
+	.astro-route-announcer {
+		position: absolute;
+		left: 0;
+		top: 0;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		overflow: hidden;
+		white-space: nowrap;
+		width: 1px;
+		height: 1px;
+	}</style>
+<style data-vite-dev-id="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/styles/global.css">/* ============================================================
+   Git Wrangler – Global Design System
+   Inspired by the Vercel / Geist design system (DESIGN.md)
+   ============================================================ */
+
+/* ---------- Fontsource imports ---------- */
+
+/* geist-cyrillic-400-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(/node_modules/@fontsource/geist/files/geist-cyrillic-400-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-cyrillic-400-normal.woff) format('woff');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+/* geist-latin-ext-400-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-ext-400-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-ext-400-normal.woff) format('woff');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* geist-latin-400-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-400-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-400-normal.woff) format('woff');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* geist-cyrillic-500-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(/node_modules/@fontsource/geist/files/geist-cyrillic-500-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-cyrillic-500-normal.woff) format('woff');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+/* geist-latin-ext-500-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-ext-500-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-ext-500-normal.woff) format('woff');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* geist-latin-500-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-500-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-500-normal.woff) format('woff');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* geist-cyrillic-600-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(/node_modules/@fontsource/geist/files/geist-cyrillic-600-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-cyrillic-600-normal.woff) format('woff');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+/* geist-latin-ext-600-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-ext-600-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-ext-600-normal.woff) format('woff');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* geist-latin-600-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-600-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-600-normal.woff) format('woff');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* geist-cyrillic-700-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(/node_modules/@fontsource/geist/files/geist-cyrillic-700-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-cyrillic-700-normal.woff) format('woff');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+/* geist-latin-ext-700-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-ext-700-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-ext-700-normal.woff) format('woff');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* geist-latin-700-normal */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(/node_modules/@fontsource/geist/files/geist-latin-700-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist/files/geist-latin-700-normal.woff) format('woff');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* geist-mono-cyrillic-400-normal */
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(/node_modules/@fontsource/geist-mono/files/geist-mono-cyrillic-400-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist-mono/files/geist-mono-cyrillic-400-normal.woff) format('woff');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+/* geist-mono-latin-ext-400-normal */
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-ext-400-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-ext-400-normal.woff) format('woff');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* geist-mono-latin-400-normal */
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff) format('woff');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* geist-mono-cyrillic-500-normal */
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(/node_modules/@fontsource/geist-mono/files/geist-mono-cyrillic-500-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist-mono/files/geist-mono-cyrillic-500-normal.woff) format('woff');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+/* geist-mono-latin-ext-500-normal */
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-ext-500-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-ext-500-normal.woff) format('woff');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* geist-mono-latin-500-normal */
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff2) format('woff2'), url(/node_modules/@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff) format('woff');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* ---------- CSS Custom Properties (Design Tokens) ---------- */
+
+:root {
+  /* Color – Primary */
+  --color-black:         #171717;  /* Vercel Black – primary text/bg */
+  --color-white:         #ffffff;  /* Pure White   – page bg / card */
+  --color-true-black:    #000000;  /* True Black   – console contexts */
+
+  /* Color – Workflow Accents */
+  --color-ship:          #ff5b4f;  /* Ship Red  */
+  --color-preview:       #de1d8d;  /* Preview Pink */
+  --color-develop:       #0a72ef;  /* Develop Blue */
+
+  /* Color – Console / Syntax */
+  --color-console-blue:  #0070f3;
+  --color-console-purple:#7928ca;
+  --color-console-pink:  #eb367f;
+
+  /* Color – Interactive */
+  --color-link:          #0072f5;
+  --color-focus:         hsla(212, 100%, 48%, 1);
+  --color-ring:          rgba(147, 197, 253, 0.5);
+
+  /* Color – Neutral Scale */
+  --color-gray-900:      #171717;
+  --color-gray-600:      #4d4d4d;
+  --color-gray-500:      #666666;
+  --color-gray-400:      #808080;
+  --color-gray-100:      #ebebeb;
+  --color-gray-50:       #fafafa;
+
+  /* Color – Badges */
+  --color-badge-bg:      #ebf5ff;
+  --color-badge-text:    #0068d6;
+
+  /* Shadow / Depth system */
+  --shadow-border:       rgba(0, 0, 0, 0.08) 0px 0px 0px 1px;
+  --shadow-border-light: rgb(235, 235, 235) 0px 0px 0px 1px;
+  --shadow-subtle:       rgba(0, 0, 0, 0.04) 0px 2px 2px;
+  --shadow-card:         rgba(0,0,0,0.08) 0px 0px 0px 1px,
+                         rgba(0,0,0,0.04) 0px 2px 2px,
+                         rgba(0,0,0,0.04) 0px 8px 8px -8px,
+                         #fafafa 0px 0px 0px 1px;
+  --shadow-card-hover:   rgba(0,0,0,0.12) 0px 0px 0px 1px,
+                         rgba(0,0,0,0.06) 0px 4px 8px,
+                         rgba(0,0,0,0.06) 0px 12px 16px -8px,
+                         #fafafa 0px 0px 0px 1px;
+
+  /* Border Radius Scale */
+  --radius-micro:        2px;
+  --radius-subtle:       4px;
+  --radius-standard:     6px;
+  --radius-comfortable:  8px;
+  --radius-image:        12px;
+  --radius-large:        64px;
+  --radius-xl:           100px;
+  --radius-pill:         9999px;
+  --radius-circle:       50%;
+
+  /* Spacing (base 8px) */
+  --space-1:  1px;
+  --space-2:  2px;
+  --space-3:  4px;
+  --space-4:  8px;
+  --space-5:  12px;
+  --space-6:  16px;
+  --space-7:  32px;
+  --space-8:  40px;
+  --space-9:  64px;
+  --space-10: 80px;
+  --space-11: 120px;
+
+  /* Typography */
+  --font-sans: 'Geist', Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, 'Roboto Mono', Menlo, Monaco,
+               'Liberation Mono', 'DejaVu Sans Mono', 'Courier New', monospace;
+
+  /* Layout */
+  --content-max-width: 1200px;
+  --nav-height: 64px;
+  --sidebar-width: 260px;
+}
+
+/* ---------- Reset & Base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-gray-600);
+  background-color: var(--color-white);
+  font-feature-settings: "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* ---------- Typography Hierarchy ---------- */
+
+/* Display Hero – 48px / -2.4px / weight 600 */
+
+.text-display {
+  font-family: var(--font-sans);
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -2.4px;
+  color: var(--color-black);
+  font-feature-settings: "liga" 1;
+}
+
+/* Section Heading – 40px / -2.4px / weight 600 */
+
+.text-section-heading {
+  font-family: var(--font-sans);
+  font-size: 2.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -2.4px;
+  color: var(--color-black);
+}
+
+/* Sub-heading Large – 32px / -1.28px / weight 600 */
+
+.text-subheading {
+  font-family: var(--font-sans);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -1.28px;
+  color: var(--color-black);
+}
+
+/* Card Title – 24px / -0.96px / weight 600 */
+
+.text-card-title {
+  font-family: var(--font-sans);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: -0.96px;
+  color: var(--color-black);
+}
+
+/* Body Large – 20px / normal / weight 400 */
+
+.text-body-large {
+  font-family: var(--font-sans);
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1.8;
+  color: var(--color-gray-600);
+}
+
+/* Body – 18px / weight 400 */
+
+.text-body {
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1.56;
+  color: var(--color-gray-600);
+}
+
+/* Body Small – 16px / weight 400 */
+
+.text-body-small {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Body Medium – 16px / weight 500 */
+
+.text-body-medium {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* Body Semibold – 16px / -0.32px / weight 600 */
+
+.text-body-semibold {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.32px;
+}
+
+/* Button/Link – 14px / weight 500 */
+
+.text-button {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.43;
+}
+
+/* Caption – 12px / weight 400-500 */
+
+.text-caption {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.33;
+}
+
+/* Mono Body – 16px / weight 400 */
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
+  font-feature-settings: "liga" 1;
+}
+
+/* Mono Caption – 13px / weight 500 */
+
+.text-mono-caption {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.54;
+}
+
+/* Mono Small – 12px / uppercase / weight 500 */
+
+.text-mono-small {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Layout Utilities ---------- */
+
+.container {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+  padding-inline: var(--space-6);
+}
+
+/* ---------- Button Components ---------- */
+
+/* Primary Dark Button */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.43;
+  color: var(--color-white);
+  background: var(--color-black);
+  border: none;
+  border-radius: var(--radius-standard);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  opacity: 0.85;
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Ghost / Secondary Button */
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.43;
+  color: var(--color-black);
+  background: var(--color-white);
+  border: none;
+  border-radius: var(--radius-standard);
+  box-shadow: var(--shadow-border-light);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  background: var(--color-gray-50);
+  box-shadow: var(--shadow-border);
+}
+
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Pill Badge */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.33;
+  color: var(--color-badge-text);
+  background: var(--color-badge-bg);
+  border-radius: var(--radius-pill);
+}
+
+/* ---------- Card Components ---------- */
+
+.card {
+  background: var(--color-white);
+  border-radius: var(--radius-comfortable);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-7);
+  transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ---------- Code / Terminal ---------- */
+
+pre,
+code {
+  font-family: var(--font-mono);
+  font-feature-settings: "liga" 1;
+}
+
+/* Inline code */
+
+:not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 1px 5px;
+  border-radius: var(--radius-micro);
+  background: var(--color-gray-50);
+  box-shadow: var(--shadow-border);
+  color: var(--color-black);
+}
+
+/* Terminal block */
+
+.terminal {
+  background: var(--color-black);
+  border-radius: var(--radius-comfortable);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-circle);
+}
+
+.terminal-dot--red    { background: #ff5f57; }
+
+.terminal-dot--yellow { background: #ffbd2e; }
+
+.terminal-dot--green  { background: #28ca42; }
+
+.terminal-body {
+  padding: 20px 24px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.9);
+  overflow-x: auto;
+}
+
+.terminal-prompt {
+  color: rgba(255,255,255,0.4);
+  user-select: none;
+}
+
+.terminal-command {
+  color: #ffffff;
+}
+
+.terminal-comment {
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
+}
+
+.terminal-success {
+  color: #28ca42;
+}
+
+/* ---------- Section Dividers ---------- */
+
+.section-divider {
+  border: none;
+  border-bottom: 1px solid var(--color-gray-100);
+  margin: 0;
+}
+
+/* ---------- Link Styles ---------- */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.link {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity 0.15s;
+}
+
+.link:hover {
+  opacity: 0.7;
+}
+
+/* ---------- Focus Ring ---------- */
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ---------- Selection ---------- */
+
+::selection {
+  background: var(--color-black);
+  color: var(--color-white);
+}
+
+/* ---------- Scrollbar (subtle) ---------- */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-100);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-400);
+}
+
+/* ---------- Animations ---------- */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease forwards;
+}
+
+/* ---------- Responsive Breakpoints ---------- */
+
+@media (max-width: 768px) {
+  :root {
+    --nav-height: 56px;
+  }
+
+  .text-display {
+    font-size: 2.25rem;
+    letter-spacing: -1.6px;
+  }
+
+  .text-section-heading {
+    font-size: 1.875rem;
+    letter-spacing: -1.6px;
+  }
+
+  .text-subheading {
+    font-size: 1.5rem;
+    letter-spacing: -0.96px;
+  }
+}
+
+@media (max-width: 480px) {
+  .text-display {
+    font-size: 1.875rem;
+    letter-spacing: -1.2px;
+  }
+}
+
+/* ---------- Prose styles for Markdown content ---------- */
+
+.prose {
+  color: var(--color-gray-600);
+  max-width: 68ch;
+}
+
+.prose h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -1.28px;
+  color: var(--color-black);
+  margin-bottom: var(--space-5);
+  margin-top: var(--space-8);
+}
+
+.prose h1:first-child {
+  margin-top: 0;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: -0.96px;
+  color: var(--color-black);
+  margin-top: var(--space-8);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.prose h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.32px;
+  color: var(--color-black);
+  margin-top: var(--space-7);
+  margin-bottom: var(--space-4);
+}
+
+.prose h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-black);
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-3);
+}
+
+.prose p {
+  margin-bottom: var(--space-6);
+  line-height: 1.75;
+  font-size: 1rem;
+}
+
+.prose a {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose a:hover {
+  opacity: 0.7;
+}
+
+.prose ul,
+.prose ol {
+  margin-bottom: var(--space-6);
+  padding-left: var(--space-7);
+}
+
+.prose li {
+  margin-bottom: var(--space-3);
+  line-height: 1.7;
+}
+
+.prose li::marker {
+  color: var(--color-gray-400);
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 1px 5px;
+  border-radius: var(--radius-micro);
+  background: var(--color-gray-50);
+  box-shadow: var(--shadow-border);
+  color: var(--color-black);
+}
+
+.prose pre code {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  font-size: 0.875rem;
+  color: inherit;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--space-6);
+  font-size: 0.875rem;
+}
+
+.prose th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-black);
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--color-gray-100);
+}
+
+.prose td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-gray-100);
+  vertical-align: top;
+}
+
+.prose tr:last-child td {
+  border-bottom: none;
+}
+
+.prose blockquote {
+  border-left: 3px solid var(--color-gray-100);
+  padding-left: var(--space-6);
+  margin: var(--space-6) 0;
+  color: var(--color-gray-500);
+  font-style: italic;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: var(--color-black);
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--color-gray-100);
+  margin: var(--space-8) 0;
+}
+
+/* ---------- Shiki Customizations ---------- */
+
+.shiki-ignore {
+  color: inherit !important;
+}
+
+</style>
+<style data-vite-dev-id="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro?astro&#38;type=style&#38;index=0&#38;lang.css">.navbar[data-astro-cid-5blmo7yk]{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-height);background:rgba(255,255,255,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid transparent;transition:border-color 0.2s ease,background 0.2s ease}.navbar--scrolled[data-astro-cid-5blmo7yk]{border-bottom-color:var(--color-gray-100);background:rgba(255,255,255,0.95)}.navbar-inner[data-astro-cid-5blmo7yk]{display:flex;align-items:center;gap:var(--space-7);height:100%}.navbar-brand[data-astro-cid-5blmo7yk]{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}.navbar-logo[data-astro-cid-5blmo7yk]{display:block;width:28px;height:auto}.navbar-wordmark[data-astro-cid-5blmo7yk]{font-family:var(--font-mono);font-size:0.875rem;font-weight:500;color:var(--color-black);letter-spacing:-0.02em}.navbar-nav[data-astro-cid-5blmo7yk]{display:flex;align-items:center;gap:var(--space-6);flex:1}.navbar-link[data-astro-cid-5blmo7yk]{font-family:var(--font-sans);font-size:0.875rem;font-weight:500;color:var(--color-gray-600);text-decoration:none;transition:color 0.15s ease;padding:4px 0;position:relative}.navbar-link[data-astro-cid-5blmo7yk]::after{content:"";position:absolute;bottom:-2px;left:0;right:0;height:1px;background:var(--color-black);transform:scaleX(0);transition:transform 0.2s ease}.navbar-link[data-astro-cid-5blmo7yk]:hover{color:var(--color-black)}.navbar-link[data-astro-cid-5blmo7yk]:hover::after,.navbar-link--active[data-astro-cid-5blmo7yk]::after{transform:scaleX(1)}.navbar-link--active[data-astro-cid-5blmo7yk]{color:var(--color-black);font-weight:600;letter-spacing:-0.32px}.navbar-actions[data-astro-cid-5blmo7yk]{display:flex;align-items:center;gap:var(--space-4);flex-shrink:0}.navbar-cta-ghost[data-astro-cid-5blmo7yk]{display:flex;align-items:center;gap:6px}.navbar-hamburger[data-astro-cid-5blmo7yk]{display:none;flex-direction:column;justify-content:center;gap:5px;width:36px;height:36px;padding:6px;background:none;border:none;border-radius:var(--radius-standard);cursor:pointer;transition:background 0.15s}.navbar-hamburger[data-astro-cid-5blmo7yk]:hover{background:var(--color-gray-50)}.hamburger-line[data-astro-cid-5blmo7yk]{display:block;width:100%;height:1.5px;background:var(--color-black);border-radius:1px;transition:transform 0.2s ease,opacity 0.2s ease;transform-origin:center}.navbar-hamburger[data-astro-cid-5blmo7yk].is-open .hamburger-line[data-astro-cid-5blmo7yk]:nth-child(1){transform:translateY(6.5px) rotate(45deg)}.navbar-hamburger[data-astro-cid-5blmo7yk].is-open .hamburger-line[data-astro-cid-5blmo7yk]:nth-child(2){opacity:0;transform:scaleX(0)}.navbar-hamburger[data-astro-cid-5blmo7yk].is-open .hamburger-line[data-astro-cid-5blmo7yk]:nth-child(3){transform:translateY(-6.5px) rotate(-45deg)}.navbar-mobile-menu[data-astro-cid-5blmo7yk]{position:absolute;top:100%;left:0;right:0;background:var(--color-white);border-bottom:1px solid var(--color-gray-100);box-shadow:0 8px 32px rgba(0,0,0,0.08)}.mobile-nav[data-astro-cid-5blmo7yk]{display:flex;flex-direction:column;padding:var(--space-5) var(--space-6) var(--space-6);gap:var(--space-4)}.mobile-nav-link[data-astro-cid-5blmo7yk]{font-size:1rem;font-weight:500;color:var(--color-black);text-decoration:none;padding:var(--space-3) 0;border-bottom:1px solid var(--color-gray-100)}.mobile-nav-actions[data-astro-cid-5blmo7yk]{margin-top:var(--space-4)}@media (max-width: 768px){.navbar-nav[data-astro-cid-5blmo7yk],.navbar-actions[data-astro-cid-5blmo7yk]{display:none}.navbar-hamburger[data-astro-cid-5blmo7yk]{display:flex}.navbar-inner[data-astro-cid-5blmo7yk]{justify-content:space-between}}</style>
+<style data-vite-dev-id="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro?astro&#38;type=style&#38;index=0&#38;lang.css">.sidebar[data-astro-cid-ssfzsv2f]{position:sticky;top:var(--nav-height);height:calc(100vh - var(--nav-height));overflow-y:auto;padding:var(--space-6) 0;scrollbar-width:thin;scrollbar-color:var(--color-gray-100) transparent}.sidebar-header[data-astro-cid-ssfzsv2f]{display:none;justify-content:flex-end;padding:var(--space-4) var(--space-6) var(--space-3)}.sidebar-close[data-astro-cid-ssfzsv2f]{display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:none;border:none;border-radius:var(--radius-standard);cursor:pointer;color:var(--color-gray-500);transition:background 0.15s}.sidebar-close[data-astro-cid-ssfzsv2f]:hover{background:var(--color-gray-50);color:var(--color-black)}.sidebar-nav[data-astro-cid-ssfzsv2f]{display:flex;flex-direction:column;gap:var(--space-7);padding:0 var(--space-5)}.sidebar-group-label[data-astro-cid-ssfzsv2f]{display:flex;align-items:center;font-family:var(--font-mono);font-size:0.6875rem;font-weight:500;text-transform:uppercase;letter-spacing:0.08em;color:var(--color-gray-400);margin-bottom:var(--space-3);padding:0 var(--space-3)}.sidebar-list[data-astro-cid-ssfzsv2f]{list-style:none;display:flex;flex-direction:column;gap:2px}.sidebar-link[data-astro-cid-ssfzsv2f]{display:block;padding:5px var(--space-3);font-size:0.875rem;font-weight:400;color:var(--color-gray-600);text-decoration:none;border-radius:var(--radius-standard);transition:background 0.1s ease,color 0.1s ease;line-height:1.5}.sidebar-link[data-astro-cid-ssfzsv2f]:hover{background:var(--color-gray-50);color:var(--color-black)}.sidebar-link--active[data-astro-cid-ssfzsv2f]{background:var(--color-gray-50);color:var(--color-black);font-weight:600;letter-spacing:-0.32px;box-shadow:var(--shadow-border)}.sidebar-mobile-toggle[data-astro-cid-ssfzsv2f]{display:none;align-items:center;gap:var(--space-3);padding:6px var(--space-5);margin:var(--space-5) var(--space-6) 0;font-family:var(--font-sans);font-size:0.875rem;font-weight:500;color:var(--color-black);background:var(--color-gray-50);border:none;border-radius:var(--radius-standard);box-shadow:var(--shadow-border);cursor:pointer;width:calc(100% - 2 * var(--space-6))}.sidebar-overlay[data-astro-cid-ssfzsv2f]{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:49;opacity:0;transition:opacity 0.2s}@media (max-width: 768px){.sidebar[data-astro-cid-ssfzsv2f]{position:fixed;top:0;left:0;bottom:0;width:min(var(--sidebar-width),85vw);height:100vh;background:var(--color-white);z-index:50;border-right:1px solid var(--color-gray-100);transform:translateX(-100%);transition:transform 0.3s ease;box-shadow:4px 0 32px rgba(0,0,0,0.08)}.sidebar--open[data-astro-cid-ssfzsv2f]{transform:translateX(0)}.sidebar-header[data-astro-cid-ssfzsv2f]{display:flex}.sidebar-overlay[data-astro-cid-ssfzsv2f]{display:block}.sidebar-overlay--visible[data-astro-cid-ssfzsv2f]{opacity:1}.sidebar-mobile-toggle[data-astro-cid-ssfzsv2f]{display:flex}}</style>
+<style data-vite-dev-id="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Footer.astro?astro&#38;type=style&#38;index=0&#38;lang.css">.footer[data-astro-cid-sz7xmlte]{border-top:1px solid var(--color-gray-100);background:var(--color-white)}.footer-bottom[data-astro-cid-sz7xmlte]{padding-block:var(--space-5);display:flex;justify-content:space-between;align-items:center;gap:var(--space-4)}.footer-copy[data-astro-cid-sz7xmlte]{font-size:0.75rem;color:var(--color-gray-400);line-height:1.5}.footer-link[data-astro-cid-sz7xmlte]{color:var(--color-gray-500);text-decoration:none;transition:color 0.15s}.footer-link[data-astro-cid-sz7xmlte]:hover{color:var(--color-black)}@media (max-width: 768px){.footer-bottom[data-astro-cid-sz7xmlte]{flex-direction:column;align-items:flex-start}}</style>
+<style data-vite-dev-id="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/layouts/DocsLayout.astro?astro&#38;type=style&#38;index=0&#38;lang.css">.docs-layout[data-astro-cid-mw7aashj]{display:grid;grid-template-columns:var(--sidebar-width) 1fr;min-height:calc(100vh - var(--nav-height));max-width:var(--content-max-width);margin:0 auto;padding-top:var(--nav-height)}.docs-main[data-astro-cid-mw7aashj]{min-width:0;padding:var(--space-8) var(--space-8) var(--space-11);border-left:1px solid var(--color-gray-100)}.docs-article[data-astro-cid-mw7aashj]{max-width:72ch}@media (max-width: 768px){.docs-layout[data-astro-cid-mw7aashj]{grid-template-columns:1fr}.docs-main[data-astro-cid-mw7aashj]{padding:var(--space-6);border-left:none}}</style><script type="module" src="/@vite/client"></script>
+<script type="module" src="/@id/astro/runtime/client/dev-toolbar/entrypoint.js"></script>
+<script>window.__astro_dev_toolbar__ = {"root":"C:\\Users\\serbi\\Documents\\software-projects\\git-wrangler\\website\\","version":"6.2.2","debugInfo":"Astro                    v6.2.2\nNode                     v25.7.0\nSystem                   Windows (x64)\nPackage Manager          npm\nOutput                   static\nAdapter                  none\nIntegrations             none"}</script>
+<script type="module" src="/node_modules/astro/components/ClientRouter.astro?astro&type=style&index=0&lang.css"></script>
+<script type="module" src="/src/styles/global.css"></script>
+<script type="module" src="/src/components/Navbar.astro?astro&type=style&index=0&lang.css"></script>
+<script type="module" src="/src/components/Sidebar.astro?astro&type=style&index=0&lang.css"></script>
+<script type="module" src="/src/components/Footer.astro?astro&type=style&index=0&lang.css"></script>
+<script type="module" src="/src/layouts/DocsLayout.astro?astro&type=style&index=0&lang.css"></script></head> <body data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/layouts/BaseLayout.astro" data-astro-source-loc="39:9">  <header class="navbar" id="navbar" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="9:36"> <div class="navbar-inner container" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="10:39"> <!-- Logo + Brand --> <a href="/" class="navbar-brand" aria-label="Git Wrangler Home" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="12:69"> <img src="/favicon.svg" alt="Git Wrangler logo" class="navbar-logo" width="28" height="21" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="13:8"> <span class="navbar-wordmark" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="14:37">git-wrangler</span> </a> <!-- Primary navigation --> <nav class="navbar-nav" aria-label="Primary navigation" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="18:61"> <a href="/#features" class="navbar-link" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="19:48">Features</a> <a href="/docs/introduction" class="navbar-link navbar-link--active" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="20:108">Docs</a> </nav> <!-- CTAs --> <div class="navbar-actions" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="24:33"> <a href="https://github.com/kaufmann-dev/git-wrangler" class="btn-secondary navbar-cta-ghost" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="31:8"> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="32:96"> <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="33:12"></path> </svg>
+GitHub
+</a> <a href="/docs/installation" class="btn-primary navbar-cta" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="37:67">
+Get Started
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="39:174"> <path d="M3 8h10M9 4l4 4-4 4" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="40:12"></path> </svg> </a> </div> <!-- Mobile hamburger --> <button class="navbar-hamburger" id="navbar-toggle" aria-label="Toggle navigation menu" aria-expanded="false" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="46:115"> <span class="hamburger-line" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="47:8"></span> <span class="hamburger-line" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="48:8"></span> <span class="hamburger-line" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="49:8"></span> </button> </div> <!-- Mobile menu --> <div class="navbar-mobile-menu" id="navbar-mobile-menu" hidden data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="54:66"> <nav class="mobile-nav" aria-label="Mobile navigation" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="55:60"> <a href="/#features" class="mobile-nav-link" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="56:52">Features</a> <a href="/docs/introduction" class="mobile-nav-link" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="57:60">Docs</a> <a href="https://github.com/kaufmann-dev/git-wrangler" class="mobile-nav-link" target="_blank" rel="noopener noreferrer" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="58:128">GitHub</a> <div class="mobile-nav-actions" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="59:39"> <a href="/docs/installation" class="btn-primary" style="width: 100%; justify-content: center;" data-astro-cid-5blmo7yk data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Navbar.astro" data-astro-source-loc="60:104">Get Started</a> </div> </nav> </div> </header> <script type="module" src="/src/components/Navbar.astro?astro&type=script&index=0&lang.ts"></script> <div class="docs-layout" data-astro-cid-mw7aashj data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/layouts/DocsLayout.astro" data-astro-source-loc="45:28"> <aside class="sidebar" id="sidebar" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="15:37"> <div class="sidebar-header" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="16:31"> <button class="sidebar-close" id="sidebar-close" aria-label="Close sidebar" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="17:81"> <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="18:131"> <path d="M3 3l10 10M13 3L3 13" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="19:10"></path> </svg> </button> </div> <nav class="sidebar-nav" aria-label="Documentation navigation" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="24:66"> <div class="sidebar-group" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="26:34"> <div class="sidebar-group-label" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="27:42"> <span data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="28:17">General</span> </div> <ul class="sidebar-list" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="30:34"> <li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/introduction" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> Introduction </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/installation" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> Installation </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/architecture" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> Architecture </a> </li> </ul> </div><div class="sidebar-group" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="26:34"> <div class="sidebar-group-label" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="27:42"> <span data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="28:17">Utility</span> </div> <ul class="sidebar-list" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="30:34"> <li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/status" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> status </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/info" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> info </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/update" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> update </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/uninstall" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> uninstall </a> </li> </ul> </div><div class="sidebar-group" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="26:34"> <div class="sidebar-group-label" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="27:42"> <span data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="28:17">Local Operations</span> </div> <ul class="sidebar-list" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="30:34"> <li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/commit" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> commit </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/review" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> review </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/license" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> license </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/untrack" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> untrack </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/fix-gitignore" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> fix-gitignore </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/rename-branch" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> rename-branch </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/reset" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> reset </a> </li> </ul> </div><div class="sidebar-group" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="26:34"> <div class="sidebar-group-label" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="27:42"> <span data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="28:17">Remote Operations</span> </div> <ul class="sidebar-list" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="30:34"> <li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/clone" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> clone </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/pull" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> pull </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/push" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> push </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/rename-repo" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> rename-repo </a> </li> </ul> </div><div class="sidebar-group" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="26:34"> <div class="sidebar-group-label" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="27:42"> <span data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="28:17">History Rewriting</span> </div> <ul class="sidebar-list" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="30:34"> <li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/rewrite-authors" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> rewrite-authors </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/rewrite-commits" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> rewrite-commits </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/rewrite-dates" class="sidebar-link sidebar-link--active" aria-current="page" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> rewrite-dates </a> </li><li data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="35:19"> <a href="/docs/remove-secrets" class="sidebar-link " data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="40:18"> remove-secrets </a> </li> </ul> </div> </nav> </aside> <!-- Mobile overlay --> <div class="sidebar-overlay" id="sidebar-overlay" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="53:2"></div> <!-- Mobile toggle button (rendered in page) --> <button class="sidebar-mobile-toggle" id="sidebar-mobile-toggle" aria-label="Open sidebar" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="56:92"> <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="57:127"> <path d="M2 4h12M2 8h8M2 12h10" data-astro-cid-ssfzsv2f data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Sidebar.astro" data-astro-source-loc="58:6"></path> </svg>
+Navigation
+</button> <script type="module" src="/src/components/Sidebar.astro?astro&type=script&index=0&lang.ts"></script> <main class="docs-main" id="main-content" data-astro-cid-mw7aashj data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/layouts/DocsLayout.astro" data-astro-source-loc="47:47"> <article class="docs-article prose" data-astro-cid-mw7aashj data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/layouts/DocsLayout.astro" data-astro-source-loc="48:43">  <h1 id="rewrite-dates">rewrite-dates</h1>
+<p>Redistributes commit timestamps to mimic natural human activity.</p>
+<h2 id="usage">Usage</h2>
+<pre class="astro-code github-dark" style="background-color:#24292e;color:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#B392F0">wrangler</span><span style="color:#9ECBFF"> rewrite-dates</span><span style="color:#E1E4E8"> </span><span class="shiki-ignore"><span style="color:#E1E4E8">[--start-date </span><span style="color:#F97583">&#x3C;</span><span style="color:#9ECBFF">YYYY-MM-D</span><span style="color:#E1E4E8">D</span><span style="color:#F97583">></span><span style="color:#9ECBFF">]</span></span><span style="color:#E1E4E8"> </span><span class="shiki-ignore"><span style="color:#E1E4E8">[--end-date </span><span style="color:#F97583">&#x3C;</span><span style="color:#9ECBFF">YYYY-MM-D</span><span style="color:#E1E4E8">D</span><span style="color:#F97583">></span><span style="color:#9ECBFF">]</span></span><span style="color:#E1E4E8"> </span><span style="color:#E1E4E8" class="shiki-ignore">[--confirm]</span></span></code></pre>
+<h2 id="what-it-does">What it does</h2>
+<p>Rewrites commit author and committer dates across all managed repositories using a statistically natural redistribution algorithm. Timestamps are spread across the given date range with:</p>
+<ul>
+<li><strong>Stratified jitter</strong> — commits are evenly distributed across time slots, then randomly offset within each slot</li>
+<li><strong>Bimodal time-of-day weighting</strong> — peaks at 10am and 3pm, matching real developer activity</li>
+<li><strong>Weekend dampening</strong> — 65% of weekend commits are moved to adjacent Friday evening or Monday morning</li>
+<li><strong>Micro-clustering</strong> — same-day commits are spaced 25–90 minutes apart</li>
+</ul>
+<h2 id="options">Options</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Flag</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td><code>--start-date &#x3C;YYYY-MM-DD></code></td><td>Optional</td><td>Earliest date for redistributed commits. Defaults to the first commit date.</td></tr><tr><td><code>--end-date &#x3C;YYYY-MM-DD></code></td><td>Optional</td><td>Latest date for redistributed commits. Defaults to the last commit date.</td></tr><tr><td><code>--confirm</code></td><td>Optional</td><td>Skip the interactive confirmation prompt.</td></tr></tbody></table>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><code>git-filter-repo</code> must be installed</li>
+<li>Python 3 must be available</li>
+</ul>
+<h2 id="example">Example</h2>
+<pre class="astro-code github-dark" style="background-color:#24292e;color:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#B392F0">wrangler</span><span style="color:#9ECBFF"> rewrite-dates</span><span style="color:#79B8FF"> --start-date</span><span style="color:#9ECBFF"> 2024-01-01</span><span style="color:#79B8FF"> --end-date</span><span style="color:#9ECBFF"> 2024-12-31</span><span style="color:#79B8FF"> --confirm</span></span></code></pre>
+<h2 id="notes">Notes</h2>
+<blockquote>
+<p><strong>Warning:</strong> This rewrites Git history. You will need to force-push to update remotes.</p>
+</blockquote>
+<ul>
+<li>Repositories with fewer than 2 commits are skipped</li>
+<li>A before/after summary is printed for review before the rewrite is applied</li>
+<li>The repository’s original timezone offset is inferred and preserved</li>
+</ul>  </article> </main> </div> <footer class="footer" data-astro-cid-sz7xmlte data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Footer.astro" data-astro-source-loc="5:24"> <div class="footer-bottom container" data-astro-cid-sz7xmlte data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Footer.astro" data-astro-source-loc="6:40"> <p class="footer-copy" data-astro-cid-sz7xmlte data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Footer.astro" data-astro-source-loc="7:28">
+&copy; 2026 Git Wrangler. MIT License.
+</p> <p class="footer-copy" data-astro-cid-sz7xmlte data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Footer.astro" data-astro-source-loc="10:28">
+Built with
+<a href="https://astro.build" class="footer-link" target="_blank" rel="noopener noreferrer" data-astro-cid-sz7xmlte data-astro-source-file="C:/Users/serbi/Documents/software-projects/git-wrangler/website/src/components/Footer.astro" data-astro-source-loc="12:99">Astro</a> </p> </div> </footer> <script type="module" src="/src/layouts/DocsLayout.astro?astro&type=script&index=0&lang.ts"></script>  </body></html>
