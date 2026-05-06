@@ -54,38 +54,11 @@
           <span class="terminal-dot terminal-dot--red"></span>
           <span class="terminal-dot terminal-dot--yellow"></span>
           <span class="terminal-dot terminal-dot--green"></span>
-          <span class="terminal-bar-title text-mono-caption">bash</span>
         </div>
-        <div class="terminal-body">
+        <div class="terminal-body" style="white-space: nowrap;">
           <div class="terminal-line">
             <span class="terminal-prompt">~ </span>
             <span class="terminal-command">curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash</span>
-          </div>
-          <div class="terminal-line">
-            <span class="terminal-comment"># One-liner install. That's it.</span>
-          </div>
-          <br />
-          <div class="terminal-line terminal-success">✔ Cloned to ~/.wrangler</div>
-          <div class="terminal-line terminal-success">✔ Symlinked to ~/.local/bin/wrangler</div>
-          <br />
-          <div class="terminal-line">
-            <span class="terminal-prompt">~/repos </span>
-            <span class="terminal-command">wrangler status</span>
-          </div>
-          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
-            REPOSITORY                     | STATE | TRACKING
-          </div>
-          <div class="terminal-line" style="color: rgba(255,255,255,0.3); font-size: 0.8125rem;">
-            ───────────────────────────────+───────+──────────────────
-          </div>
-          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
-            my-api                         | <span style="color: #28ca42">clean</span> | up to date
-          </div>
-          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
-            frontend-app                   | <span style="color: #ffbd2e">dirty</span> | <span style="color: #eb367f">behind 3</span>
-          </div>
-          <div class="terminal-line" style="color: rgba(255,255,255,0.6); font-size: 0.8125rem;">
-            design-system                  | <span style="color: #28ca42">clean</span> | ahead 2
           </div>
         </div>
       </div>
@@ -173,8 +146,29 @@
   /* Terminal */
   .hero-terminal {
     width: 100%;
-    max-width: 680px;
+    display: flex;
+    justify-content: center;
     animation: fade-in 0.6s ease 0.2s both;
+  }
+
+  .hero-terminal .terminal {
+    width: fit-content;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .hero-terminal .terminal-body {
+    overflow-x: visible;
+  }
+
+  @media (max-width: 900px) {
+    .hero-terminal .terminal {
+      width: 100%;
+      overflow: hidden;
+    }
+    .hero-terminal .terminal-body {
+      overflow-x: auto;
+    }
   }
 
   .terminal-bar-title {
