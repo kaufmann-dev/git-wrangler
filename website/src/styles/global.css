@@ -672,3 +672,11 @@ a {
   border-top: 1px solid var(--color-gray-100);
   margin: var(--space-8) 0;
 }
+
+/* ---------- Shiki Customizations ---------- */
+.shiki-ignore,
+.shiki-ignore * {
+  color: inherit !important;
+}
+
+
