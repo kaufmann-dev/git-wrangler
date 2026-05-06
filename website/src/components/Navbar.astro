@@ -49,48 +49,149 @@ const isActive = (path: string) =>
       <span class="hamburger-line"></span>
     </button>
   </div>
-
-  <!-- Mobile menu -->
-  <div class="navbar-mobile-menu" id="navbar-mobile-menu" hidden>
-    <nav class="mobile-nav" aria-label="Mobile navigation">
-      <a href="/#features" class="mobile-nav-link">Features</a>
-      <a href="/docs/introduction" class="mobile-nav-link">Docs</a>
-      <a href="https://github.com/kaufmann-dev/git-wrangler" class="mobile-nav-link" target="_blank" rel="noopener noreferrer">GitHub</a>
-      <div class="mobile-nav-actions">
-        <a href="/docs/installation" class="btn-primary" style="width: 100%; justify-content: center;">Get Started</a>
-      </div>
-    </nav>
-  </div>
 </header>
 
+<!-- Mobile menu -->
+<div class="navbar-mobile-menu" id="navbar-mobile-menu" hidden>
+  <div class="mobile-nav-panel">
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <a href="/#features" class="mobile-nav-link">
+        <span class="mobile-nav-icon" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8h10M8 3v10"/>
+          </svg>
+        </span>
+        <span class="mobile-nav-label">Features</span>
+        <svg class="mobile-nav-chevron" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 4l4 4-4 4"/>
+        </svg>
+      </a>
+      <a
+        href="/docs/introduction"
+        class={`mobile-nav-link ${isActive('/docs') ? 'mobile-nav-link--active' : ''}`}
+        aria-current={isActive('/docs') ? 'page' : undefined}
+      >
+        <span class="mobile-nav-icon" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 2.75h5.5L12 5.25v8H4z"/>
+            <path d="M9.5 2.75v2.5H12M6 8h4M6 10.5h4"/>
+          </svg>
+        </span>
+        <span class="mobile-nav-label">Docs</span>
+        <svg class="mobile-nav-chevron" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 4l4 4-4 4"/>
+        </svg>
+      </a>
+      <a href="https://github.com/kaufmann-dev/git-wrangler" class="mobile-nav-link" target="_blank" rel="noopener noreferrer">
+        <span class="mobile-nav-icon" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+          </svg>
+        </span>
+        <span class="mobile-nav-label">GitHub</span>
+        <svg class="mobile-nav-chevron" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 4l4 4-4 4"/>
+        </svg>
+      </a>
+    </nav>
+    <div class="mobile-nav-actions">
+      <a href="/docs/installation" class="btn-primary mobile-nav-cta">
+        Get Started
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 8h10M9 4l4 4-4 4"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+</div>
+
 <script>
-  // Hamburger menu toggle
-  const toggle = document.getElementById('navbar-toggle');
-  const menu = document.getElementById('navbar-mobile-menu');
+  const win = window as Window & { __navbarCleanup?: () => void };
 
-  toggle?.addEventListener('click', () => {
-    const isOpen = !menu?.hidden;
-    if (menu) menu.hidden = isOpen;
-    toggle.setAttribute('aria-expanded', String(!isOpen));
-    toggle.classList.toggle('is-open', !isOpen);
-  });
+  function setupNavbar() {
+    win.__navbarCleanup?.();
 
-  // Close on outside click
-  document.addEventListener('click', (e) => {
-    if (!toggle?.contains(e.target as Node) && !menu?.contains(e.target as Node)) {
-      if (menu) menu.hidden = true;
-      toggle?.setAttribute('aria-expanded', 'false');
-      toggle?.classList.remove('is-open');
-    }
-  });
+    const toggle = document.getElementById('navbar-toggle');
+    const menu = document.getElementById('navbar-mobile-menu');
+    const navbar = document.getElementById('navbar');
 
-  // Scroll effect
-  const navbar = document.getElementById('navbar');
-  const onScroll = () => {
-    navbar?.classList.toggle('navbar--scrolled', window.scrollY > 8);
-  };
-  window.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
+    if (!toggle || !menu || !navbar) return;
+
+    const mobileLinks = menu.querySelectorAll('a');
+
+    const closeMenu = () => {
+      menu.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.classList.remove('is-open');
+      document.body.style.overflow = '';
+    };
+
+    const openMenu = () => {
+      menu.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+      toggle.classList.add('is-open');
+      document.body.style.overflow = 'hidden';
+    };
+
+    const handleToggleClick = (e: MouseEvent) => {
+      e.stopPropagation();
+      const isOpen = !menu.hidden;
+      if (isOpen) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    };
+
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (!toggle.contains(e.target as Node) && !menu.contains(e.target as Node)) {
+        closeMenu();
+      }
+    };
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMenu();
+    };
+
+    const handleResize = () => {
+      if (window.innerWidth > 768) closeMenu();
+    };
+
+    const onScroll = () => {
+      navbar.classList.toggle('navbar--scrolled', window.scrollY > 8);
+    };
+
+    toggle.addEventListener('click', handleToggleClick);
+    document.addEventListener('click', handleDocumentClick);
+    document.addEventListener('keydown', handleKeydown);
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    mobileLinks.forEach((link) => {
+      link.addEventListener('click', closeMenu);
+    });
+
+    onScroll();
+
+    win.__navbarCleanup = () => {
+      closeMenu();
+      toggle.removeEventListener('click', handleToggleClick);
+      document.removeEventListener('click', handleDocumentClick);
+      document.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', onScroll);
+      mobileLinks.forEach((link) => {
+        link.removeEventListener('click', closeMenu);
+      });
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupNavbar, { once: true });
+  } else {
+    setupNavbar();
+  }
+
+  document.addEventListener('astro:page-load', setupNavbar);
 </script>
 
 <style>
@@ -209,18 +310,25 @@ const isActive = (path: string) =>
     flex-direction: column;
     justify-content: center;
     gap: 5px;
-    width: 36px;
-    height: 36px;
-    padding: 6px;
-    background: none;
-    border: none;
-    border-radius: var(--radius-standard);
+    width: 40px;
+    height: 40px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--color-gray-100);
+    border-radius: var(--radius-circle);
+    box-shadow: var(--shadow-subtle);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
   }
 
   .navbar-hamburger:hover {
-    background: var(--color-gray-50);
+    background: var(--color-white);
+    border-color: var(--color-gray-400);
+    box-shadow: var(--shadow-border);
+  }
+
+  .navbar-hamburger:active {
+    transform: scale(0.96);
   }
 
   .hamburger-line {
@@ -246,33 +354,119 @@ const isActive = (path: string) =>
 
   /* Mobile menu */
   .navbar-mobile-menu {
-    position: absolute;
-    top: 100%;
+    position: fixed;
+    top: var(--nav-height);
     left: 0;
     right: 0;
-    background: var(--color-white);
-    border-bottom: 1px solid var(--color-gray-100);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+    bottom: 0;
+    z-index: 99;
+    padding: var(--space-8) var(--space-6) max(var(--space-7), env(safe-area-inset-bottom));
+    background:
+      radial-gradient(circle at 50% 0%, rgba(235, 54, 127, 0.08), transparent 36%),
+      var(--color-white);
+    border-top: 1px solid var(--color-gray-100);
+    overflow-y: auto;
+    animation: mobile-menu-fade 0.18s ease both;
+  }
+
+  .mobile-nav-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 100%;
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
+    animation: mobile-panel-in 0.22s ease both;
   }
 
   .mobile-nav {
     display: flex;
     flex-direction: column;
-    padding: var(--space-5) var(--space-6) var(--space-6);
     gap: var(--space-4);
   }
 
   .mobile-nav-link {
-    font-size: 1rem;
-    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-height: 72px;
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.1;
     color: var(--color-black);
     text-decoration: none;
-    padding: var(--space-3) 0;
-    border-bottom: 1px solid var(--color-gray-100);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-comfortable);
+    letter-spacing: 0;
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .mobile-nav-link:hover {
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: var(--shadow-border-light);
+  }
+
+  .mobile-nav-link:active {
+    transform: scale(0.99);
+  }
+
+  .mobile-nav-link--active {
+    background: var(--color-white);
+    font-weight: 600;
+    box-shadow: var(--shadow-card);
+  }
+
+  .mobile-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    color: var(--color-gray-600);
+    background: var(--color-white);
+    border-radius: var(--radius-comfortable);
+    box-shadow: var(--shadow-border-light);
+    flex: 0 0 auto;
+  }
+
+  .mobile-nav-link--active .mobile-nav-icon {
+    color: var(--color-white);
+    background: var(--color-black);
+    box-shadow: none;
+  }
+
+  .mobile-nav-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-nav-chevron {
+    color: var(--color-gray-400);
+    flex: 0 0 auto;
   }
 
   .mobile-nav-actions {
-    margin-top: var(--space-4);
+    display: grid;
+    gap: var(--space-5);
+    padding-top: var(--space-8);
+  }
+
+  .mobile-nav-cta {
+    width: 100%;
+    min-height: 54px;
+    justify-content: center;
+    font-size: 1rem;
+  }
+
+  @keyframes mobile-menu-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes mobile-panel-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   /* Responsive */
@@ -288,6 +482,29 @@ const isActive = (path: string) =>
 
     .navbar-inner {
       justify-content: space-between;
+    }
+  }
+
+  @media (min-width: 769px) {
+    .navbar-mobile-menu {
+      display: none;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .navbar-mobile-menu {
+      padding: var(--space-7) var(--space-5) max(var(--space-7), env(safe-area-inset-bottom));
+    }
+
+    .mobile-nav-link {
+      min-height: 66px;
+      font-size: 1.5rem;
+      padding-inline: var(--space-4);
+    }
+
+    .mobile-nav-icon {
+      width: 40px;
+      height: 40px;
     }
   }
 </style>
