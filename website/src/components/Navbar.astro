@@ -47,7 +47,6 @@ const isActive = (path: string) =>
     <button class="navbar-hamburger" id="navbar-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
       <span class="hamburger-line"></span>
       <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
     </button>
   </div>
 </header>
@@ -69,8 +68,7 @@ const isActive = (path: string) =>
       </a>
       <a
         href="/docs/introduction"
-        class={`mobile-nav-link ${isActive('/docs') ? 'mobile-nav-link--active' : ''}`}
-        aria-current={isActive('/docs') ? 'page' : undefined}
+        class="mobile-nav-link"
       >
         <span class="mobile-nav-icon" aria-hidden="true">
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -264,25 +262,8 @@ const isActive = (path: string) =>
     position: relative;
   }
 
-  .navbar-link::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: var(--color-black);
-    transform: scaleX(0);
-    transition: transform 0.2s ease;
-  }
-
   .navbar-link:hover {
     color: var(--color-black);
-  }
-
-  .navbar-link:hover::after,
-  .navbar-link--active::after {
-    transform: scaleX(1);
   }
 
   .navbar-link--active {
@@ -314,18 +295,16 @@ const isActive = (path: string) =>
     width: 40px;
     height: 40px;
     padding: 10px;
-    background: rgba(255, 255, 255, 0.9);
-    border: 1px solid var(--color-gray-100);
+    background: transparent;
+    border: none;
     border-radius: var(--radius-circle);
-    box-shadow: var(--shadow-subtle);
+    box-shadow: none;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
   }
 
   .navbar-hamburger:hover {
-    background: var(--color-white);
-    border-color: var(--color-gray-400);
-    box-shadow: var(--shadow-border);
+    background: rgba(0, 0, 0, 0.05);
   }
 
   .navbar-hamburger:active {
@@ -343,14 +322,10 @@ const isActive = (path: string) =>
   }
 
   .navbar-hamburger.is-open .hamburger-line:nth-child(1) {
-    transform: translateY(6.5px) rotate(45deg);
+    transform: translateY(3.25px) rotate(45deg);
   }
   .navbar-hamburger.is-open .hamburger-line:nth-child(2) {
-    opacity: 0;
-    transform: scaleX(0);
-  }
-  .navbar-hamburger.is-open .hamburger-line:nth-child(3) {
-    transform: translateY(-6.5px) rotate(-45deg);
+    transform: translateY(-3.25px) rotate(-45deg);
   }
 
   /* Mobile menu */
@@ -412,11 +387,7 @@ const isActive = (path: string) =>
     transform: scale(0.99);
   }
 
-  .mobile-nav-link--active {
-    background: var(--color-white);
-    font-weight: 600;
-    box-shadow: var(--shadow-card);
-  }
+
 
   .mobile-nav-icon {
     display: inline-flex;
@@ -429,12 +400,6 @@ const isActive = (path: string) =>
     border-radius: var(--radius-comfortable);
     box-shadow: var(--shadow-border-light);
     flex: 0 0 auto;
-  }
-
-  .mobile-nav-link--active .mobile-nav-icon {
-    color: var(--color-white);
-    background: var(--color-black);
-    box-shadow: none;
   }
 
   .mobile-nav-label {
