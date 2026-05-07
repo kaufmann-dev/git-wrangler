@@ -1,5 +1,6 @@
 ---
 // Hero.astro – Landing page hero section
+import InstallPill from './InstallPill.astro';
 ---
 
 <section class="hero" id="hero">
@@ -48,21 +49,7 @@
     </div>
 
     <!-- Terminal showcase -->
-    <div class="hero-terminal" role="img" aria-label="Terminal showing Git Wrangler installation command">
-      <div class="terminal">
-        <div class="terminal-bar">
-          <span class="terminal-dot terminal-dot--red"></span>
-          <span class="terminal-dot terminal-dot--yellow"></span>
-          <span class="terminal-dot terminal-dot--green"></span>
-        </div>
-        <div class="terminal-body" style="white-space: nowrap;">
-          <div class="terminal-line">
-            <span class="terminal-prompt">~ </span>
-            <span class="terminal-command">curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <InstallPill />
   </div>
 </section>
 
@@ -139,52 +126,11 @@
     font-size: 0.9375rem;
   }
 
-  /* Terminal */
-  .hero-terminal {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    animation: fade-in 0.6s ease 0.2s both;
-  }
-
-  .hero-terminal .terminal {
-    width: fit-content;
-    max-width: 100%;
-    overflow: visible;
-  }
-
-  .hero-terminal .terminal-body {
-    overflow-x: visible;
-  }
-
-  @media (max-width: 900px) {
-    .hero-terminal .terminal {
-      width: 100%;
-      overflow: hidden;
-    }
-    .hero-terminal .terminal-body {
-      overflow-x: auto;
-    }
-  }
-
-  .terminal-bar-title {
-    color: rgba(255,255,255,0.4);
-    margin-left: auto;
-    font-size: 0.75rem;
-  }
-
-  .terminal-line {
-    line-height: 1.7;
-  }
-
   @media (max-width: 768px) {
     .hero {
       padding-top: calc(var(--nav-height) + var(--space-7));
       padding-bottom: var(--space-7);
     }
-
-    .hero-terminal {
-      text-align: left;
-    }
   }
 </style>
+
