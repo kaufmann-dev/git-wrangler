@@ -2,7 +2,13 @@
 
 # Wrangler dispatcher — routes subcommands to libexec/wrangler-<subcommand>
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    DIR_OF_SOURCE="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+    SOURCE="$( readlink "$SOURCE" )"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR_OF_SOURCE/$SOURCE"
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 subcommand="${1:-help}"
 
