@@ -7,10 +7,14 @@
     <p class="footer-copy">
       &copy; {new Date().getFullYear()} Git Wrangler. MIT License.
     </p>
-    <p class="footer-copy">
+    <div class="footer-links">
+      <a href="https://legal.kaufmann.dev/imprint?site=wrangler.kaufmann.dev" class="footer-link" target="_blank" rel="noopener noreferrer">Imprint</a>
+      <span class="footer-sep" aria-hidden="true">&bull;</span>
+      <a href="https://wrangler.kaufmann.dev/privacy?site=wrangler.kaufmann.dev" class="footer-link" target="_blank" rel="noopener noreferrer">Privacy</a>
+      <span class="footer-sep" aria-hidden="true">&bull;</span>
       Built with
       <a href="https://astro.build" class="footer-link" target="_blank" rel="noopener noreferrer">Astro</a>
-    </p>
+    </div>
   </div>
 </footer>
 
@@ -32,6 +36,21 @@
     font-size: 0.75rem;
     color: var(--color-gray-400);
     line-height: 1.5;
+  }
+
+  .footer-links {
+    font-size: 0.75rem;
+    color: var(--color-gray-400);
+    line-height: 1.5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .footer-sep {
+    color: var(--color-gray-300);
+    user-select: none;
   }
 
   .footer-link {
