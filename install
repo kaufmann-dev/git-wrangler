@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-INSTALL_DIR="$HOME/.wrangler"
+INSTALL_DIR="$HOME/.git-wrangler"
 REPO_URL="https://github.com/kaufmann-dev/git-wrangler.git"
 
 fatal() { printf "\e[31m✖ %s\e[0m\n" "$1" >&2; exit 1; }
@@ -38,8 +38,8 @@ main() {
 
     if [ -d "$INSTALL_DIR/.git" ]; then
         printf "\e[32m✔ Git Wrangler is already installed at %s\e[0m\n\n" "$INSTALL_DIR"
-        printf "  To update, run:    \e[1mwrangler update\e[0m\n"
-        printf "  To uninstall, run: \e[1mwrangler uninstall\e[0m\n\n"
+        printf "  To update, run:    \e[1mgit-wrangler update\e[0m\n"
+        printf "  To uninstall, run: \e[1mgit-wrangler uninstall\e[0m\n\n"
         exit 0
     elif [ -d "$INSTALL_DIR" ]; then
         fatal "$INSTALL_DIR already exists but is not a git repository. Remove it manually and re-run."
@@ -57,8 +57,8 @@ main() {
 
     # ── Make scripts executable ──────────────────────────────────────────
 
-    chmod +x "$INSTALL_DIR/wrangler" 2>/dev/null || true
-    chmod +x "$INSTALL_DIR"/libexec/wrangler-* 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/git-wrangler" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR"/libexec/git-wrangler-* 2>/dev/null || true
 
     # ── Create symlink ───────────────────────────────────────────────────
 
@@ -70,14 +70,14 @@ main() {
         mkdir -p "$bin_dir"
     fi
 
-    local link_target="$bin_dir/wrangler"
+    local link_target="$bin_dir/git-wrangler"
 
     if [ -L "$link_target" ]; then
-        ln -sf "$INSTALL_DIR/wrangler" "$link_target"
+        ln -sf "$INSTALL_DIR/git-wrangler" "$link_target"
     elif [ -e "$link_target" ]; then
         fatal "A file already exists at $link_target (not a symlink). Remove it manually and re-run."
     else
-        ln -s "$INSTALL_DIR/wrangler" "$link_target"
+        ln -s "$INSTALL_DIR/git-wrangler" "$link_target"
     fi
 
     printf "\e[32m✔ Symlinked to %s\e[0m\n" "$link_target"
@@ -96,7 +96,7 @@ main() {
             ;;
     esac
 
-    printf "  Run \e[1mwrangler help\e[0m to get started.\n\n"
+    printf "  Run \e[1mgit-wrangler help\e[0m to get started.\n\n"
 }
 
 main "$@"

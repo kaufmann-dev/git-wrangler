@@ -11,13 +11,13 @@ Git Wrangler is a modular, decentralized bash architecture built for extensibili
 
 ## Dispatcher model
 
-The root `wrangler` script is a thin router. It receives `wrangler <subcommand>` and delegates to `libexec/wrangler-<subcommand>` via `exec bash`:
+The root `git-wrangler` script is a thin router. It receives `git-wrangler <subcommand>` and delegates to `libexec/git-wrangler-<subcommand>` via `exec bash`:
 
 ```
-wrangler clone --user myname
+git-wrangler clone --user myname
       │
       ▼
-libexec/wrangler-clone --user myname
+libexec/git-wrangler-clone --user myname
 ```
 
 There is no registry, no central config, no lookup table. The dispatcher just translates the subcommand name to a file path.
@@ -30,7 +30,7 @@ Every script in `libexec/` follows this structure:
 #!/bin/bash
 
 # ====
-# Usage: wrangler <subcommand> [--flag <value>]
+# Usage: git-wrangler <subcommand> [--flag <value>]
 # Description: One-line description used in the help menu.
 # Category: Remote Operations | Local Operations | History Rewriting | Utility
 #
@@ -40,7 +40,7 @@ Every script in `libexec/` follows this structure:
 #   --flag <value>  (required/optional) Description.
 #
 # Example:
-#     wrangler <subcommand> --flag value
+#     git-wrangler <subcommand> --flag value
 # ====
 
 # 1. Default variables + argument parsing
@@ -80,14 +80,14 @@ done <<< "$git_repositories"
 
 ## Dynamic help system
 
-The `wrangler help` command scans every file in `libexec/` and reads its structured metadata header. No registration step is needed — add a file, get a help entry automatically.
+The `git-wrangler help` command scans every file in `libexec/` and reads its structured metadata header. No registration step is needed — add a file, get a help entry automatically.
 
 ## Error handling
 
-All errors are written to **stderr** (`>&2`) so that piped commands still receive clean stdout. For example, `wrangler status | grep "dirty"` works correctly even if one repo fails.
+All errors are written to **stderr** (`>&2`) so that piped commands still receive clean stdout. For example, `git-wrangler status | grep "dirty"` works correctly even if one repo fails.
 
 ## Adding a new command
 
-1. Create `libexec/wrangler-mycommand` with the standard header block
-2. Make it executable: `chmod +x libexec/wrangler-mycommand`
-3. That's it — `wrangler help` discovers it immediately
+1. Create `libexec/git-wrangler-mycommand` with the standard header block
+2. Make it executable: `chmod +x libexec/git-wrangler-mycommand`
+3. That's it — `git-wrangler help` discovers it immediately

@@ -3,7 +3,7 @@ title: "rewrite-commits"
 description: "Rewrites commit messages to adhere to the Conventional Commits standard."
 category: "History Rewriting"
 order: 2
-usage: "wrangler rewrite-commits"
+usage: "git-wrangler rewrite-commits"
 ---
 
 # rewrite-commits
@@ -13,7 +13,7 @@ Rewrites commit messages to adhere to the Conventional Commits standard.
 ## Usage
 
 ```bash
-wrangler rewrite-commits
+git-wrangler rewrite-commits
 ```
 
 This command takes no arguments.
@@ -40,7 +40,7 @@ Rewrites the commit messages of Git repositories to adhere to the [Conventional 
 ## Example
 
 ```bash
-wrangler rewrite-commits
+git-wrangler rewrite-commits
 ```
 
 ## Notes
