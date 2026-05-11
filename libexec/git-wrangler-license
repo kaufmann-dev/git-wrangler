@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler license --name <copyright_holder> [--overwrite] [--repo <repository_name>]
+# Usage: git-wrangler license --name <copyright_holder> [--overwrite] [--repo <repository_name>]
 # Description: Adds or replaces a LICENSE file across repositories
 # Category: Local Operations
 #
@@ -16,9 +16,9 @@
 #   --repo <repository_name>    (optional) Target a single repository instead of all in the current directory.
 #
 # Examples:
-#     wrangler license --name "Your Name"
-#     wrangler license --name "Your Name" --overwrite
-#     wrangler license --name "Your Name" --repo my-project
+#     git-wrangler license --name "Your Name"
+#     git-wrangler license --name "Your Name" --overwrite
+#     git-wrangler license --name "Your Name" --repo my-project
 # ====
 
 repo=""

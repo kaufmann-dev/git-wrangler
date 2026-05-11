@@ -3,7 +3,7 @@ title: "status"
 description: "Shows dirty/clean and ahead/behind status of tracked repositories."
 category: "Utility"
 order: 1
-usage: "wrangler status"
+usage: "git-wrangler status"
 ---
 
 # status
@@ -13,7 +13,7 @@ Shows dirty/clean and ahead/behind status of tracked repositories.
 ## Usage
 
 ```bash
-wrangler status
+git-wrangler status
 ```
 
 This command takes no arguments.
@@ -38,7 +38,7 @@ Summary: 1 dirty, 1 behind, 1 no remote
 ## Example
 
 ```bash
-wrangler status
+git-wrangler status
 ```
 
 ## Notes
@@ -51,5 +51,5 @@ wrangler status
 
 ```bash
 # Filter for only dirty repos
-wrangler status | grep "dirty"
+git-wrangler status | grep "dirty"
 ```

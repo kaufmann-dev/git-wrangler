@@ -16,7 +16,7 @@ If you manage more than a handful of repositories, you know the pain: running `g
 Instead of writing brittle shell loops or reaching for heavyweight tools, Git Wrangler gives you a clean, Git-like interface:
 
 ```bash
-wrangler <command> [options]
+git-wrangler <command> [options]
 ```
 
 Every subcommand is a purpose-built script that targets all `.git` repositories it can find in the current directory — automatically, without configuration files or setup steps.

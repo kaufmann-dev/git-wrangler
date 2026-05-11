@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler rename-branch --oldbranch <old_name> --newbranch <new_name>
+# Usage: git-wrangler rename-branch --oldbranch <old_name> --newbranch <new_name>
 # Description: Renames a specified branch to a new name across repositories
 # Category: Local Operations
 #
@@ -14,7 +14,7 @@
 #   --newbranch <new_name>  (required) The new name for the branch.
 #
 # Example:
-#     wrangler rename-branch --oldbranch master --newbranch main
+#     git-wrangler rename-branch --oldbranch master --newbranch main
 # ====
 
 oldbranch=""

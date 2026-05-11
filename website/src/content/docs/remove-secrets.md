@@ -3,7 +3,7 @@ title: "remove-secrets"
 description: "Permanently purges sensitive files from the entire Git history."
 category: "History Rewriting"
 order: 4
-usage: "wrangler remove-secrets"
+usage: "git-wrangler remove-secrets"
 ---
 
 # remove-secrets
@@ -13,7 +13,7 @@ Permanently purges sensitive files from the entire Git history.
 ## Usage
 
 ```bash
-wrangler remove-secrets
+git-wrangler remove-secrets
 ```
 
 This command takes no arguments.
@@ -44,7 +44,7 @@ The following patterns are scanned and removed if found in history:
 ## Example
 
 ```bash
-wrangler remove-secrets
+git-wrangler remove-secrets
 ```
 
 ## Notes
