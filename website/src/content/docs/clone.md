@@ -3,7 +3,7 @@ title: "clone"
 description: "Clones multiple GitHub repositories for a given user."
 category: "Remote Operations"
 order: 1
-usage: "wrangler clone --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]"
+usage: "git-wrangler clone --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]"
 ---
 
 # clone
@@ -13,7 +13,7 @@ Clones multiple GitHub repositories for a given user.
 ## Usage
 
 ```bash
-wrangler clone --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+git-wrangler clone --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
 ```
 
 ## What it does
@@ -38,13 +38,13 @@ Clones GitHub repositories based on specified criteria (visibility, user, limit)
 
 ```bash
 # Clone all public repos into ./repos
-wrangler clone --user myusername --visibility public --into ./repos
+git-wrangler clone --user myusername --visibility public --into ./repos
 
 # Clone up to 10 repos into a directory named after the user
-wrangler clone --user myusername --limit 10
+git-wrangler clone --user myusername --limit 10
 
 # Clone all repos (public + private — requires gh auth)
-wrangler clone --user myusername --visibility all
+git-wrangler clone --user myusername --visibility all
 ```
 
 ## Notes

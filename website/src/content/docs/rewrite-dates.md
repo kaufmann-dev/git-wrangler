@@ -3,7 +3,7 @@ title: "rewrite-dates"
 description: "Redistributes commit timestamps to mimic natural human activity."
 category: "History Rewriting"
 order: 3
-usage: "wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]"
+usage: "git-wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]"
 ---
 
 # rewrite-dates
@@ -13,7 +13,7 @@ Redistributes commit timestamps to mimic natural human activity.
 ## Usage
 
 ```bash
-wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]
+git-wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]
 ```
 
 ## What it does
@@ -41,7 +41,7 @@ Rewrites commit author and committer dates across all managed repositories using
 ## Example
 
 ```bash
-wrangler rewrite-dates --start-date 2024-01-01 --end-date 2024-12-31 --confirm
+git-wrangler rewrite-dates --start-date 2024-01-01 --end-date 2024-12-31 --confirm
 ```
 
 ## Notes

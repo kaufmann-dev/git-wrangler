@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler update [--confirm]
+# Usage: git-wrangler update [--confirm]
 # Description: Updates Git Wrangler to the latest version
 # Category: Utility
 #
@@ -13,8 +13,8 @@
 #   --confirm  (optional) Skip the interactive confirmation prompt.
 #
 # Examples:
-#     wrangler update
-#     wrangler update --confirm
+#     git-wrangler update
+#     git-wrangler update --confirm
 # ====
 
 confirm=false
@@ -37,7 +37,7 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-# ── Resolve the wrangler installation directory ──────────────────────────────
+# ── Resolve the git-wrangler installation directory ──────────────────────────────
 # This script lives in libexec/, so the install root is one level up.
 
 INSTALL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
@@ -100,8 +100,8 @@ printf "\e[1m\e[36m▸\e[0m Updating…\n"
 if update_output=$(git -C "$INSTALL_DIR" fetch origin "$branch" 2>&1) && \
    update_output=$(git -C "$INSTALL_DIR" reset --hard "origin/$branch" 2>&1); then
     # Ensure scripts are executable after update
-    chmod +x "$INSTALL_DIR/wrangler" 2>/dev/null || true
-    chmod +x "$INSTALL_DIR"/libexec/wrangler-* 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/git-wrangler" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR"/libexec/git-wrangler-* 2>/dev/null || true
 
     printf "\e[32m✔ Git Wrangler updated successfully.\e[0m\n"
 else

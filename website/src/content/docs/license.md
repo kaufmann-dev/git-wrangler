@@ -3,7 +3,7 @@ title: "license"
 description: "Adds or replaces a LICENSE file across repositories."
 category: "Local Operations"
 order: 3
-usage: "wrangler license --name <copyright_holder> [--overwrite] [--repo <repository_name>]"
+usage: "git-wrangler license --name <copyright_holder> [--overwrite] [--repo <repository_name>]"
 ---
 
 # license
@@ -13,7 +13,7 @@ Adds or replaces a LICENSE file across repositories.
 ## Usage
 
 ```bash
-wrangler license --name <copyright_holder> [--overwrite] [--repo <repository_name>]
+git-wrangler license --name <copyright_holder> [--overwrite] [--repo <repository_name>]
 ```
 
 ## What it does
@@ -32,13 +32,13 @@ Iterates through Git repositories found in the current directory and creates or 
 
 ```bash
 # Add a LICENSE to all repos that don't have one
-wrangler license --name "Jane Doe"
+git-wrangler license --name "Jane Doe"
 
 # Replace all existing LICENSE files
-wrangler license --name "Jane Doe" --overwrite
+git-wrangler license --name "Jane Doe" --overwrite
 
 # Target a single repo
-wrangler license --name "Jane Doe" --repo my-project
+git-wrangler license --name "Jane Doe" --repo my-project
 ```
 
 ## Notes

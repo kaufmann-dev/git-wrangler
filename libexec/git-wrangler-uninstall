@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler uninstall [--confirm]
+# Usage: git-wrangler uninstall [--confirm]
 # Description: Uninstalls Git Wrangler from the system
 # Category: Utility
 #
-# Removes the Git Wrangler installation directory and the wrangler symlink
+# Removes the Git Wrangler installation directory and the git-wrangler symlink
 # from the bin directory. Prompts for confirmation before proceeding unless
 # --confirm is supplied.
 #
@@ -13,8 +13,8 @@
 #   --confirm  (optional) Skip the interactive confirmation prompt.
 #
 # Example:
-#     wrangler uninstall
-#     wrangler uninstall --confirm
+#     git-wrangler uninstall
+#     git-wrangler uninstall --confirm
 # ====
 
 confirm=false
@@ -38,8 +38,8 @@ done
 INSTALL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
 # Resolve the bin dir using the same logic as install.sh
-if [ -n "${WRANGLER_BIN_DIR:-}" ]; then
-    BIN_DIR="$WRANGLER_BIN_DIR"
+if [ -n "${GIT_WRANGLER_BIN_DIR:-}" ]; then
+    BIN_DIR="$GIT_WRANGLER_BIN_DIR"
 else
     local_bin="$HOME/.local/bin"
     if [ -d "$local_bin" ]; then
@@ -51,7 +51,7 @@ else
     fi
 fi
 
-LINK_TARGET="$BIN_DIR/wrangler"
+LINK_TARGET="$BIN_DIR/git-wrangler"
 
 # ── Show what will be removed ────────────────────────────────────────────────
 
