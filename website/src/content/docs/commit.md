@@ -3,7 +3,7 @@ title: "commit"
 description: "Stages all changes and creates a commit across multiple repositories."
 category: "Local Operations"
 order: 1
-usage: "wrangler commit --message <commit_message>"
+usage: "git-wrangler commit --message <commit_message>"
 ---
 
 # commit
@@ -13,7 +13,7 @@ Stages all changes and creates a commit across multiple repositories.
 ## Usage
 
 ```bash
-wrangler commit --message <commit_message>
+git-wrangler commit --message <commit_message>
 ```
 
 ## What it does
@@ -29,7 +29,7 @@ Iterates through Git repositories found in the current directory and its immedia
 ## Example
 
 ```bash
-wrangler commit --message "chore: update dependencies"
+git-wrangler commit --message "chore: update dependencies"
 ```
 
 ## Notes

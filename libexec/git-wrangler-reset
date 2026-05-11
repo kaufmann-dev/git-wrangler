@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler reset [--confirm]
+# Usage: git-wrangler reset [--confirm]
 # Description: Resets the current branch to exactly match its remote counterpart
 # Category: Local Operations
 #
@@ -14,8 +14,8 @@
 #   --confirm  (optional) Skip the interactive confirmation prompt.
 #
 # Examples:
-#     wrangler reset
-#     wrangler reset --confirm
+#     git-wrangler reset
+#     git-wrangler reset --confirm
 # ====
 
 confirm=false

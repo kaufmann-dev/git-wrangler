@@ -3,7 +3,7 @@ title: "update"
 description: "Updates Git Wrangler to the latest version."
 category: "Utility"
 order: 3
-usage: "wrangler update [--confirm]"
+usage: "git-wrangler update [--confirm]"
 ---
 
 # update
@@ -13,7 +13,7 @@ Updates Git Wrangler to the latest version.
 ## Usage
 
 ```bash
-wrangler update [--confirm]
+git-wrangler update [--confirm]
 ```
 
 ## What it does
@@ -30,10 +30,10 @@ Checks if a newer version of Git Wrangler is available on GitHub by comparing th
 
 ```bash
 # Interactive update (prompts before applying)
-wrangler update
+git-wrangler update
 
 # Non-interactive (e.g. in scripts/CI)
-wrangler update --confirm
+git-wrangler update --confirm
 ```
 
 ## Notes

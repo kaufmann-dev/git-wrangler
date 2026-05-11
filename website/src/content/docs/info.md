@@ -3,7 +3,7 @@ title: "info"
 description: "Displays detailed information about tracked repositories."
 category: "Utility"
 order: 2
-usage: "wrangler info [--repo <repository_name>]"
+usage: "git-wrangler info [--repo <repository_name>]"
 ---
 
 # info
@@ -13,7 +13,7 @@ Displays detailed information about tracked repositories.
 ## Usage
 
 ```bash
-wrangler info [--repo <repository_name>]
+git-wrangler info [--repo <repository_name>]
 ```
 
 ## What it does
@@ -50,8 +50,8 @@ Largest files:      2.45 MB - assets/bundle.js
 
 ```bash
 # Analyze all repositories in the current directory
-wrangler info
+git-wrangler info
 
 # Analyze a single repository
-wrangler info --repo my-project
+git-wrangler info --repo my-project
 ```

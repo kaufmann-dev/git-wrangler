@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler fix-gitignore
+# Usage: git-wrangler fix-gitignore
 # Description: Audits and fixes .gitignore files by adding missing entries
 # Category: Local Operations
 #
@@ -15,7 +15,7 @@
 # This command takes no arguments.
 #
 # Example:
-#     wrangler fix-gitignore
+#     git-wrangler fix-gitignore
 # ====
 
 # Candidate entries to audit and add to .gitignore if needed
