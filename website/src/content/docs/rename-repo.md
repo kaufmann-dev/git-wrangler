@@ -3,7 +3,7 @@ title: "rename-repo"
 description: "Bulk renames GitHub repositories and optionally updates their descriptions."
 category: "Remote Operations"
 order: 4
-usage: "wrangler rename-repo [--description]"
+usage: "git-wrangler rename-repo [--description]"
 ---
 
 # rename-repo
@@ -13,7 +13,7 @@ Bulk renames GitHub repositories and optionally updates their descriptions.
 ## Usage
 
 ```bash
-wrangler rename-repo [--description]
+git-wrangler rename-repo [--description]
 ```
 
 ## What it does
@@ -35,10 +35,10 @@ Iterates through Git repositories found in the current directory and its immedia
 
 ```bash
 # Rename repos only
-wrangler rename-repo
+git-wrangler rename-repo
 
 # Rename repos and update descriptions
-wrangler rename-repo --description
+git-wrangler rename-repo --description
 ```
 
 ## Notes
