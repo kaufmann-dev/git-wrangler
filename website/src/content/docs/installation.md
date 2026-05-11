@@ -28,8 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/inst
 ```
 
 This will:
-1. Clone the repository to `~/.wrangler`
-2. Create a symlink at `~/.local/bin/wrangler` (or `/usr/local/bin` as fallback)
+1. Clone the repository to `~/.git-wrangler`
+2. Create a symlink at `~/.local/bin/git-wrangler` (or `/usr/local/bin` as fallback)
 3. Verify the installation
 
 ## Platform support
@@ -44,7 +44,7 @@ This will:
 ## Verify the installation
 
 ```bash
-wrangler help
+git-wrangler help
 ```
 
 You should see the help menu listing all available commands.
@@ -54,7 +54,7 @@ You should see the help menu listing all available commands.
 Keep Git Wrangler up to date by running:
 
 ```bash
-wrangler update
+git-wrangler update
 ```
 
 This compares your local commit against the remote and applies the update if one is available.
@@ -64,17 +64,17 @@ This compares your local commit against the remote and applies the update if one
 To remove Git Wrangler cleanly:
 
 ```bash
-wrangler uninstall
+git-wrangler uninstall
 ```
 
-This removes the `~/.wrangler` directory and the `wrangler` symlink. No other files are touched.
+This removes the `~/.git-wrangler` directory and the `git-wrangler` symlink. No other files are touched.
 
 ## Manual install
 
 If you prefer to clone manually:
 
 ```bash
-git clone https://github.com/kaufmann-dev/git-wrangler ~/.wrangler
-ln -s ~/.wrangler/wrangler ~/.local/bin/wrangler
-chmod +x ~/.wrangler/wrangler ~/.wrangler/libexec/wrangler-*
+git clone https://github.com/kaufmann-dev/git-wrangler ~/.git-wrangler
+ln -s ~/.git-wrangler/git-wrangler ~/.local/bin/git-wrangler
+chmod +x ~/.git-wrangler/git-wrangler ~/.git-wrangler/libexec/git-wrangler-*
 ```

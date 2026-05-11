@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Wrangler dispatcher — routes subcommands to libexec/wrangler-<subcommand>
+# Git-Wrangler dispatcher — routes subcommands to libexec/git-wrangler-<subcommand>
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -18,11 +18,11 @@ if [[ "$subcommand" == */* || "$subcommand" == *\\* ]]; then
     exit 1
 fi
 
-target="$DIR/libexec/wrangler-$subcommand"
+target="$DIR/libexec/git-wrangler-$subcommand"
 
 if [ -f "$target" ]; then
     exec bash "$target" "${@:2}"
 else
-    printf "\e[31mError: Unknown subcommand '%s'. Run 'wrangler help' for a list of available commands.\e[0m\n" "$subcommand" >&2
+    printf "\e[31mError: Unknown subcommand '%s'. Run 'git-wrangler help' for a list of available commands.\e[0m\n" "$subcommand" >&2
     exit 1
 fi

@@ -3,7 +3,7 @@ title: "reset"
 description: "Resets the current branch to exactly match its remote counterpart."
 category: "Local Operations"
 order: 7
-usage: "wrangler reset [--confirm]"
+usage: "git-wrangler reset [--confirm]"
 ---
 
 # reset
@@ -13,7 +13,7 @@ Resets the current branch to exactly match its remote counterpart.
 ## Usage
 
 ```bash
-wrangler reset [--confirm]
+git-wrangler reset [--confirm]
 ```
 
 ## What it does
@@ -30,10 +30,10 @@ Fetches the latest remote state and hard-resets the current branch to `origin/<c
 
 ```bash
 # Interactive reset (shows divergence + prompts)
-wrangler reset
+git-wrangler reset
 
 # Non-interactive (use in scripts)
-wrangler reset --confirm
+git-wrangler reset --confirm
 ```
 
 ## Notes

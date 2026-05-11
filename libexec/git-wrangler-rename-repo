@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler rename-repo [--description]
+# Usage: git-wrangler rename-repo [--description]
 # Description: Bulk renames GitHub repositories and optionally updates their descriptions.
 # Category: Remote Operations
 #
@@ -14,8 +14,8 @@
 #   --description  (optional) Also prompt to update the repository description.
 #
 # Examples:
-#     wrangler rename-repo
-#     wrangler rename-repo --description
+#     git-wrangler rename-repo
+#     git-wrangler rename-repo --description
 # ====
 
 edit_description=false

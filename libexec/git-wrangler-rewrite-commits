@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler rewrite-commits
+# Usage: git-wrangler rewrite-commits
 # Description: Rewrites commit messages to adhere to the Conventional Commits standard
 # Category: History Rewriting
 #
@@ -14,7 +14,7 @@
 # This command takes no arguments.
 #
 # Example:
-#     wrangler rewrite-commits
+#     git-wrangler rewrite-commits
 # ====
 
 # Function to determine conventional commit components based on file diffs

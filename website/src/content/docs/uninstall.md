@@ -3,7 +3,7 @@ title: "uninstall"
 description: "Uninstalls Git Wrangler from the system."
 category: "Utility"
 order: 4
-usage: "wrangler uninstall [--confirm]"
+usage: "git-wrangler uninstall [--confirm]"
 ---
 
 # uninstall
@@ -13,12 +13,12 @@ Uninstalls Git Wrangler from the system.
 ## Usage
 
 ```bash
-wrangler uninstall [--confirm]
+git-wrangler uninstall [--confirm]
 ```
 
 ## What it does
 
-Removes the Git Wrangler installation directory (`~/.wrangler`) and the `wrangler` symlink from the bin directory. Prompts for confirmation before proceeding unless `--confirm` is supplied.
+Removes the Git Wrangler installation directory (`~/.git-wrangler`) and the `git-wrangler` symlink from the bin directory. Prompts for confirmation before proceeding unless `--confirm` is supplied.
 
 ## Options
 
@@ -30,10 +30,10 @@ Removes the Git Wrangler installation directory (`~/.wrangler`) and the `wrangle
 
 ```bash
 # Interactive uninstall (prompts for confirmation)
-wrangler uninstall
+git-wrangler uninstall
 
 # Non-interactive
-wrangler uninstall --confirm
+git-wrangler uninstall --confirm
 ```
 
 ## Notes
