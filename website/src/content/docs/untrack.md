@@ -3,7 +3,7 @@ title: "untrack"
 description: "Removes tracked files that match .gitignore exclusion rules."
 category: "Local Operations"
 order: 4
-usage: "wrangler untrack"
+usage: "git-wrangler untrack"
 ---
 
 # untrack
@@ -13,7 +13,7 @@ Removes tracked files that match `.gitignore` exclusion rules.
 ## Usage
 
 ```bash
-wrangler untrack
+git-wrangler untrack
 ```
 
 This command takes no arguments.
@@ -29,7 +29,7 @@ This is typically needed when you:
 ## Example
 
 ```bash
-wrangler untrack
+git-wrangler untrack
 ```
 
 ## Notes

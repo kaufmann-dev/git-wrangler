@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler commit --message <commit_message>
+# Usage: git-wrangler commit --message <commit_message>
 # Description: Stages all changes and creates a commit across multiple repositories
 # Category: Local Operations
 #
@@ -14,7 +14,7 @@
 #   --message <commit_message>  (required) The commit message to use for all repositories.
 #
 # Example:
-#     wrangler commit --message "chore: update dependencies"
+#     git-wrangler commit --message "chore: update dependencies"
 # ====
 
 message=""

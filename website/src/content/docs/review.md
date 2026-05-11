@@ -3,7 +3,7 @@ title: "review"
 description: "Reviews committed changes before pushing across repositories."
 category: "Local Operations"
 order: 2
-usage: "wrangler review"
+usage: "git-wrangler review"
 ---
 
 # review
@@ -13,7 +13,7 @@ Reviews committed changes before pushing across repositories.
 ## Usage
 
 ```bash
-wrangler review
+git-wrangler review
 ```
 
 This command takes no arguments.
@@ -39,9 +39,9 @@ design-system:
 ## Example
 
 ```bash
-wrangler review
+git-wrangler review
 ```
 
 ## Use case
 
-Run `wrangler review` before `wrangler push` to verify exactly what will be pushed across all repositories — without opening each one individually.
+Run `git-wrangler review` before `git-wrangler push` to verify exactly what will be pushed across all repositories — without opening each one individually.

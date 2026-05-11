@@ -3,9 +3,9 @@
 This file documents critical bug classes and architectural decisions discovered during audits of the bash scripts in this repository. Any new scripts or modifications to existing scripts MUST adhere to these guidelines to ensure cross-platform compatibility, security, and correctness.
 
 ## 0. Repository Architecture
-All subcommand scripts live in `libexec/` and follow the naming convention `wrangler-<subcommand>` (no `.sh` extension). The root `wrangler` dispatcher routes `wrangler <subcommand>` invocations to `libexec/wrangler-<subcommand>` via `exec bash`.
+All subcommand scripts live in `libexec/` and follow the naming convention `git-wrangler-<subcommand>` (no `.sh` extension). The root `git-wrangler` dispatcher routes `git-wrangler <subcommand>` invocations to `libexec/git-wrangler-<subcommand>` via `exec bash`.
 
-When adding a new subcommand, create `libexec/wrangler-<subcommand>` and include the standard header block (see §7). The help system discovers subcommands dynamically — no registration step is needed.
+When adding a new subcommand, create `libexec/git-wrangler-<subcommand>` and include the standard header block (see §7). The help system discovers subcommands dynamically — no registration step is needed.
 
 ## 1. `while read` Loop Safety (Whitespace and Backslashes)
 **DO NOT** use a bare `read` command (e.g., `while read var; do`). 
@@ -61,10 +61,10 @@ When using `find` to discover files or directories (e.g., `dist/` or `node_modul
 ## 7. Standard Script Structure & Boilerplate
 All subcommand scripts in `libexec/` follow a standardized structure to maintain consistency:
 1. **Shebang:** `#!/bin/bash`
-2. **Header Block:** A comment block delimited by `# ====` lines. The first three lines are the machine-readable fields used by the top-level help menu. Everything after them is the human-readable documentation rendered by `wrangler help <subcommand>`.
+2. **Header Block:** A comment block delimited by `# ====` lines. The first three lines are the machine-readable fields used by the top-level help menu. Everything after them is the human-readable documentation rendered by `git-wrangler help <subcommand>`.
    ```bash
    # ====
-   # Usage: wrangler <subcommand> [--arg1 <value>] [--flag]
+   # Usage: git-wrangler <subcommand> [--arg1 <value>] [--flag]
    # Description: Brief one-line explanation of the subcommand's purpose.
    # Category: Remote Operations | Local Operations | History Rewriting | Utility
    #
@@ -76,10 +76,10 @@ All subcommand scripts in `libexec/` follow a standardized structure to maintain
    #   --flag2          (optional) What this flag does.
    #
    # Example:
-   #     wrangler <subcommand> --flag1 value
+   #     git-wrangler <subcommand> --flag1 value
    # ====
    ```
-   - **Usage** must use the `wrangler <subcommand>` syntax (not `./script.sh`).
+   - **Usage** must use the `git-wrangler <subcommand>` syntax (not `./script.sh`).
    - **Description** must be a single line — it is used verbatim in the top-level help menu.
    - **Category** must be one of: `Remote Operations`, `Local Operations`, `History Rewriting`, or `Utility`.
    - **Description paragraph** (below Category) should be one or more sentences explaining the command in plain language.
@@ -133,4 +133,4 @@ fi
 ```
 
 ## 12. Error Streams and Pipe Safety
-When a script encounters a fatal error or a prerequisite failure, the output MUST be redirected to standard error (`>&2`). This ensures that if a user pipes a `wrangler` command (e.g., `wrangler status | grep "dirty"`), the error message still correctly appears on their screen instead of being swallowed by the pipe.
+When a script encounters a fatal error or a prerequisite failure, the output MUST be redirected to standard error (`>&2`). This ensures that if a user pipes a `git-wrangler` command (e.g., `git-wrangler status | grep "dirty"`), the error message still correctly appears on their screen instead of being swallowed by the pipe.

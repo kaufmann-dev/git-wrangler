@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler clone --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
+# Usage: git-wrangler clone --user <username> [--visibility <all|public|private>] [--limit <number>] [--into <directory>]
 # Description: Clones multiple GitHub repositories for a given user
 # Category: Remote Operations
 #
@@ -17,7 +17,7 @@
 #   --into <directory>                (optional) Target directory for cloned repositories. Default: username.
 #
 # Example:
-#     wrangler clone --user myusername --visibility public --into ./repos
+#     git-wrangler clone --user myusername --visibility public --into ./repos
 # ====
 
 visibility="all"

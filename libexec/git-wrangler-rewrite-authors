@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ====
-# Usage: wrangler rewrite-authors --name <new_name> --email <new_email> [--force] [--repo <repository_name>]
+# Usage: git-wrangler rewrite-authors --name <new_name> --email <new_email> [--force] [--repo <repository_name>]
 # Description: Rewrites author and committer names and emails across repositories
 # Category: History Rewriting
 #
@@ -17,7 +17,7 @@
 #   --repo <repository_name>   (optional) Target a single repository instead of all in the current directory.
 #
 # Example:
-#     wrangler rewrite-authors --name "New Name" --email "new@email.com" --force
+#     git-wrangler rewrite-authors --name "New Name" --email "new@email.com" --force
 # ====
 
 force=false

@@ -3,7 +3,7 @@ title: "push"
 description: "Pushes local commits to remote for all tracked repositories."
 category: "Remote Operations"
 order: 3
-usage: "wrangler push [--force]"
+usage: "git-wrangler push [--force]"
 ---
 
 # push
@@ -13,7 +13,7 @@ Pushes local commits to remote for all tracked repositories.
 ## Usage
 
 ```bash
-wrangler push [--force]
+git-wrangler push [--force]
 ```
 
 ## What it does
@@ -30,12 +30,12 @@ Iterates through Git repositories found in the current directory and its immedia
 
 ```bash
 # Standard push
-wrangler push
+git-wrangler push
 
 # Force push (use with caution — rewrites remote history)
-wrangler push --force
+git-wrangler push --force
 ```
 
 ## Notes
 
-> **Warning:** `--force` rewrites remote branch history. Only use this after a deliberate history-rewriting operation (e.g. `wrangler rewrite-authors`).
+> **Warning:** `--force` rewrites remote branch history. Only use this after a deliberate history-rewriting operation (e.g. `git-wrangler rewrite-authors`).

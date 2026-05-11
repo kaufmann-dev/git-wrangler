@@ -3,7 +3,7 @@ title: "pull"
 description: "Pulls the latest changes for all tracked repositories."
 category: "Remote Operations"
 order: 2
-usage: "wrangler pull [--rebase] [--force]"
+usage: "git-wrangler pull [--rebase] [--force]"
 ---
 
 # pull
@@ -13,7 +13,7 @@ Pulls the latest changes for all tracked repositories.
 ## Usage
 
 ```bash
-wrangler pull [--rebase] [--force]
+git-wrangler pull [--rebase] [--force]
 ```
 
 ## What it does
@@ -31,11 +31,11 @@ Iterates through Git repositories found in the current directory and its immedia
 
 ```bash
 # Standard pull (merge strategy)
-wrangler pull
+git-wrangler pull
 
 # Pull with rebase
-wrangler pull --rebase
+git-wrangler pull --rebase
 
 # Force pull (overwrites local changes)
-wrangler pull --force
+git-wrangler pull --force
 ```
