@@ -82,6 +82,13 @@ main() {
 
     printf "\e[32m✔ Symlinked to %s\e[0m\n" "$link_target"
 
+    # ── Dependency summary ───────────────────────────────────────────────
+
+    if [ -f "$INSTALL_DIR/libexec/git-wrangler-doctor" ]; then
+        bash "$INSTALL_DIR/libexec/git-wrangler-doctor" --summary || true
+        printf "\n  Run \e[1mgit-wrangler doctor\e[0m for install instructions and update checks.\n"
+    fi
+
     # ── Done ─────────────────────────────────────────────────────────────
 
     printf "\n\e[32m✔ Git Wrangler installed successfully!\e[0m\n\n"
