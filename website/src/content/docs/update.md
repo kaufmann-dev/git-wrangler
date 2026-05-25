@@ -2,7 +2,7 @@
 title: "update"
 description: "Updates Git Wrangler to the latest version."
 category: "Utility"
-order: 3
+order: 4
 usage: "git-wrangler update [--confirm]"
 ---
 
