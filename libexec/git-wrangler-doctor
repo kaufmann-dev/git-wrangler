@@ -1,0 +1,287 @@
+#!/bin/bash
+
+# ====
+# Usage: git-wrangler doctor
+# Description: Checks dependencies, install guidance, and update status
+# Category: Utility
+#
+# Reports which Git Wrangler dependencies are installed, detects the current
+# package manager, prints install instructions for missing dependencies, and
+# checks whether the installed Git Wrangler version is up to date.
+#
+# Example:
+#     git-wrangler doctor
+# ====
+
+summary_only=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --summary)
+            summary_only=true
+            shift
+            ;;
+        *)
+            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+is_installed() {
+    command -v "$1" &> /dev/null
+}
+
+print_dependency() {
+    local command_name="$1"
+    local required_for="$2"
+    local command_path
+
+    if command_path=$(command -v "$command_name" 2>/dev/null); then
+        printf "  \e[32mfound\e[0m   %-16s %s\n" "$command_name" "$command_path"
+    else
+        printf "  \e[31mmissing\e[0m %-16s required for %s\n" "$command_name" "$required_for"
+    fi
+}
+
+missing_dependency_count() {
+    local count=0
+    local command_name
+
+    for command_name in git gh git-filter-repo python3; do
+        if ! is_installed "$command_name"; then
+            count=$((count + 1))
+        fi
+    done
+
+    printf "%s" "$count"
+}
+
+print_dependency_summary() {
+    printf "\n\e[1mDependencies\e[0m\n\n"
+    print_dependency "git" "all commands"
+    print_dependency "gh" "clone, rename-repo"
+    print_dependency "git-filter-repo" "rewrite-authors, rewrite-commits, rewrite-commits-ai, rewrite-dates, remove-secrets"
+    print_dependency "python3" "rewrite-commits-ai, rewrite-dates, git-filter-repo"
+}
+
+detect_os() {
+    local kernel
+    kernel=$(uname -s 2>/dev/null)
+
+    case "$kernel" in
+        Darwin)
+            printf "macOS"
+            ;;
+        Linux)
+            printf "Linux"
+            ;;
+        MINGW*|MSYS*|CYGWIN*)
+            printf "Windows"
+            ;;
+        *)
+            printf "%s" "${kernel:-unknown}"
+            ;;
+    esac
+}
+
+detect_package_manager() {
+    local kernel
+    kernel=$(uname -s 2>/dev/null)
+
+    case "$kernel" in
+        MINGW*|MSYS*|CYGWIN*)
+            if is_installed winget; then
+                printf "winget"
+            elif is_installed scoop; then
+                printf "scoop"
+            elif is_installed choco; then
+                printf "chocolatey"
+            else
+                printf "unknown"
+            fi
+            return
+            ;;
+        Darwin)
+            if is_installed brew; then
+                printf "brew"
+            else
+                printf "unknown"
+            fi
+            return
+            ;;
+    esac
+
+    if is_installed apt; then
+        printf "apt"
+    elif is_installed dnf; then
+        printf "dnf"
+    elif is_installed yum; then
+        printf "yum"
+    elif is_installed zypper; then
+        printf "zypper"
+    elif is_installed pacman; then
+        printf "pacman"
+    elif is_installed apk; then
+        printf "apk"
+    elif is_installed xbps-install; then
+        printf "xbps"
+    elif is_installed brew; then
+        printf "brew"
+    else
+        printf "unknown"
+    fi
+}
+
+print_command() {
+    printf "    %s\n" "$1"
+}
+
+print_install_instructions() {
+    local missing_count
+    local package_manager
+    local os_name
+
+    missing_count=$(missing_dependency_count)
+    if [ "$missing_count" -eq 0 ]; then
+        printf "\n\e[32mAll command dependencies are installed.\e[0m\n"
+        return
+    fi
+
+    os_name=$(detect_os)
+    package_manager=$(detect_package_manager)
+
+    printf "\n\e[1mInstall Instructions\e[0m\n\n"
+    printf "  Detected: %s" "$os_name"
+    if [ "$package_manager" != "unknown" ]; then
+        printf " with %s" "$package_manager"
+    fi
+    printf "\n\n"
+
+    case "$package_manager" in
+        brew)
+            print_command "brew install git gh git-filter-repo python"
+            ;;
+        apt)
+            printf "  Add the GitHub CLI apt repository, then install dependencies:\n"
+            print_command "type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)"
+            print_command "sudo mkdir -p -m 755 /etc/apt/keyrings"
+            print_command "out=\$(mktemp) && wget -nv -O\"\$out\" https://cli.github.com/packages/githubcli-archive-keyring.gpg"
+            print_command "cat \"\$out\" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null"
+            print_command "sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg"
+            print_command "sudo mkdir -p -m 755 /etc/apt/sources.list.d"
+            print_command "echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null"
+            print_command "sudo apt update"
+            print_command "sudo apt install git gh git-filter-repo python3"
+            ;;
+        dnf)
+            printf "  Add the GitHub CLI dnf repository, then install dependencies:\n"
+            if is_installed dnf5; then
+                print_command "sudo dnf install dnf5-plugins"
+                print_command "sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"
+            else
+                print_command "sudo dnf install 'dnf-command(config-manager)'"
+                print_command "sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo"
+            fi
+            print_command "sudo dnf install git gh git-filter-repo python3"
+            ;;
+        yum)
+            printf "  Add the GitHub CLI yum repository, then install dependencies:\n"
+            print_command "type -p yum-config-manager >/dev/null || sudo yum install yum-utils"
+            print_command "sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo"
+            print_command "sudo yum install git gh git-filter-repo python3"
+            ;;
+        zypper)
+            printf "  Add the GitHub CLI zypper repository, then install dependencies:\n"
+            print_command "sudo zypper addrepo https://cli.github.com/packages/rpm/gh-cli.repo"
+            print_command "sudo zypper refresh"
+            print_command "sudo zypper install git gh git-filter-repo python3"
+            ;;
+        pacman)
+            print_command "sudo pacman -S git github-cli git-filter-repo python"
+            ;;
+        apk)
+            print_command "sudo apk add git github-cli git-filter-repo python3"
+            ;;
+        xbps)
+            print_command "sudo xbps-install git github-cli git-filter-repo python3"
+            ;;
+        winget)
+            print_command "winget install --id Git.Git --source winget"
+            print_command "winget install --id GitHub.cli --source winget"
+            print_command "winget install --id Python.Python.3 --source winget"
+            print_command "python -m pip install --user pipx"
+            print_command "python -m pipx ensurepath"
+            print_command "pipx install git-filter-repo"
+            ;;
+        scoop)
+            print_command "scoop install git gh python git-filter-repo"
+            ;;
+        chocolatey)
+            print_command "choco install git gh python"
+            print_command "python -m pip install --user pipx"
+            print_command "python -m pipx ensurepath"
+            print_command "pipx install git-filter-repo"
+            ;;
+        *)
+            printf "  No supported package manager was detected. Install manually:\n"
+            print_command "git: https://git-scm.com/downloads"
+            print_command "gh: https://cli.github.com/"
+            print_command "git-filter-repo: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md"
+            print_command "python3: https://www.python.org/downloads/"
+            ;;
+    esac
+}
+
+check_update_status() {
+    local install_dir
+    local branch
+    local local_sha
+    local remote_sha
+
+    printf "\n\e[1mGit Wrangler Version\e[0m\n\n"
+
+    if ! is_installed git; then
+        printf "  \e[33mCannot check for updates because git is missing.\e[0m\n"
+        return
+    fi
+
+    install_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+
+    if [ ! -d "$install_dir/.git" ]; then
+        printf "  \e[33mCannot check for updates because %s is not a git repository.\e[0m\n" "$install_dir"
+        return
+    fi
+
+    branch=$(git -C "$install_dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
+        printf "  \e[33mCannot check for updates because the current branch could not be determined.\e[0m\n"
+        return
+    fi
+
+    local_sha=$(git -C "$install_dir" rev-parse HEAD 2>/dev/null)
+    remote_sha=$(git -C "$install_dir" ls-remote origin "refs/heads/$branch" 2>/dev/null | cut -f1)
+
+    if [ -z "$remote_sha" ]; then
+        printf "  \e[33mCould not reach the remote repository. Check your network connection.\e[0m\n"
+        return
+    fi
+
+    if [ "$local_sha" = "$remote_sha" ]; then
+        printf "  \e[32mGit Wrangler is up to date on %s.\e[0m\n" "$branch"
+    else
+        printf "  \e[33mA newer version of Git Wrangler is available.\e[0m\n"
+        printf "  Local:  %s\n" "${local_sha:0:12}"
+        printf "  Remote: %s\n" "${remote_sha:0:12}"
+        printf "  Run \e[1mgit-wrangler update\e[0m to update.\n"
+    fi
+}
+
+print_dependency_summary
+
+if [ "$summary_only" = true ]; then
+    exit 0
+fi
+
+print_install_instructions
+check_update_status

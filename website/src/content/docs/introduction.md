@@ -31,12 +31,12 @@ Git Wrangler was built on three principles:
 
 ## Command categories
 
-| Category | What it covers |
-|---|---|
-| **Remote Operations** | Cloning, pulling, pushing, GitHub renaming |
-| **Local Operations** | Committing, reviewing, license management, `.gitignore` fixes |
-| **History Rewriting** | Author/date/message rewrites, secret purging |
-| **Utility** | Status dashboard, info display, update, uninstall |
+| Category              | What it covers                                                |
+| --------------------- | ------------------------------------------------------------- |
+| **Remote Operations** | Cloning, pulling, pushing, GitHub renaming                    |
+| **Local Operations**  | Committing, reviewing, license management, `.gitignore` fixes |
+| **History Rewriting** | Author/date/message rewrites, secret purging                  |
+| **Utility**           | Status dashboard, environment diagnostics, update, uninstall  |
 
 ## Next steps
 

@@ -2,7 +2,7 @@
 title: "uninstall"
 description: "Uninstalls Git Wrangler from the system."
 category: "Utility"
-order: 4
+order: 5
 usage: "git-wrangler uninstall [--confirm]"
 ---
 
