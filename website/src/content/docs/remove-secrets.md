@@ -2,7 +2,7 @@
 title: "remove-secrets"
 description: "Permanently purges sensitive files from the entire Git history."
 category: "History Rewriting"
-order: 4
+order: 5
 usage: "git-wrangler remove-secrets"
 ---
 
