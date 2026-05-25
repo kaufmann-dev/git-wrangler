@@ -21,7 +21,7 @@ Git Wrangler is a command-line orchestrator that broadcasts Git operations from 
 Before installing or using Git Wrangler, ensure you have the following dependencies:
 - **[`git`](https://git-scm.com/)**: Required for all core operations.
 - **[`gh`](https://cli.github.com/)**: Required for `clone` and `rename-repo`.
-- **[`git-filter-repo`](https://github.com/newren/git-filter-repo)**: Required for history rewriting (`rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `remove-secrets`).
+- **[`git-filter-repo`](https://github.com/newren/git-filter-repo)**: Required for history rewriting (`rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `remove-secrets`) as either the `git-filter-repo` executable or the `git filter-repo` Git subcommand.
 - **Python 3**: Required for AI-assisted commit rewrites and date redistribution.
 - **OpenAI-compatible API access**: Required for `rewrite-commits-ai` (`--base-url`, `--model`, and an API key).
 
