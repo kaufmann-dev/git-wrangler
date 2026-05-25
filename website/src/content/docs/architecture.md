@@ -44,7 +44,7 @@ Every script in `libexec/` follows this structure:
 # ====
 
 # 1. Default variables + argument parsing
-# 2. Prerequisite checks (git, gh, git-filter-repo)
+# 2. Prerequisite checks (git, gh, git-filter-repo, python3 as needed)
 # 3. Repository discovery via find
 # 4. Execution loop with subshell isolation
 ```

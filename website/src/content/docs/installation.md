@@ -11,13 +11,15 @@ order: 2
 
 Before installing Git Wrangler, make sure you have:
 
-| Dependency | Required for | Install |
-|---|---|---|
-| `git` | All operations | [git-scm.com](https://git-scm.com/) |
-| `gh` | `clone`, `rename-repo` | [cli.github.com](https://cli.github.com/) |
-| `git-filter-repo` | History rewriting | [GitHub](https://github.com/newren/git-filter-repo) |
+| Dependency                   | Required for                          | Install                                             |
+| ---------------------------- | ------------------------------------- | --------------------------------------------------- |
+| `git`                        | All operations                        | [git-scm.com](https://git-scm.com/)                 |
+| `gh`                         | `clone`, `rename-repo`                | [cli.github.com](https://cli.github.com/)           |
+| `git-filter-repo`            | History rewriting                     | [GitHub](https://github.com/newren/git-filter-repo) |
+| Python 3                     | `rewrite-commits-ai`, `rewrite-dates` | [python.org](https://www.python.org/)               |
+| OpenAI-compatible API access | `rewrite-commits-ai`                  | Your provider's API dashboard                       |
 
-`git` is required for everything. `gh` and `git-filter-repo` are only needed if you plan to use their respective commands.
+`git` is required for everything. `gh`, `git-filter-repo`, Python 3, and API access are only needed if you plan to use their respective commands.
 
 ## One-liner install
 
@@ -34,12 +36,12 @@ This will:
 
 ## Platform support
 
-| Platform | Status |
-|---|---|
-| macOS | ✅ Native |
-| Linux | ✅ Native |
+| Platform           | Status       |
+| ------------------ | ------------ |
+| macOS              | ✅ Native    |
+| Linux              | ✅ Native    |
 | Windows (Git Bash) | ✅ Supported |
-| Windows (WSL) | ✅ Supported |
+| Windows (WSL)      | ✅ Supported |
 
 ## Verify the installation
 
