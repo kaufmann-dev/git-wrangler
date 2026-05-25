@@ -25,6 +25,8 @@ Before installing or using Git Wrangler, ensure you have the following dependenc
 - **Python 3**: Required for AI-assisted commit rewrites and date redistribution.
 - **OpenAI-compatible API access**: Required for `rewrite-commits-ai` (`--base-url`, `--model`, and an API key).
 
+Run `git-wrangler doctor` after installation to check your environment, see package-manager-specific install instructions, and verify whether Git Wrangler is up to date.
+
 ## Installation
 
 Run the following command to securely download and install Git Wrangler:
@@ -33,7 +35,7 @@ Run the following command to securely download and install Git Wrangler:
 curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash
 ```
 
-This will clone the repository to `~/.git-wrangler` and symlink the executable to `~/.local/bin`. 
+This will clone the repository to `~/.git-wrangler`, symlink the executable to `~/.local/bin`, and show a short dependency summary.
 
 - **Update:** Run `git-wrangler update` to fetch the latest version.
 - **Uninstall:** Run `git-wrangler uninstall` to safely remove the tool from your system.
@@ -99,6 +101,7 @@ git-wrangler commit --message "chore: update dependencies"
 | ------------------------ | ----------------------------------------------------------------- |
 | `git-wrangler status`    | Shows dirty/clean and ahead/behind status of tracked repositories |
 | `git-wrangler info`      | Displays detailed information about tracked repositories          |
+| `git-wrangler doctor`    | Checks dependencies, install guidance, and update status          |
 | `git-wrangler update`    | Updates Git Wrangler to the latest version                        |
 | `git-wrangler uninstall` | Uninstalls Git Wrangler from the system                           |
 | `git-wrangler help`      | Displays help information for git-wrangler and its subcommands    |
