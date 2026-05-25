@@ -330,7 +330,12 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-if ! command -v git-filter-repo &> /dev/null; then
+filter_repo_cmd=()
+if command -v git-filter-repo &> /dev/null; then
+    filter_repo_cmd=(git-filter-repo)
+elif git filter-repo --version &> /dev/null; then
+    filter_repo_cmd=(git filter-repo)
+else
     print_error "'git-filter-repo' is required for rewrite-commits-ai. Run 'git-wrangler doctor' for more information."
     exit 1
 fi
@@ -1023,7 +1028,7 @@ while IFS= read -r manifest_line; do
         cd "$repo_dir" || exit 1
         remote_url=$(git remote get-url origin 2>/dev/null)
 
-        if filter_output=$(git filter-repo --partial --commit-callback "$callback_file" --force 2>&1); then
+        if filter_output=$("${filter_repo_cmd[@]}" --partial --commit-callback "$callback_file" --force 2>&1); then
             if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                 if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
                     printf "\e[31mWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output" >&2
