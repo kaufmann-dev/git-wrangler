@@ -55,7 +55,7 @@ fi
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is not installed. Please install it first.\e[0m\n" >&2
+    printf "\e[31mError: 'git' is required for license. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
     exit 1
 fi
 
