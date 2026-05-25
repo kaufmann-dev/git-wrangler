@@ -21,7 +21,9 @@ Git Wrangler is a command-line orchestrator that broadcasts Git operations from 
 Before installing or using Git Wrangler, ensure you have the following dependencies:
 - **[`git`](https://git-scm.com/)**: Required for all core operations.
 - **[`gh`](https://cli.github.com/)**: Required for `clone` and `rename-repo`.
-- **[`git-filter-repo`](https://github.com/newren/git-filter-repo)**: Required for history rewriting (`rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `remove-secrets`).
+- **[`git-filter-repo`](https://github.com/newren/git-filter-repo)**: Required for history rewriting (`rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `remove-secrets`).
+- **Python 3**: Required for AI-assisted commit rewrites and date redistribution.
+- **OpenAI-compatible API access**: Required for `rewrite-commits-ai` (`--base-url`, `--model`, and an API key).
 
 ## Installation
 
@@ -65,40 +67,41 @@ git-wrangler commit --message "chore: update dependencies"
 ## Command Reference
 
 ### Remote Operations
-| Command | Description |
-|---|---|
-| `git-wrangler clone` | Clones multiple GitHub repositories for a given user |
+| Command                    | Description                                                        |
+| -------------------------- | ------------------------------------------------------------------ |
+| `git-wrangler clone`       | Clones multiple GitHub repositories for a given user               |
 | `git-wrangler rename-repo` | Bulk renames GitHub repositories and optionally their descriptions |
-| `git-wrangler pull` | Pulls the latest changes for all tracked repositories |
-| `git-wrangler push` | Pushes local commits to remote for all tracked repositories |
+| `git-wrangler pull`        | Pulls the latest changes for all tracked repositories              |
+| `git-wrangler push`        | Pushes local commits to remote for all tracked repositories        |
 
 ### Local Operations
-| Command | Description |
-|---|---|
-| `git-wrangler commit` | Stages all changes and creates a commit across multiple repositories |
-| `git-wrangler review` | Reviews committed changes before pushing across repositories |
-| `git-wrangler license` | Adds or replaces a LICENSE file across repositories |
-| `git-wrangler untrack` | Removes tracked files that match `.gitignore` exclusion rules |
-| `git-wrangler fix-gitignore` | Audits and fixes `.gitignore` files by adding missing entries |
-| `git-wrangler rename-branch` | Renames a specified branch to a new name across repositories |
-| `git-wrangler reset` | Resets the current branch to exactly match its remote counterpart |
+| Command                      | Description                                                          |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `git-wrangler commit`        | Stages all changes and creates a commit across multiple repositories |
+| `git-wrangler review`        | Reviews committed changes before pushing across repositories         |
+| `git-wrangler license`       | Adds or replaces a LICENSE file across repositories                  |
+| `git-wrangler untrack`       | Removes tracked files that match `.gitignore` exclusion rules        |
+| `git-wrangler fix-gitignore` | Audits and fixes `.gitignore` files by adding missing entries        |
+| `git-wrangler rename-branch` | Renames a specified branch to a new name across repositories         |
+| `git-wrangler reset`         | Resets the current branch to exactly match its remote counterpart    |
 
 ### History Rewriting
-| Command | Description |
-|---|---|
-| `git-wrangler rewrite-authors` | Rewrites author and committer names and emails across repositories |
-| `git-wrangler rewrite-commits` | Rewrites commit messages to adhere to the Conventional Commits standard |
-| `git-wrangler rewrite-dates` | Redistributes commit timestamps to mimic natural human activity |
-| `git-wrangler remove-secrets` | Permanently purges sensitive files from the entire Git history |
+| Command                           | Description                                                             |
+| --------------------------------- | ----------------------------------------------------------------------- |
+| `git-wrangler rewrite-authors`    | Rewrites author and committer names and emails across repositories      |
+| `git-wrangler rewrite-commits`    | Rewrites commit messages to adhere to the Conventional Commits standard |
+| `git-wrangler rewrite-commits-ai` | Rewrites commit messages with an OpenAI-compatible AI endpoint          |
+| `git-wrangler rewrite-dates`      | Redistributes commit timestamps to mimic natural human activity         |
+| `git-wrangler remove-secrets`     | Permanently purges sensitive files from the entire Git history          |
 
 ### Utility
-| Command | Description |
-|---|---|
-| `git-wrangler status` | Shows dirty/clean and ahead/behind status of tracked repositories |
-| `git-wrangler info` | Displays detailed information about tracked repositories |
-| `git-wrangler update` | Updates Git Wrangler to the latest version |
-| `git-wrangler uninstall` | Uninstalls Git Wrangler from the system |
-| `git-wrangler help` | Displays help information for git-wrangler and its subcommands |
+| Command                  | Description                                                       |
+| ------------------------ | ----------------------------------------------------------------- |
+| `git-wrangler status`    | Shows dirty/clean and ahead/behind status of tracked repositories |
+| `git-wrangler info`      | Displays detailed information about tracked repositories          |
+| `git-wrangler update`    | Updates Git Wrangler to the latest version                        |
+| `git-wrangler uninstall` | Uninstalls Git Wrangler from the system                           |
+| `git-wrangler help`      | Displays help information for git-wrangler and its subcommands    |
 
 ## Architecture
 

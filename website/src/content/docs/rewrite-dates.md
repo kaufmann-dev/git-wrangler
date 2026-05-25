@@ -2,7 +2,7 @@
 title: "rewrite-dates"
 description: "Redistributes commit timestamps to mimic natural human activity."
 category: "History Rewriting"
-order: 3
+order: 4
 usage: "git-wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]"
 ---
 
