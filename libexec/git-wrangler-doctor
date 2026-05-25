@@ -32,6 +32,10 @@ is_installed() {
     command -v "$1" &> /dev/null
 }
 
+is_git_filter_repo_installed() {
+    command -v git-filter-repo &> /dev/null || git filter-repo --version &> /dev/null
+}
+
 print_dependency() {
     local command_name="$1"
     local required_for="$2"
@@ -44,15 +48,31 @@ print_dependency() {
     fi
 }
 
+print_git_filter_repo_dependency() {
+    local command_path
+
+    if command_path=$(command -v git-filter-repo 2>/dev/null); then
+        printf "  \e[32mfound\e[0m   %-16s %s\n" "git-filter-repo" "$command_path"
+    elif git filter-repo --version &> /dev/null; then
+        printf "  \e[32mfound\e[0m   %-16s %s\n" "git-filter-repo" "git filter-repo"
+    else
+        printf "  \e[31mmissing\e[0m %-16s required for %s\n" "git-filter-repo" "rewrite-authors, rewrite-commits, rewrite-commits-ai, rewrite-dates, remove-secrets"
+    fi
+}
+
 missing_dependency_count() {
     local count=0
     local command_name
 
-    for command_name in git gh git-filter-repo python3; do
+    for command_name in git gh python3; do
         if ! is_installed "$command_name"; then
             count=$((count + 1))
         fi
     done
+
+    if ! is_git_filter_repo_installed; then
+        count=$((count + 1))
+    fi
 
     printf "%s" "$count"
 }
@@ -61,7 +81,7 @@ print_dependency_summary() {
     printf "\n\e[1mDependencies\e[0m\n\n"
     print_dependency "git" "all commands"
     print_dependency "gh" "clone, rename-repo"
-    print_dependency "git-filter-repo" "rewrite-authors, rewrite-commits, rewrite-commits-ai, rewrite-dates, remove-secrets"
+    print_git_filter_repo_dependency
     print_dependency "python3" "rewrite-commits-ai, rewrite-dates, git-filter-repo"
 }
 
@@ -179,7 +199,7 @@ print_install_instructions() {
         brew)
             is_installed git || packages+=("git")
             is_installed gh || packages+=("gh")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python")
             package_list=$(join_words "${packages[@]}")
             print_command "brew install $package_list"
@@ -197,7 +217,7 @@ print_install_instructions() {
             fi
             is_installed git || packages+=("git")
             is_installed gh || packages+=("gh")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python3")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo apt update"
@@ -217,7 +237,7 @@ print_install_instructions() {
             fi
             is_installed git || packages+=("git")
             is_installed gh || packages+=("gh")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python3")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo dnf install $package_list"
@@ -230,7 +250,7 @@ print_install_instructions() {
             fi
             is_installed git || packages+=("git")
             is_installed gh || packages+=("gh")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python3")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo yum install $package_list"
@@ -243,7 +263,7 @@ print_install_instructions() {
             fi
             is_installed git || packages+=("git")
             is_installed gh || packages+=("gh")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python3")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo zypper install $package_list"
@@ -251,7 +271,7 @@ print_install_instructions() {
         pacman)
             is_installed git || packages+=("git")
             is_installed gh || packages+=("github-cli")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo pacman -S $package_list"
@@ -259,7 +279,7 @@ print_install_instructions() {
         apk)
             is_installed git || packages+=("git")
             is_installed gh || packages+=("github-cli")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python3")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo apk add $package_list"
@@ -267,7 +287,7 @@ print_install_instructions() {
         xbps)
             is_installed git || packages+=("git")
             is_installed gh || packages+=("github-cli")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             is_installed python3 || packages+=("python3")
             package_list=$(join_words "${packages[@]}")
             print_command "sudo xbps-install $package_list"
@@ -276,7 +296,7 @@ print_install_instructions() {
             is_installed git || print_command "winget install --id Git.Git --source winget"
             is_installed gh || print_command "winget install --id GitHub.cli --source winget"
             is_installed python3 || print_command "winget install --id Python.Python.3 --source winget"
-            if ! is_installed git-filter-repo; then
+            if ! is_git_filter_repo_installed; then
                 print_command "python -m pip install --user pipx"
                 print_command "python -m pipx ensurepath"
                 print_command "pipx install git-filter-repo"
@@ -286,7 +306,7 @@ print_install_instructions() {
             is_installed git || packages+=("git")
             is_installed gh || packages+=("gh")
             is_installed python3 || packages+=("python")
-            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_git_filter_repo_installed || packages+=("git-filter-repo")
             package_list=$(join_words "${packages[@]}")
             print_command "scoop install $package_list"
             ;;
@@ -298,7 +318,7 @@ print_install_instructions() {
             if [ -n "$package_list" ]; then
                 print_command "choco install $package_list"
             fi
-            if ! is_installed git-filter-repo; then
+            if ! is_git_filter_repo_installed; then
                 print_command "python -m pip install --user pipx"
                 print_command "python -m pipx ensurepath"
                 print_command "pipx install git-filter-repo"
@@ -308,7 +328,7 @@ print_install_instructions() {
             printf "  No supported package manager was detected. Install manually:\n"
             is_installed git || print_command "git: https://git-scm.com/downloads"
             is_installed gh || print_command "gh: https://cli.github.com/"
-            is_installed git-filter-repo || print_command "git-filter-repo: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md"
+            is_git_filter_repo_installed || print_command "git-filter-repo: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md"
             is_installed python3 || print_command "python3: https://www.python.org/downloads/"
             ;;
     esac

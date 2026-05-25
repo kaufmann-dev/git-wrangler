@@ -122,7 +122,12 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-if ! command -v git-filter-repo &> /dev/null; then
+filter_repo_cmd=()
+if command -v git-filter-repo &> /dev/null; then
+    filter_repo_cmd=(git-filter-repo)
+elif git filter-repo --version &> /dev/null; then
+    filter_repo_cmd=(git filter-repo)
+else
     printf "\e[31mError: 'git-filter-repo' is required for rewrite-commits. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
     exit 1
 fi
@@ -218,7 +223,7 @@ if commit.original_id in mapping:
 EOF
 
         # Execute historical rewrite using git-filter-repo
-        if filter_output=$(git filter-repo --partial --commit-callback "$callback_file" --force 2>&1); then
+        if filter_output=$("${filter_repo_cmd[@]}" --partial --commit-callback "$callback_file" --force 2>&1); then
             printf "\e[32mRewrote commit messages for %s\e[0m\n" "$repo_name_display"
             
             # Restore original remote origin if applicable
