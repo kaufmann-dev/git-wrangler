@@ -86,7 +86,7 @@ All subcommand scripts in `libexec/` follow a standardized structure to maintain
    - **Options** section lists every accepted flag with its required/optional status and a short description. Omit this section for commands that take no arguments.
    - **Example** / **Examples** section provides one or more ready-to-run usage examples.
 3. **Variables & Argument Parsing:** Default variable assignments followed by a `while [[ $# -gt 0 ]]; do ... case ...` loop for argument parsing. Unknown arguments should throw a red error and exit 1.
-4. **Prerequisite Checks:** Use `command -v <cmd> &> /dev/null` to verify required tools (`git`, `gh`, `git-filter-repo`) are installed before executing logic.
+4. **Prerequisite Checks:** Use `command -v <cmd> &> /dev/null` to verify required tools (`git`, `gh`, `python3`) are installed before executing logic. For `git-filter-repo`, support both `git-filter-repo` and `git filter-repo`, preferring the standalone executable when both are available.
 5. **Target Discovery:** Use `find` to locate target `.git` directories and store them in a variable. Exit gracefully with a yellow message if none are found.
 6. **Execution Loop:** Iterate over the repositories using the standardized `while IFS= read -r` and `<<< "$git_repositories"` here-string.
 
