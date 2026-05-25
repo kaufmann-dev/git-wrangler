@@ -32,7 +32,13 @@ curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/inst
 This will:
 1. Clone the repository to `~/.git-wrangler`
 2. Create a symlink at `~/.local/bin/git-wrangler` (or `/usr/local/bin` as fallback)
-3. Verify the installation
+3. Show a short dependency summary
+
+For package-manager-specific dependency instructions and update status, run:
+
+```bash
+git-wrangler doctor
+```
 
 ## Platform support
 
