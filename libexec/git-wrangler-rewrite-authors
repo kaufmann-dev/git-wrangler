@@ -63,7 +63,12 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-if ! command -v git-filter-repo &> /dev/null; then
+filter_repo_cmd=()
+if command -v git-filter-repo &> /dev/null; then
+    filter_repo_cmd=(git-filter-repo)
+elif git filter-repo --version &> /dev/null; then
+    filter_repo_cmd=(git filter-repo)
+else
     printf "\e[31mError: 'git-filter-repo' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
     exit 1
 fi
@@ -99,7 +104,7 @@ while IFS= read -r repo; do
 
         # Update author and committer information using git-filter-repo
         if [ "$force" = true ]; then
-            if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" git filter-repo --partial --force --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
+            if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" "${filter_repo_cmd[@]}" --partial --force --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
                 if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                     if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
                         printf "\e[31mWarning: Author rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output" >&2
@@ -111,7 +116,7 @@ while IFS= read -r repo; do
                 printf "\e[31mError: Could not update git author and commiter information for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message" >&2
             fi
         else
-            if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" git filter-repo --partial --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
+            if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" "${filter_repo_cmd[@]}" --partial --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
                 if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                     if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
                         printf "\e[31mWarning: Author rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output" >&2
