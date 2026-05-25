@@ -137,10 +137,27 @@ print_command() {
     printf "    %s\n" "$1"
 }
 
+join_words() {
+    local joined=""
+    local word
+
+    for word in "$@"; do
+        if [ -z "$joined" ]; then
+            joined="$word"
+        else
+            joined="$joined $word"
+        fi
+    done
+
+    printf "%s" "$joined"
+}
+
 print_install_instructions() {
     local missing_count
     local package_manager
     local os_name
+    local packages=()
+    local package_list
 
     missing_count=$(missing_dependency_count)
     if [ "$missing_count" -eq 0 ]; then
@@ -160,75 +177,139 @@ print_install_instructions() {
 
     case "$package_manager" in
         brew)
-            print_command "brew install git gh git-filter-repo python"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python")
+            package_list=$(join_words "${packages[@]}")
+            print_command "brew install $package_list"
             ;;
         apt)
-            printf "  Add the GitHub CLI apt repository, then install dependencies:\n"
-            print_command "type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)"
-            print_command "sudo mkdir -p -m 755 /etc/apt/keyrings"
-            print_command "out=\$(mktemp) && wget -nv -O\"\$out\" https://cli.github.com/packages/githubcli-archive-keyring.gpg"
-            print_command "cat \"\$out\" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null"
-            print_command "sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg"
-            print_command "sudo mkdir -p -m 755 /etc/apt/sources.list.d"
-            print_command "echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null"
+            if ! is_installed gh; then
+                printf "  Add the GitHub CLI apt repository for gh:\n"
+                print_command "type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)"
+                print_command "sudo mkdir -p -m 755 /etc/apt/keyrings"
+                print_command "out=\$(mktemp) && wget -nv -O\"\$out\" https://cli.github.com/packages/githubcli-archive-keyring.gpg"
+                print_command "cat \"\$out\" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null"
+                print_command "sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg"
+                print_command "sudo mkdir -p -m 755 /etc/apt/sources.list.d"
+                print_command "echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null"
+            fi
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python3")
+            package_list=$(join_words "${packages[@]}")
             print_command "sudo apt update"
-            print_command "sudo apt install git gh git-filter-repo python3"
+            print_command "sudo apt install $package_list"
             ;;
         dnf)
-            printf "  Add the GitHub CLI dnf repository, then install dependencies:\n"
             if is_installed dnf5; then
-                print_command "sudo dnf install dnf5-plugins"
-                print_command "sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"
-            else
+                if ! is_installed gh; then
+                    printf "  Add the GitHub CLI dnf repository for gh:\n"
+                    print_command "sudo dnf install dnf5-plugins"
+                    print_command "sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"
+                fi
+            elif ! is_installed gh; then
+                printf "  Add the GitHub CLI dnf repository for gh:\n"
                 print_command "sudo dnf install 'dnf-command(config-manager)'"
                 print_command "sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo"
             fi
-            print_command "sudo dnf install git gh git-filter-repo python3"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python3")
+            package_list=$(join_words "${packages[@]}")
+            print_command "sudo dnf install $package_list"
             ;;
         yum)
-            printf "  Add the GitHub CLI yum repository, then install dependencies:\n"
-            print_command "type -p yum-config-manager >/dev/null || sudo yum install yum-utils"
-            print_command "sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo"
-            print_command "sudo yum install git gh git-filter-repo python3"
+            if ! is_installed gh; then
+                printf "  Add the GitHub CLI yum repository for gh:\n"
+                print_command "type -p yum-config-manager >/dev/null || sudo yum install yum-utils"
+                print_command "sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo"
+            fi
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python3")
+            package_list=$(join_words "${packages[@]}")
+            print_command "sudo yum install $package_list"
             ;;
         zypper)
-            printf "  Add the GitHub CLI zypper repository, then install dependencies:\n"
-            print_command "sudo zypper addrepo https://cli.github.com/packages/rpm/gh-cli.repo"
-            print_command "sudo zypper refresh"
-            print_command "sudo zypper install git gh git-filter-repo python3"
+            if ! is_installed gh; then
+                printf "  Add the GitHub CLI zypper repository for gh:\n"
+                print_command "sudo zypper addrepo https://cli.github.com/packages/rpm/gh-cli.repo"
+                print_command "sudo zypper refresh"
+            fi
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python3")
+            package_list=$(join_words "${packages[@]}")
+            print_command "sudo zypper install $package_list"
             ;;
         pacman)
-            print_command "sudo pacman -S git github-cli git-filter-repo python"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("github-cli")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python")
+            package_list=$(join_words "${packages[@]}")
+            print_command "sudo pacman -S $package_list"
             ;;
         apk)
-            print_command "sudo apk add git github-cli git-filter-repo python3"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("github-cli")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python3")
+            package_list=$(join_words "${packages[@]}")
+            print_command "sudo apk add $package_list"
             ;;
         xbps)
-            print_command "sudo xbps-install git github-cli git-filter-repo python3"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("github-cli")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            is_installed python3 || packages+=("python3")
+            package_list=$(join_words "${packages[@]}")
+            print_command "sudo xbps-install $package_list"
             ;;
         winget)
-            print_command "winget install --id Git.Git --source winget"
-            print_command "winget install --id GitHub.cli --source winget"
-            print_command "winget install --id Python.Python.3 --source winget"
-            print_command "python -m pip install --user pipx"
-            print_command "python -m pipx ensurepath"
-            print_command "pipx install git-filter-repo"
+            is_installed git || print_command "winget install --id Git.Git --source winget"
+            is_installed gh || print_command "winget install --id GitHub.cli --source winget"
+            is_installed python3 || print_command "winget install --id Python.Python.3 --source winget"
+            if ! is_installed git-filter-repo; then
+                print_command "python -m pip install --user pipx"
+                print_command "python -m pipx ensurepath"
+                print_command "pipx install git-filter-repo"
+            fi
             ;;
         scoop)
-            print_command "scoop install git gh python git-filter-repo"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed python3 || packages+=("python")
+            is_installed git-filter-repo || packages+=("git-filter-repo")
+            package_list=$(join_words "${packages[@]}")
+            print_command "scoop install $package_list"
             ;;
         chocolatey)
-            print_command "choco install git gh python"
-            print_command "python -m pip install --user pipx"
-            print_command "python -m pipx ensurepath"
-            print_command "pipx install git-filter-repo"
+            is_installed git || packages+=("git")
+            is_installed gh || packages+=("gh")
+            is_installed python3 || packages+=("python")
+            package_list=$(join_words "${packages[@]}")
+            if [ -n "$package_list" ]; then
+                print_command "choco install $package_list"
+            fi
+            if ! is_installed git-filter-repo; then
+                print_command "python -m pip install --user pipx"
+                print_command "python -m pipx ensurepath"
+                print_command "pipx install git-filter-repo"
+            fi
             ;;
         *)
             printf "  No supported package manager was detected. Install manually:\n"
-            print_command "git: https://git-scm.com/downloads"
-            print_command "gh: https://cli.github.com/"
-            print_command "git-filter-repo: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md"
-            print_command "python3: https://www.python.org/downloads/"
+            is_installed git || print_command "git: https://git-scm.com/downloads"
+            is_installed gh || print_command "gh: https://cli.github.com/"
+            is_installed git-filter-repo || print_command "git-filter-repo: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md"
+            is_installed python3 || print_command "python3: https://www.python.org/downloads/"
             ;;
     esac
 }
