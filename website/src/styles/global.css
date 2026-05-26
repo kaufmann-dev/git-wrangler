@@ -401,6 +401,9 @@ code {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.7;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  font-kerning: none;
   color: rgba(255,255,255,0.9);
   overflow-x: auto;
 }
