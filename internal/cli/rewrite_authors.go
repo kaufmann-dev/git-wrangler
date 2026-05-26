@@ -8,12 +8,14 @@ import (
 
 func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	force, _ := cmd.Flags().GetBool("force")
-	confirmed, _ := cmd.Flags().GetBool("confirm")
+	yes := yesFlag(cmd)
 	repoName, _ := cmd.Flags().GetString("repo")
-	newName, _ := cmd.Flags().GetString("name")
-	newEmail, _ := cmd.Flags().GetString("email")
-	if newName == "" || newEmail == "" {
-		fmt.Fprintf(a.stderr, "%sError: Both --name and --email options must be provided.%s\n", a.ui.Red, a.ui.Reset)
+	newName, ok := requiredStringFlag(a, cmd, "name", "New author and committer name: ")
+	if !ok {
+		return 1
+	}
+	newEmail, ok := requiredStringFlag(a, cmd, "email", "New author and committer email: ")
+	if !ok {
 		return 1
 	}
 	if !requireGit(a, "rewrite-authors") {
@@ -23,21 +25,13 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	root := "."
-	if repoName != "" {
-		root = repoName
-	}
-	repos, err := findGitRepositories(root)
+	repos, err := resolveRepositoryTargets(repoName)
 	if err != nil {
 		a.error(err.Error())
 		return 1
 	}
 	if len(repos) == 0 {
 		return noRepos(a)
-	}
-	if !confirmed {
-		a.error("Refusing to rewrite history without --confirm.")
-		return 1
 	}
 	filterArgs := []string{"--partial"}
 	if force {
@@ -50,10 +44,15 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	status := 0
 	for _, r := range repos {
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		remoteURL := originURL(r.dir)
-		out, err := runFilterRepo(r.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
+		if !yes && !confirm(a, "Rewrite author and committer identity for "+r.display+"?") {
+			a.error(r.display, "Refusing to rewrite history without confirmation.")
+			status = 1
+			continue
+		}
+		remoteURL := originURL(a, r.dir)
+		out, err := runFilterRepo(a, r.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
 		if err == nil {
-			if err := restoreOrigin(r.dir, remoteURL); err != nil {
+			if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
 				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
 				continue

@@ -5,8 +5,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
 func TestStatusRow(t *testing.T) {
@@ -100,16 +98,16 @@ func TestStatusRow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			restore := run.SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			t.Parallel()
+			runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 				if name == "git" && len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain=v2" {
 					return tc.gitOutput, "", nil
 				}
 				return "", "", nil
-			})
-			defer restore()
+			}}
 
 			var stdoutBuf bytes.Buffer
-			a := newApp(strings.NewReader(""), &stdoutBuf, &stdoutBuf)
+			a := newApp(context.Background(), runner, strings.NewReader(""), &stdoutBuf, &stdoutBuf)
 			r := repo{dir: "dummy-dir", display: "dummy-repo"}
 
 			row, err := statusRow(a, r)

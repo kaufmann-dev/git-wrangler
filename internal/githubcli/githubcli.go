@@ -6,16 +6,27 @@ import (
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
-func Capture(ctx context.Context, dir string, args ...string) (string, error) {
-	return run.Capture(ctx, dir, nil, "gh", args...)
+type Client struct {
+	runner run.Runner
 }
 
-func Stdout(ctx context.Context, dir string, args ...string) (string, error) {
-	return run.Stdout(ctx, dir, nil, "gh", args...)
+func New(runner run.Runner) Client {
+	if runner == nil {
+		runner = run.New()
+	}
+	return Client{runner: runner}
 }
 
-func Installed() bool {
-	_, err := run.LookPath("gh")
+func (c Client) Capture(ctx context.Context, dir string, args ...string) (string, error) {
+	return run.Capture(ctx, c.runner, dir, nil, "gh", args...)
+}
+
+func (c Client) Stdout(ctx context.Context, dir string, args ...string) (string, error) {
+	return run.Stdout(ctx, c.runner, dir, nil, "gh", args...)
+}
+
+func (c Client) Installed() bool {
+	_, err := c.runner.LookPath("gh")
 	return err == nil
 }
 

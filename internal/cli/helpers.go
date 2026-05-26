@@ -2,16 +2,16 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"sort"
 	"strings"
 
-	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/kaufmann-dev/git-wrangler/internal/repos"
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
+	"github.com/kaufmann-dev/git-wrangler/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 func (a *app) status(stream io.Writer, color, symbol string, parts ...string) {
@@ -26,7 +26,7 @@ func (a *app) status(stream io.Writer, color, symbol string, parts ...string) {
 
 func (a *app) ok(parts ...string) { a.status(a.stdout, a.ui.Green, a.ui.OKSymbol, parts...) }
 
-func (a *app) warn(parts ...string) { a.status(a.stdout, a.ui.Yellow, a.ui.WarnSymbol, parts...) }
+func (a *app) warn(parts ...string) { a.status(a.stderr, a.ui.Yellow, a.ui.WarnSymbol, parts...) }
 
 func (a *app) info(parts ...string) { a.status(a.stdout, a.ui.Cyan, a.ui.InfoSymbol, parts...) }
 
@@ -55,7 +55,7 @@ func requireValue(a *app, option string, args []string) (string, bool) {
 }
 
 func requireCommand(a *app, name, context string) bool {
-	if _, err := run.LookPath(name); err != nil {
+	if _, err := a.runner.LookPath(name); err != nil {
 		a.errorf("'%s' is required for %s. Install it and make sure it is on PATH.", name, context)
 		return false
 	}
@@ -67,19 +67,19 @@ func requireGit(a *app, context string) bool {
 }
 
 func filterRepoCommand(a *app, commandContext string) ([]string, bool) {
-	if cmd, ok := git.FilterRepoCommand(context.Background()); ok {
+	if cmd, ok := a.git.FilterRepoCommand(a.ctx); ok {
 		return cmd, true
 	}
 	a.errorf("'git-filter-repo' or 'git filter-repo' is required for %s.", commandContext)
 	return nil, false
 }
 
-func runCapture(dir string, env []string, name string, args ...string) (string, error) {
-	return run.Capture(context.Background(), dir, env, name, args...)
+func (a *app) runCapture(dir string, env []string, name string, args ...string) (string, error) {
+	return run.Capture(a.ctx, a.runner, dir, env, name, args...)
 }
 
-func runStdout(dir string, env []string, name string, args ...string) (string, error) {
-	return run.Stdout(context.Background(), dir, env, name, args...)
+func (a *app) runStdout(dir string, env []string, name string, args ...string) (string, error) {
+	return run.Stdout(a.ctx, a.runner, dir, env, name, args...)
 }
 
 func findGitRepositories(root string) ([]repo, error) {
@@ -92,6 +92,14 @@ func findGitRepositories(root string) ([]repo, error) {
 		result = append(result, repo{gitDir: r.GitDir, dir: r.Dir, display: r.Display})
 	}
 	return result, nil
+}
+
+func resolveRepositoryTargets(repoName string) ([]repo, error) {
+	root := "."
+	if repoName != "" {
+		root = repoName
+	}
+	return findGitRepositories(root)
 }
 
 func repoDirFromGitDir(gitDir string) string {
@@ -108,42 +116,44 @@ func noRepos(a *app) int {
 }
 
 func confirm(a *app, question string) bool {
-	var input io.Reader = a.stdin
-	var output io.Writer = a.stdout
-
-	if a.stdin == os.Stdin && a.stdout == os.Stdout {
-		if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
-			defer tty.Close()
-			input = tty
-			output = tty
-		}
-	}
-
-	fmt.Fprintf(output, "%s [y/N] ", question)
-	reader := bufio.NewReader(input)
+	fmt.Fprintf(a.stderr, "%s [y/N] ", question)
+	reader := bufio.NewReader(a.stdin)
 	answer, _ := reader.ReadString('\n')
 	answer = strings.TrimRight(answer, "\r\n")
 	return answer == "y" || answer == "Y"
 }
 
 func promptRead(a *app, prompt string) (string, error) {
-	var input io.Reader = a.stdin
-	var output io.Writer = a.stdout
-
-	if a.stdin == os.Stdin && a.stdout == os.Stdout {
-		if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
-			defer tty.Close()
-			fmt.Fprint(tty, prompt)
-			reader := bufio.NewReader(tty)
-			answer, err := reader.ReadString('\n')
-			return strings.TrimRight(answer, "\r\n"), err
-		}
-	}
-
-	fmt.Fprint(output, prompt)
-	reader := bufio.NewReader(input)
+	fmt.Fprint(a.stderr, prompt)
+	reader := bufio.NewReader(a.stdin)
 	answer, err := reader.ReadString('\n')
 	return strings.TrimRight(answer, "\r\n"), err
+}
+
+func interactive(a *app) bool {
+	return ui.IsTerminal(a.stdin)
+}
+
+func yesFlag(cmd *cobra.Command) bool {
+	yes, _ := cmd.Flags().GetBool("yes")
+	return yes
+}
+
+func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string, bool) {
+	value, _ := cmd.Flags().GetString(name)
+	if value != "" {
+		return value, true
+	}
+	if yesFlag(cmd) || !interactive(a) {
+		a.plainErrorf("--%s is required.", name)
+		return "", false
+	}
+	answer, err := promptRead(a, prompt)
+	if err != nil || answer == "" {
+		a.plainErrorf("--%s is required.", name)
+		return "", false
+	}
+	return answer, true
 }
 
 func fileExists(path string) bool {
@@ -212,21 +222,10 @@ func sortedUnique(lines []string) []string {
 	return out
 }
 
-func originURL(dir string) string {
-	out, err := runStdout(dir, nil, "git", "remote", "get-url", "origin")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(out)
+func originURL(a *app, dir string) string {
+	return a.git.RemoteURL(a.ctx, dir, "origin")
 }
 
-func restoreOrigin(dir, remoteURL string) error {
-	if remoteURL == "" {
-		return nil
-	}
-	if _, err := runCapture(dir, nil, "git", "remote", "get-url", "origin"); err == nil {
-		return nil
-	}
-	_, err := runCapture(dir, nil, "git", "remote", "add", "origin", remoteURL)
-	return err
+func restoreOrigin(a *app, dir, remoteURL string) error {
+	return a.git.RestoreRemote(a.ctx, dir, "origin", remoteURL)
 }

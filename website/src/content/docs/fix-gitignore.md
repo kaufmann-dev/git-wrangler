@@ -3,7 +3,7 @@ title: "fix-gitignore"
 description: "Audits and fixes .gitignore files by adding missing entries."
 category: "Local Operations"
 order: 5
-usage: "git-wrangler fix-gitignore [--confirm]"
+usage: "git-wrangler fix-gitignore [--yes]"
 ---
 
 # fix-gitignore
@@ -13,10 +13,10 @@ Audits and fixes `.gitignore` files by adding missing entries.
 ## Usage
 
 ```bash
-git-wrangler fix-gitignore [--confirm]
+git-wrangler fix-gitignore [--yes]
 ```
 
-The command previews additions before modifying each repository. Use `--confirm` to skip the prompt for noninteractive runs.
+The command previews additions before modifying each repository. Use `--yes` to skip the prompt for noninteractive runs.
 
 ## What it does
 
@@ -52,12 +52,12 @@ my-api:
 ## Example
 
 ```bash
-git-wrangler fix-gitignore --confirm
+git-wrangler fix-gitignore --yes
 ```
 
 ## Notes
 
 - Only adds entries — never removes existing rules
 - Only adds a pattern if that file/directory **physically exists on disk**
-- Prompts before changing `.gitignore` and creating the commit unless `--confirm` is supplied
+- Prompts before changing `.gitignore` and creating the commit unless `--yes` is supplied
 - Does not untrack already-tracked files (use [`git-wrangler untrack`](/docs/untrack) for that)

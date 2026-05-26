@@ -17,7 +17,7 @@ import (
 func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	startDate, _ := cmd.Flags().GetString("start-date")
 	endDate, _ := cmd.Flags().GetString("end-date")
-	confirmed, _ := cmd.Flags().GetBool("confirm")
+	yes := yesFlag(cmd)
 	if startDate != "" && !validDate(startDate) {
 		a.error("--start-date must be in YYYY-MM-DD format.")
 		return 1
@@ -33,7 +33,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -43,12 +43,12 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "HEAD"); err != nil {
+		if !a.git.HasHead(a.ctx, r.dir) {
 			fmt.Fprintf(a.stdout, "%s%s has no commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%sProcessing %s...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-		countOut, err := runStdout(r.dir, nil, "git", "rev-list", "--all", "--count")
+		countOut, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count")
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not count commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -69,7 +69,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		if startDate != "" {
 			startEpoch = parseLocalDate(startDate)
 		} else {
-			startEpoch, err = firstCommitEpoch(r.dir, "--reverse")
+			startEpoch, err = firstCommitEpoch(a, r.dir, "--reverse")
 			if err != nil {
 				fmt.Fprintf(a.stderr, "%sError: could not read start timestamp for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
@@ -79,7 +79,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		if endDate != "" {
 			endEpoch = parseLocalDate(endDate)
 		} else {
-			endEpoch, err = firstCommitEpoch(r.dir)
+			endEpoch, err = firstCommitEpoch(a, r.dir)
 			if err != nil {
 				fmt.Fprintf(a.stderr, "%sError: could not read end timestamp for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
@@ -91,14 +91,14 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		remoteURL := originURL(r.dir)
-		tzOffset, err := dominantTimezoneOffset(r.dir)
+		remoteURL := originURL(a, r.dir)
+		tzOffset, err := dominantTimezoneOffset(a, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: could not read time zones for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
-		commits, err := readCommitTimes(r.dir)
+		commits, err := readCommitTimes(a, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: could not read commit timestamps for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -111,7 +111,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(c.hash, 8), formatEpoch(c.epoch, tzOffset), formatEpoch(mapping[c.hash], tzOffset))
 		}
 		fmt.Fprintf(a.stderr, "%s\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n\n", a.ui.Red, a.ui.Reset)
-		if !confirmed && !confirm(a, "Proceed with rewrite for "+r.display+"?") {
+		if !yes && !confirm(a, "Proceed with rewrite for "+r.display+"?") {
 			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
@@ -121,11 +121,11 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		out, err := runFilterRepo(r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
+		out, err := runFilterRepo(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
 		_ = os.Remove(callback)
 		if err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully rewrote commit dates for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if err := restoreOrigin(r.dir, remoteURL); err != nil {
+			if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
 				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
 			}
@@ -152,13 +152,13 @@ type commitTime struct {
 	epoch int64
 }
 
-func firstCommitEpoch(dir string, flags ...string) (int64, error) {
+func firstCommitEpoch(a *app, dir string, flags ...string) (int64, error) {
 	args := append([]string{"log", "--all"}, flags...)
 	args = append(args, "--format=%at")
 	if !stringSliceContains(flags, "--reverse") {
 		args = append(args, "-1")
 	}
-	out, err := runStdout(dir, nil, "git", args...)
+	out, err := a.git.Stdout(a.ctx, dir, nil, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -182,8 +182,8 @@ func stringSliceContains(values []string, needle string) bool {
 	return false
 }
 
-func readCommitTimes(dir string) ([]commitTime, error) {
-	out, err := runStdout(dir, nil, "git", "log", "--all", "--reverse", "--format=%H %at")
+func readCommitTimes(a *app, dir string) ([]commitTime, error) {
+	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--all", "--reverse", "--format=%H %at")
 	if err != nil {
 		return nil, err
 	}
@@ -202,8 +202,8 @@ func readCommitTimes(dir string) ([]commitTime, error) {
 	return commits, nil
 }
 
-func dominantTimezoneOffset(dir string) (string, error) {
-	out, err := runStdout(dir, nil, "git", "log", "--all", "--format=%ai")
+func dominantTimezoneOffset(a *app, dir string) (string, error) {
+	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--all", "--format=%ai")
 	if err != nil {
 		return "", err
 	}
