@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# Git Wrangler — Installer
+# Git Wrangler Installer
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash
@@ -11,7 +11,49 @@ set -euo pipefail
 INSTALL_DIR="$HOME/.git-wrangler"
 REPO_URL="https://github.com/kaufmann-dev/git-wrangler.git"
 
-fatal() { printf "\e[31m✖ %s\e[0m\n" "$1" >&2; exit 1; }
+color_enabled() {
+    if [ -n "${NO_COLOR:-}" ] || [ "${CLICOLOR:-}" = "0" ] || [ "${TERM:-}" = "dumb" ]; then
+        return 1
+    fi
+    if [ -n "${CLICOLOR_FORCE:-}" ] && [ "${CLICOLOR_FORCE:-}" != "0" ]; then
+        return 0
+    fi
+    [ -t 1 ]
+}
+
+unicode_enabled() {
+    [ "${TERM:-}" != "dumb" ] && [ -t 1 ]
+}
+
+if color_enabled; then
+    GW_RED=$'\e[31m'
+    GW_GREEN=$'\e[32m'
+    GW_YELLOW=$'\e[33m'
+    GW_CYAN=$'\e[36m'
+    GW_BOLD=$'\e[1m'
+    GW_RESET=$'\e[0m'
+else
+    GW_RED=""
+    GW_GREEN=""
+    GW_YELLOW=""
+    GW_CYAN=""
+    GW_BOLD=""
+    GW_RESET=""
+fi
+
+if unicode_enabled; then
+    GW_OK_SYMBOL="✔"
+    GW_WARN_SYMBOL="⚠"
+    GW_ERROR_SYMBOL="✖"
+    GW_STEP_SYMBOL="▸"
+else
+    GW_OK_SYMBOL="OK"
+    GW_WARN_SYMBOL="WARN"
+    GW_ERROR_SYMBOL="ERROR"
+    GW_STEP_SYMBOL=">"
+fi
+
+fatal() { printf "%s%s%s %s\n" "$GW_RED" "$GW_ERROR_SYMBOL" "$GW_RESET" "$1" >&2; exit 1; }
 
 # Prefer ~/.local/bin (XDG-ish, no sudo), fall back to /usr/local/bin on macOS.
 resolve_bin_dir() {
@@ -26,7 +68,7 @@ resolve_bin_dir() {
 }
 
 main() {
-    printf "\n\e[1mGit Wrangler — Installer\e[0m\n\n"
+    printf "\n${GW_BOLD}Git Wrangler Installer${GW_RESET}\n\n"
 
     # ── Prerequisites ────────────────────────────────────────────────────
 
@@ -37,9 +79,9 @@ main() {
     # ── Already installed? ───────────────────────────────────────────────
 
     if [ -d "$INSTALL_DIR/.git" ]; then
-        printf "\e[32m✔ Git Wrangler is already installed at %s\e[0m\n\n" "$INSTALL_DIR"
-        printf "  To update, run:    \e[1mgit-wrangler update\e[0m\n"
-        printf "  To uninstall, run: \e[1mgit-wrangler uninstall\e[0m\n\n"
+        printf "${GW_GREEN}${GW_OK_SYMBOL} Git Wrangler is already installed at %s${GW_RESET}\n\n" "$INSTALL_DIR"
+        printf "  To update, run:    ${GW_BOLD}git-wrangler update${GW_RESET}\n"
+        printf "  To uninstall, run: ${GW_BOLD}git-wrangler uninstall${GW_RESET}\n\n"
         exit 0
     elif [ -d "$INSTALL_DIR" ]; then
         fatal "$INSTALL_DIR already exists but is not a git repository. Remove it manually and re-run."
@@ -47,11 +89,11 @@ main() {
 
     # ── Clone ────────────────────────────────────────────────────────────
 
-    printf "\e[1m\e[36m▸\e[0m Cloning repository…\n"
+    printf "${GW_BOLD}${GW_CYAN}${GW_STEP_SYMBOL}${GW_RESET} Cloning repository...\n"
     if clone_output=$(git clone --depth 1 --branch main "$REPO_URL" "$INSTALL_DIR" 2>&1); then
-        printf "\e[32m✔ Cloned successfully\e[0m\n"
+        printf "${GW_GREEN}${GW_OK_SYMBOL} Cloned successfully${GW_RESET}\n"
     else
-        printf "\e[31m✖ Failed to clone repository:\n%s\e[0m\n" "$clone_output" >&2
+        printf "${GW_RED}${GW_ERROR_SYMBOL} Failed to clone repository:\n%s${GW_RESET}\n" "$clone_output" >&2
         exit 1
     fi
 
@@ -66,7 +108,7 @@ main() {
     bin_dir="$(resolve_bin_dir)"
 
     if [ ! -d "$bin_dir" ]; then
-        printf "\e[1m\e[36m▸\e[0m Creating %s\n" "$bin_dir"
+        printf "${GW_BOLD}${GW_CYAN}${GW_STEP_SYMBOL}${GW_RESET} Creating %s\n" "$bin_dir"
         mkdir -p "$bin_dir"
     fi
 
@@ -80,30 +122,30 @@ main() {
         ln -s "$INSTALL_DIR/git-wrangler" "$link_target"
     fi
 
-    printf "\e[32m✔ Symlinked to %s\e[0m\n" "$link_target"
+    printf "${GW_GREEN}${GW_OK_SYMBOL} Symlinked to %s${GW_RESET}\n" "$link_target"
 
     # ── Dependency summary ───────────────────────────────────────────────
 
     if [ -f "$INSTALL_DIR/libexec/git-wrangler-doctor" ]; then
         bash "$INSTALL_DIR/libexec/git-wrangler-doctor" --summary || true
-        printf "\n  Run \e[1mgit-wrangler doctor\e[0m for install instructions and update checks.\n"
+        printf "\n  Run ${GW_BOLD}git-wrangler doctor${GW_RESET} for install instructions and update checks.\n"
     fi
 
     # ── Done ─────────────────────────────────────────────────────────────
 
-    printf "\n\e[32m✔ Git Wrangler installed successfully!\e[0m\n\n"
+    printf "\n${GW_GREEN}${GW_OK_SYMBOL} Git Wrangler installed successfully!${GW_RESET}\n\n"
 
     case ":$PATH:" in
         *":$bin_dir:"*) ;;
         *)
-            printf "\e[33m⚠ %s is not in your \$PATH.\e[0m\n\n" "$bin_dir"
+            printf "${GW_YELLOW}${GW_WARN_SYMBOL} %s is not in your \$PATH.${GW_RESET}\n\n" "$bin_dir"
             printf "  Add it to your shell profile:\n\n"
             printf "    export PATH=\"%s:\$PATH\"\n\n" "$bin_dir"
             printf "  Then restart your terminal.\n\n"
             ;;
     esac
 
-    printf "  Run \e[1mgit-wrangler help\e[0m to get started.\n\n"
+    printf "  Run ${GW_BOLD}git-wrangler help${GW_RESET} to get started.\n\n"
 }
 
 main "$@"

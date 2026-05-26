@@ -57,6 +57,17 @@ git-wrangler help
 
 You should see the help menu listing all available commands.
 
+## Terminal output
+
+Git Wrangler uses colored status output in interactive terminals and plain output when stdout is piped or the terminal does not support styling.
+
+Presentation controls:
+
+- `NO_COLOR=1` disables color and styling.
+- `CLICOLOR=0` disables color and styling.
+- `CLICOLOR_FORCE=1` forces color unless `NO_COLOR`, `CLICOLOR=0`, or `TERM=dumb` is set.
+- `TERM=dumb` disables color and Unicode symbols.
+
 ## Updating
 
 Keep Git Wrangler up to date by running:

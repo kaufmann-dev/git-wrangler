@@ -10,19 +10,22 @@ while [ -h "$SOURCE" ]; do
 done
 DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
+# shellcheck source=libexec/git-wrangler-ui
+source "$DIR/libexec/git-wrangler-ui"
+
 subcommand="${1:-help}"
 
 # Validate subcommand contains no path separators
 if [[ "$subcommand" == */* || "$subcommand" == *\\* ]]; then
-    printf "\e[31mError: Invalid subcommand '%s'. Subcommand must not contain path separators.\e[0m\n" "$subcommand" >&2
+    gw_error "Invalid subcommand '$subcommand'. Subcommand must not contain path separators."
     exit 1
 fi
 
 target="$DIR/libexec/git-wrangler-$subcommand"
 
-if [ -f "$target" ]; then
+if [ -f "$target" ] && awk '/^# Category:/{found=1} END{exit found ? 0 : 1}' "$target"; then
     exec bash "$target" "${@:2}"
 else
-    printf "\e[31mError: Unknown subcommand '%s'. Run 'git-wrangler help' for a list of available commands.\e[0m\n" "$subcommand" >&2
+    gw_error "Unknown subcommand '$subcommand'. Run 'git-wrangler help' for a list of available commands."
     exit 1
 fi
