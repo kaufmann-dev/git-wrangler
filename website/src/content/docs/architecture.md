@@ -49,7 +49,7 @@ The release workflow uses the latest GoReleaser v2 release.
 Homebrew is the primary distribution path:
 
 ```bash
-brew install --cask kaufmann-dev/tap/git-wrangler
+brew install kaufmann-dev/tap/git-wrangler
 ```
 
 GitHub Release binaries are the secondary distribution path.
