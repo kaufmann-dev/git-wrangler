@@ -24,8 +24,14 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
-		unpushed, _ := runStdout(r.dir, nil, "git", "rev-list", "HEAD", "--not", "--remotes")
+		unpushed, err := runStdout(r.dir, nil, "git", "rev-list", "HEAD", "--not", "--remotes")
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not list unpushed commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
 		commits := splitLines(unpushed)
 		if len(commits) == 0 {
 			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
@@ -35,9 +41,14 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		base, err := runStdout(r.dir, nil, "git", "rev-parse", "--verify", oldest+"^")
 		base = strings.TrimSpace(base)
 		if err != nil || base == "" {
-			base = strings.TrimSpace(mustStdout(r.dir, "git", "hash-object", "-t", "tree", "/dev/null"))
+			base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 		}
-		diff, _ := runStdout(r.dir, nil, "git", "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
+		diff, err := runStdout(r.dir, nil, "git", "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not inspect unpushed diff for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
 		added, modified, deleted := parseNameStatusZ(diff)
 		if len(added) == 0 && len(modified) == 0 && len(deleted) == 0 {
 			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
@@ -59,7 +70,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		}
 		fmt.Fprintln(a.stdout)
 	}
-	return 0
+	return status
 }
 
 func parseNameStatusZ(data string) (added, modified, deleted []string) {

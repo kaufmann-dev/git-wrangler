@@ -31,22 +31,46 @@ if ! go vet ./...; then
     status=1
 fi
 
+if command -v govulncheck >/dev/null 2>&1; then
+    step "govulncheck"
+    if ! govulncheck ./...; then
+        status=1
+    fi
+else
+    printf "skip govulncheck: govulncheck is not installed\n"
+fi
+
 if command -v goreleaser >/dev/null 2>&1; then
     step "goreleaser check"
-    if ! goreleaser check; then
+    goreleaser_version="$(goreleaser --version | awk '/GitVersion:/ {print $2; exit}' | sed 's/^v//')"
+    goreleaser_major="${goreleaser_version%%.*}"
+    goreleaser_minor_patch="${goreleaser_version#*.}"
+    goreleaser_minor="${goreleaser_minor_patch%%.*}"
+    if [ "${goreleaser_major:-0}" -lt 2 ] || { [ "${goreleaser_major:-0}" -eq 2 ] && [ "${goreleaser_minor:-0}" -lt 10 ]; }; then
+        printf "goreleaser v2.10 or newer is required for homebrew_casks\n"
+        status=1
+    elif ! goreleaser check; then
         status=1
     fi
 else
     printf "skip goreleaser check: goreleaser is not installed\n"
 fi
 
-if [ -x website/node_modules/.bin/astro ]; then
+if [ -d website/node_modules ] && command -v pnpm >/dev/null 2>&1; then
+    step "website check"
+    if ! (cd website && pnpm run check); then
+        status=1
+    fi
     step "website build"
-    if ! (cd website && ./node_modules/.bin/astro build); then
+    if ! (cd website && pnpm run build); then
+        status=1
+    fi
+    step "website audit"
+    if ! (cd website && pnpm audit --audit-level moderate); then
         status=1
     fi
 else
-    printf "skip website build: website dependencies not installed\n"
+    printf "skip website checks: pnpm or website dependencies not installed\n"
 fi
 
 exit "$status"

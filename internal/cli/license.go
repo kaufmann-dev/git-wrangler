@@ -31,20 +31,25 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		path := filepath.Join(r.dir, "LICENSE")
 		if fileExists(path) && !overwrite {
 			fmt.Fprintf(a.stdout, "%sLICENSE file already exists in repository: %s (use --overwrite to replace it)%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		_ = os.WriteFile(path, []byte(mitLicense(holder)), 0o644)
+		if err := os.WriteFile(path, []byte(mitLicense(holder)), 0o644); err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not write LICENSE for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
 		if overwrite && fileExists(path) {
 			fmt.Fprintf(a.stdout, "%sLICENSE file overwritten in repository: %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stdout, "%sLICENSE file created in repository: %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 		}
 	}
-	return 0
+	return status
 }
 
 func mitLicense(holder string) string {

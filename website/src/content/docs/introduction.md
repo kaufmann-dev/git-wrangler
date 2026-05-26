@@ -19,7 +19,9 @@ Git Wrangler provides a Git-like command surface:
 git-wrangler <command> [flags]
 ```
 
-Commands discover `.git` repositories from the filesystem, process them in deterministic order, and print a compact status-oriented summary.
+Commands discover regular `.git` directories and linked worktree `.git` files from the filesystem, process repositories in deterministic order, and print a compact status-oriented summary.
+
+Bulk commands keep going after a per-repository failure, then exit nonzero if any repository operation failed. Repositories skipped because there was nothing to do still count as successful no-ops.
 
 ## Why it exists
 

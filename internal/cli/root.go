@@ -105,7 +105,9 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "commit", "Stage all changes and create a commit in every repository.", "local", runCommit, flags{
 			stringFlag("message", "", "Commit message."),
 		}),
-		command(a, "fix-gitignore", "Add missing common generated-file patterns to .gitignore.", "local", runFixGitignore, nil),
+		command(a, "fix-gitignore", "Add missing common generated-file patterns to .gitignore.", "local", runFixGitignore, flags{
+			boolFlag("confirm", "Apply and commit .gitignore updates."),
+		}),
 		command(a, "license", "Add or replace MIT LICENSE files.", "local", runLicense, flags{
 			stringFlag("repo", "", "Repository directory to target."),
 			stringFlag("name", "", "Copyright holder name."),
@@ -119,7 +121,9 @@ func newRootCommand(a *app) *cobra.Command {
 			boolFlag("confirm", "Skip interactive reset confirmation."),
 		}),
 		command(a, "review", "Review unpushed changes across repositories.", "local", runReview, nil),
-		command(a, "untrack", "Stop tracking files already covered by .gitignore.", "local", runUntrack, nil),
+		command(a, "untrack", "Stop tracking files already covered by .gitignore.", "local", runUntrack, flags{
+			boolFlag("confirm", "Stop tracking ignored files and commit the result."),
+		}),
 		command(a, "remove-secrets", "Purge sensitive files from Git history.", "history", runRemoveSecrets, flags{
 			boolFlag("confirm", "Allow history rewriting."),
 		}),
@@ -128,8 +132,11 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("email", "", "New author and committer email."),
 			stringFlag("repo", "", "Repository directory to target."),
 			boolFlag("force", "Pass --force to git-filter-repo."),
+			boolFlag("confirm", "Allow history rewriting."),
 		}),
-		command(a, "rewrite-commits", "Rewrite commit messages to Conventional Commits.", "history", runRewriteCommits, nil),
+		command(a, "rewrite-commits", "Rewrite commit messages to Conventional Commits.", "history", runRewriteCommits, flags{
+			boolFlag("confirm", "Allow history rewriting."),
+		}),
 		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommitsAI, flags{
 			stringFlag("base-url", "", "OpenAI-compatible API base URL."),
 			stringFlag("model", "", "Model name."),
@@ -159,6 +166,7 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 		Use:     use,
 		Short:   short,
 		GroupID: group,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if code := runFn(a, cmd, args); code != 0 {
 				return exitError{code: code}
@@ -181,6 +189,7 @@ func versionCommand(a *app) *cobra.Command {
 		Use:     "version",
 		Short:   "Print version metadata.",
 		GroupID: "utility",
+		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(a.stdout, version.Full())
 		},

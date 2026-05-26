@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -89,5 +91,28 @@ func TestCategorizeCommit(t *testing.T) {
 				t.Errorf("categorizeCommit(%q) = %q, expected %q", tc.diff, actual, tc.expected)
 			}
 		})
+	}
+}
+
+func TestWriteCommitCallbackUsesBytesLiterals(t *testing.T) {
+	path, err := writeCommitCallback(map[string]string{
+		"abc123": "feat: add café 😀 \"quotes\" \\ slash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Contains(text, "😀") || strings.Contains(text, "café") {
+		t.Fatalf("callback contains raw non-ASCII:\n%s", text)
+	}
+	for _, want := range []string{`\xc3\xa9`, `\xf0\x9f\x98\x80`, `"quotes"`, `\\ slash`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("callback missing %q:\n%s", want, text)
+		}
 	}
 }
