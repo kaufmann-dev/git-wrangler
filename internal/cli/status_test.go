@@ -1,0 +1,152 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/run"
+)
+
+func TestStatusRow(t *testing.T) {
+	tests := []struct {
+		name             string
+		gitOutput        string
+		expectedState    string // clean or dirty
+		expectedTracking string // up to date, no remote, ahead/behind etc.
+		expectedDirty    int
+		expectedBehind   int
+		expectedNoRemote int
+	}{
+		{
+			name: "clean up to date",
+			gitOutput: `# branch.oid 92d6e326bd6426466f28b49e1e98d9e7a83efee5
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +0 -0
+`,
+			expectedState:    "clean",
+			expectedTracking: "up to date",
+			expectedDirty:    0,
+			expectedBehind:   0,
+			expectedNoRemote: 0,
+		},
+		{
+			name: "clean no remote",
+			gitOutput: `# branch.oid 92d6e326bd6426466f28b49e1e98d9e7a83efee5
+# branch.head main
+`,
+			expectedState:    "clean",
+			expectedTracking: "no remote",
+			expectedDirty:    0,
+			expectedBehind:   0,
+			expectedNoRemote: 1,
+		},
+		{
+			name: "dirty up to date",
+			gitOutput: `# branch.oid 92d6e326bd6426466f28b49e1e98d9e7a83efee5
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +0 -0
+1 .M N... 100644 100644 100644 92d6e326bd6426466f28b49e1e98d9e7a83efee5 92d6e326bd6426466f28b49e1e98d9e7a83efee5 main.go
+`,
+			expectedState:    "dirty",
+			expectedTracking: "up to date",
+			expectedDirty:    1,
+			expectedBehind:   0,
+			expectedNoRemote: 0,
+		},
+		{
+			name: "clean ahead and behind",
+			gitOutput: `# branch.oid 92d6e326bd6426466f28b49e1e98d9e7a83efee5
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +2 -3
+`,
+			expectedState:    "clean",
+			expectedTracking: "ahead 2, behind 3",
+			expectedDirty:    0,
+			expectedBehind:   1,
+			expectedNoRemote: 0,
+		},
+		{
+			name: "clean ahead only",
+			gitOutput: `# branch.oid 92d6e326bd6426466f28b49e1e98d9e7a83efee5
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +2 -0
+`,
+			expectedState:    "clean",
+			expectedTracking: "ahead 2",
+			expectedDirty:    0,
+			expectedBehind:   0,
+			expectedNoRemote: 0,
+		},
+		{
+			name: "clean behind only",
+			gitOutput: `# branch.oid 92d6e326bd6426466f28b49e1e98d9e7a83efee5
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +0 -3
+`,
+			expectedState:    "clean",
+			expectedTracking: "behind 3",
+			expectedDirty:    0,
+			expectedBehind:   1,
+			expectedNoRemote: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			restore := run.SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+				if name == "git" && len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain=v2" {
+					return tc.gitOutput, "", nil
+				}
+				return "", "", nil
+			})
+			defer restore()
+
+			var stdoutBuf bytes.Buffer
+			a := newApp(strings.NewReader(""), &stdoutBuf, &stdoutBuf)
+			r := repo{dir: "dummy-dir", display: "dummy-repo"}
+
+			row, err := statusRow(a, r)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Strip color codes before checking state/tracking
+			stateCleaned := stripColor(row.state)
+			trackingCleaned := stripColor(row.tracking)
+
+			if stateCleaned != tc.expectedState {
+				t.Errorf("state: got %q, expected %q", stateCleaned, tc.expectedState)
+			}
+			if trackingCleaned != tc.expectedTracking {
+				t.Errorf("tracking: got %q, expected %q", trackingCleaned, tc.expectedTracking)
+			}
+			if row.dirty != tc.expectedDirty {
+				t.Errorf("dirty: got %d, expected %d", row.dirty, tc.expectedDirty)
+			}
+			if row.behind != tc.expectedBehind {
+				t.Errorf("behind: got %d, expected %d", row.behind, tc.expectedBehind)
+			}
+			if row.noRemote != tc.expectedNoRemote {
+				t.Errorf("noRemote: got %d, expected %d", row.noRemote, tc.expectedNoRemote)
+			}
+		})
+	}
+}
+
+// Simple color stripping utility for test assertions
+func stripColor(s string) string {
+	s = strings.ReplaceAll(s, "\x1b[32m", "") // green
+	s = strings.ReplaceAll(s, "\x1b[33m", "") // yellow
+	s = strings.ReplaceAll(s, "\x1b[31m", "") // red
+	s = strings.ReplaceAll(s, "\x1b[36m", "") // cyan
+	s = strings.ReplaceAll(s, "\x1b[90m", "") // gray/muted
+	s = strings.ReplaceAll(s, "\x1b[0m", "")  // reset
+	return s
+}
