@@ -21,6 +21,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 # Candidate entries to audit and add to .gitignore if needed
@@ -48,14 +50,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for fix-gitignore. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "fix-gitignore"
 
 # Find target repositories
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."
@@ -89,13 +87,8 @@ find_existing_match() {
 while IFS= read -r git_dir; do
     (
         # Get repository path and display name
-        repo_path=$(dirname "$git_dir")
-
-        if [ "$repo_path" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_path")
-        fi
+        repo_path=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name_display=$(gw_repo_display_name "$repo_path")
 
         cd "$repo_path" || exit
 

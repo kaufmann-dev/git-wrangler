@@ -38,4 +38,4 @@ git-wrangler rename-branch --oldbranch master --newbranch main
 
 - Repositories where the old branch doesn't exist are skipped with a yellow warning
 - Repositories where the new branch name already exists are also skipped
-- This only renames the **local** branch — you'll need `git-wrangler push --force` to update the remote
+- This only renames the **local** branch. Use `git-wrangler push --force` for a lease-safe remote update, or `git-wrangler push --force-unsafe` only when a raw force push is intentional.

@@ -21,6 +21,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 repo=""
@@ -29,6 +31,7 @@ repo=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
+            gw_require_option_value "$1" "$#" "${2-}"
             repo="$2"
             shift 2
             ;;
@@ -39,17 +42,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for info. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "info"
 
 # Find target repositories
 if [ -n "$repo" ]; then
-    git_repositories=$(find "$repo" -maxdepth 2 -type d -name '.git')
+    git_repositories=$(gw_find_git_repositories "$repo")
 else
-    git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+    git_repositories=$(gw_find_git_repositories)
 fi
 
 if [ -z "$git_repositories" ]; then
@@ -60,14 +59,11 @@ fi
 # Iterate through each repository
 while IFS= read -r git_dir; do
     (
-        repo_name=$(dirname "$git_dir")
+        repo_name=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name_display=$(gw_repo_display_name "$repo_name")
         cd "$repo_name" || exit
 
-        if [ "$repo_name" = "." ]; then
-            printf "Repository:         ${GW_REPO_COLOR}%s${GW_RESET}\n" "${PWD##*/}"
-        else
-            printf "Repository:         ${GW_REPO_COLOR}%s${GW_RESET}\n" "$(basename "$repo_name")"
-        fi
+        printf "Repository:         ${GW_REPO_COLOR}%s${GW_RESET}\n" "$repo_name_display"
 
         status=$(git status --porcelain 2>/dev/null)
         if [ -z "$status" ]; then
@@ -101,22 +97,22 @@ while IFS= read -r git_dir; do
 
         ahead_behind=$(git rev-list --left-right --count HEAD..."@{u}" 2>/dev/null)
         if [ -n "$ahead_behind" ]; then
-            ahead=$(echo "$ahead_behind" | awk '{print $1}')
-            behind=$(echo "$ahead_behind" | awk '{print $2}')
+            set -- $ahead_behind
+            ahead="$1"
+            behind="$2"
             printf "Ahead/behind:       %s ahead, %s behind remote\n" "$ahead" "$behind"
         else
             printf "Ahead/behind:       No upstream set\n"
         fi
 
-        branch_count=$(git branch -a | grep -v 'remotes' | wc -l | tr -d '[:space:]')
+        branches=$(git branch -a --no-color | awk '!/remotes/{sub(/^\* /, ""); sub(/^[[:space:]]*/, ""); print}')
+        branch_count=$(printf "%s\n" "$branches" | awk 'NF{count++} END{print count+0}')
         printf "Branches ($branch_count):       "
-        branches=$(git branch -a | grep -v 'remotes' | sed 's/^\* //;s/^[[:space:]]*//')
-        printf "%s\n" "$(echo "$branches" | head -1)"
-        echo "$branches" | tail -n +2 | sed 's/^/                    /'
+        printf "%s\n" "$branches" | awk 'NR==1{print; next} {printf "%-20s%s\n", "", $0}'
 
         remotes=$(git remote -v | awk '{print $1 " " $2}' | sort -u)
         if [ -n "$remotes" ]; then
-            printf "Remotes:            %s\n" "$(echo "$remotes" | awk 'NR==1{print $2} NR>1{printf "%-20s%s\n", "", $2}')"
+            printf "Remotes:            %s\n" "$(printf "%s\n" "$remotes" | awk 'NR==1{print $2} NR>1{printf "%-20s%s\n", "", $2}')"
         else
             printf "Remotes:            None\n"
         fi

@@ -14,12 +14,12 @@ The Git Wrangler website is designed to be a premium, high-performance documenta
 
 All commands are run from the root of the `website` directory from a terminal:
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build the production site to `./dist/`           |
-| `npm run preview`         | Preview your build locally, before deploying     |
+| Command        | Action                                       |
+| -------------- | -------------------------------------------- |
+| `pnpm install` | Installs dependencies                        |
+| `pnpm dev`     | Starts local dev server at `localhost:4321`  |
+| `pnpm build`   | Build the production site to `./dist/`       |
+| `pnpm preview` | Preview your build locally, before deploying |
 
 ## 📂 Project Structure
 
