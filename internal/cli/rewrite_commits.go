@@ -35,7 +35,6 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		remoteURL := originURL(a, r.dir)
 		mapping, err := buildCommitMessageMapping(a, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
@@ -58,16 +57,19 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		out, err := runFilterRepo(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
 		_ = os.Remove(callback)
 		if err == nil {
 			fmt.Fprintf(a.stdout, "%sRewrote commit messages for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 				status = 1
 			}
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Could not update commit messages for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+			}
 			status = 1
 		}
 	}

@@ -120,17 +120,19 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	hadError := false
 	for _, repoPlan := range plan.Repos {
-		remoteURL := originURL(a, repoPlan.Dir)
-		out, err := runFilterRepo(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 		if err == nil {
-			if err := restoreOrigin(a, repoPlan.Dir, remoteURL); err != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, err.Error(), a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, restoreErr.Error(), a.ui.Reset)
 				hadError = true
 				continue
 			}
 			fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) for %s%s\n", a.ui.Green, repoPlan.ChangedCount, repoPlan.Name, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Could not rewrite commit messages for %s:\n%s%s\n\n", a.ui.Red, repoPlan.Name, out, a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, restoreErr.Error(), a.ui.Reset)
+			}
 			hadError = true
 		}
 	}

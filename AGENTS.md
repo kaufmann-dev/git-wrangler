@@ -6,7 +6,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `cmd/git-wrangler/main.go` must only call `internal/cli.Execute()`.
 
-`internal/cli` owns Cobra command registration, command groups, help, flags, `version`, `completion`, and command wiring. Use `SilenceUsage: true` and `SilenceErrors: true`, and print command errors once to stderr.
+`internal/cli` owns Cobra command registration, command groups, generated help, flags, `version`, `completion`, and command wiring. Use `SilenceUsage: true` and `SilenceErrors: true`, and print command errors once to stderr.
 
 `internal/repos` is filesystem-only repository discovery and display-name handling. It discovers normal `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. It must not call Git, `gh`, or any subprocess.
 
@@ -26,7 +26,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`clone`, `commit`, `fix-gitignore`, `info`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra `completion`.
+`clone`, `commit`, `fix-gitignore`, `info`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew or manual replacement of release binaries.
 
