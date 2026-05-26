@@ -26,7 +26,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`clone`, `commit`, `doctor`, `fix-gitignore`, `info`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra `completion`.
+`clone`, `commit`, `fix-gitignore`, `info`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra `completion`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew or manual replacement of release binaries.
 
@@ -39,8 +39,6 @@ Normal CLI use may depend on:
 - `git-filter-repo` for history rewrite operations
 
 Do not add Python, Node, npm, pnpm, Go, or shell-script runtimes as normal CLI dependencies.
-
-`doctor` should check `git`, `gh`, and `git-filter-repo`, and should tell users to run `gh auth login` for private or all-repository GitHub operations.
 
 ## Release
 
