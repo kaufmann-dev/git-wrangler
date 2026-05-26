@@ -49,26 +49,25 @@ archives:
 checksum:
   name_template: checksums.txt
 
-brews:
+homebrew_casks:
   - name: git-wrangler
     repository:
       owner: kaufmann-dev
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
+    binaries:
+      - git-wrangler
     homepage: https://github.com/kaufmann-dev/git-wrangler
     description: Orchestrate Git operations across many repositories.
-    license: MIT
     dependencies:
-      - name: git
-      - name: gh
-      - name: git-filter-repo
-    test: |
-      system "#{bin}/git-wrangler", "version"
+      - formula: git
+      - formula: gh
+      - formula: git-filter-repo
     caveats: |
       Run `gh auth login` before private or all GitHub repository operations.
       History rewrite commands use git-filter-repo and rewrite Git history.
-    extra_install: |-
-      bash_completion.install "completions/git-wrangler.bash" => "git-wrangler"
-      zsh_completion.install "completions/git-wrangler.zsh" => "_git-wrangler"
-      fish_completion.install "completions/git-wrangler.fish"
+    completions:
+      bash: completions/git-wrangler.bash
+      zsh: completions/git-wrangler.zsh
+      fish: completions/git-wrangler.fish
