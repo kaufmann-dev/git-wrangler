@@ -169,7 +169,7 @@ func collectItems(ctx context.Context, repositories []Repository, charBudget int
 				stats.SkippedFormatted++
 				continue
 			}
-			contextText := BuildContext(ctx, repo.Dir, repo.Name, commitHash, charBudget)
+			contextText := buildContext(ctx, repo.Dir, repo.Name, commitHash, charBudget)
 			if strings.TrimSpace(contextText) == "" {
 				stats.SkippedEmpty++
 				continue
@@ -188,7 +188,7 @@ func collectItems(ctx context.Context, repositories []Repository, charBudget int
 	return items, stats
 }
 
-func BuildContext(ctx context.Context, repoDir, repoName, commitHash string, charBudget int) string {
+func buildContext(ctx context.Context, repoDir, repoName, commitHash string, charBudget int) string {
 	nameStatus, _ := git.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commitHash)
 	numstat, _ := git.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--numstat", "-r", commitHash)
 	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
@@ -457,7 +457,7 @@ func buildPlan(items []item, results map[string]string, stats Stats, workDir str
 	plan := &Plan{}
 	for _, k := range keys {
 		callbackFile := filepath.Join(workDir, fmt.Sprintf("callback-%d.py", k.index))
-		if err := WriteCommitCallback(callbackFile, byRepo[k]); err != nil {
+		if err := writeCommitCallback(callbackFile, byRepo[k]); err != nil {
 			return nil, err
 		}
 		plan.Repos = append(plan.Repos, RepoPlan{Dir: k.dir, Name: k.name, CallbackFile: callbackFile, ChangedCount: len(byRepo[k])})
@@ -493,7 +493,7 @@ func buildPlan(items []item, results map[string]string, stats Stats, workDir str
 	return plan, nil
 }
 
-func WriteCommitCallback(path string, mappings []mapping) error {
+func writeCommitCallback(path string, mappings []mapping) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -577,18 +577,4 @@ func shortHash(hash string, n int) string {
 func mustJSON(v any) string {
 	data, _ := json.Marshal(v)
 	return string(data)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

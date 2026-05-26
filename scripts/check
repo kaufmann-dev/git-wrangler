@@ -11,6 +11,11 @@ step() {
     printf "==> %s\n" "$1"
 }
 
+step "git diff --check"
+if ! git diff --check; then
+    status=1
+fi
+
 step "go test"
 if ! go test ./...; then
     status=1

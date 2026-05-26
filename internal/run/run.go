@@ -47,6 +47,25 @@ func Stdout(ctx context.Context, dir string, env []string, name string, args ...
 	return stdout, nil
 }
 
+type stdinKey struct{}
+
+func WithStdin(ctx context.Context, stdin string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, stdinKey{}, stdin)
+}
+
+func GetStdin(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v := ctx.Value(stdinKey{}); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
 func realCommand(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -57,6 +76,9 @@ func realCommand(ctx context.Context, dir string, env []string, name string, arg
 	}
 	if env != nil {
 		cmd.Env = append(os.Environ(), env...)
+	}
+	if stdin := GetStdin(ctx); stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
