@@ -18,6 +18,11 @@
 #     git-wrangler reset --confirm
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 confirm=false
 
 while [[ $# -gt 0 ]]; do
@@ -27,21 +32,21 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
 done
 
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is required for reset. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git' is required for reset. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
-    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    gw_warn "No Git repositories found in the specified directory."
     exit 0
 fi
 
@@ -60,54 +65,54 @@ while IFS= read -r git_dir; do
         current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 
         if [ "$current_branch" = "HEAD" ]; then
-            printf "\e[33m%s is in detached HEAD state. Skipping...\e[0m\n" "$repo_name_display"
+            printf "${GW_YELLOW}%s is in detached HEAD state. Skipping...${GW_RESET}\n" "$repo_name_display"
             exit 0
         fi
 
         if fetch_output=$(git fetch origin "$current_branch" 2>&1); then
             :
         else
-            printf "\e[31mError: Fetch failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$fetch_output" >&2
+            printf "${GW_RED}Error: Fetch failed for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$fetch_output" >&2
             exit 1
         fi
 
         if ! git rev-parse --verify --quiet "origin/$current_branch" >/dev/null 2>&1; then
-            printf "\e[33mBranch '%s' has no remote counterpart in %s. Skipping...\e[0m\n" "$current_branch" "$repo_name_display"
+            printf "${GW_YELLOW}Branch '%s' has no remote counterpart in %s. Skipping...${GW_RESET}\n" "$current_branch" "$repo_name_display"
             exit 0
         fi
 
         ahead_count=$(git rev-list --count "origin/$current_branch..$current_branch" 2>/dev/null || echo "0")
         behind_count=$(git rev-list --count "$current_branch..origin/$current_branch" 2>/dev/null || echo "0")
 
-        printf "\e[36m--- %s (%s) ---\e[0m\n" "$repo_name_display" "$current_branch"
+        printf "${GW_CYAN}--- %s (%s) ---${GW_RESET}\n" "$repo_name_display" "$current_branch"
 
         if [ "$ahead_count" -eq 0 ] && [ "$behind_count" -eq 0 ]; then
-            printf "\e[33mBranch '%s' is already up to date with origin/%s in %s. Nothing to reset.\e[0m\n" "$current_branch" "$current_branch" "$repo_name_display"
+            printf "${GW_YELLOW}Branch '%s' is already up to date with origin/%s in %s. Nothing to reset.${GW_RESET}\n" "$current_branch" "$current_branch" "$repo_name_display"
             exit 0
         fi
 
-        printf "Divergence: \e[36mahead %s\e[0m, \e[31mbehind %s\e[0m\n" "$ahead_count" "$behind_count" >&2
+        printf "Divergence: ${GW_CYAN}ahead %s${GW_RESET}, ${GW_RED}behind %s${GW_RESET}\n" "$ahead_count" "$behind_count" >&2
 
         dirty_check=$(git status --porcelain 2>/dev/null)
         if [ -n "$dirty_check" ]; then
-            printf "\e[31mWarning: Working tree has uncommitted changes that will be discarded.\e[0m\n" >&2
+            printf "${GW_RED}Warning: Working tree has uncommitted changes that will be discarded.${GW_RESET}\n" >&2
         fi
 
-        printf "\e[31mThis will hard reset %s to origin/%s, discarding %s local commit(s).\e[0m\n" "$current_branch" "$current_branch" "$ahead_count" >&2
+        printf "${GW_RED}This will hard reset %s to origin/%s, discarding %s local commit(s).${GW_RESET}\n" "$current_branch" "$current_branch" "$ahead_count" >&2
 
         if [ "$confirm" != true ]; then
-            printf "Proceed with reset for %s? [y/N] " "$repo_name_display"
+            gw_prompt "Proceed with reset for $repo_name_display?"
             read -r answer < /dev/tty
             if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-                printf "\e[33mSkipping %s.\e[0m\n" "$repo_name_display"
+                printf "${GW_YELLOW}Skipping %s.${GW_RESET}\n" "$repo_name_display"
                 exit 0
             fi
         fi
 
         if reset_output=$(git reset --hard "origin/$current_branch" 2>&1); then
-            printf "\e[32mSuccessfully reset %s to origin/%s\e[0m\n" "$repo_name_display" "$current_branch"
+            printf "${GW_GREEN}Successfully reset %s to origin/%s${GW_RESET}\n" "$repo_name_display" "$current_branch"
         else
-            printf "\e[31mError: Reset failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$reset_output" >&2
+            printf "${GW_RED}Error: Reset failed for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$reset_output" >&2
         fi
     )
 done <<< "$git_repositories"
