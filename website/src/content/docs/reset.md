@@ -22,8 +22,8 @@ Fetches the latest remote state and hard-resets the current branch to `origin/<c
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
+| Flag        | Required | Description                               |
+| ----------- | -------- | ----------------------------------------- |
 | `--confirm` | Optional | Skip the interactive confirmation prompt. |
 
 ## Examples

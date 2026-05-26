@@ -18,12 +18,12 @@ git-wrangler rename-repo [--description]
 
 ## What it does
 
-Iterates through Git repositories found in the current directory and its immediate subdirectories. For each repository, it retrieves the current name from GitHub and prompts for a new name. If `--description` is provided, it also retrieves the current description and prompts for a new one.
+Iterates through Git repositories found under the current directory. For each repository, it retrieves the current name from GitHub and prompts for a new name. If `--description` is provided, it also retrieves the current description and prompts for a new one.
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
+| Flag            | Required | Description                                       |
+| --------------- | -------- | ------------------------------------------------- |
 | `--description` | Optional | Also prompt to update the repository description. |
 
 ## Prerequisites
