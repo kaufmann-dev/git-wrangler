@@ -31,20 +31,28 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 	if strings.Contains(out, "update") || strings.Contains(out, "uninstall") {
 		t.Fatalf("removed commands appeared in help:\n%s", out)
 	}
-	if strings.Contains(out, "\n  doctor") || strings.Contains(out, "\n  help") {
+	if strings.Contains(out, "\n  doctor") {
 		t.Fatalf("removed commands appeared in help:\n%s", out)
 	}
 }
 
-func TestHelpCommandIsRemoved(t *testing.T) {
+func TestHelpCommandUsesCobraGeneratedHelp(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"help"}, strings.NewReader(""), &stdout, &stderr)
-	if err == nil {
-		t.Fatal("expected help command to return an error")
+	if err := ExecuteWithIO([]string{"help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("help returned error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), `unknown command "help"`) {
-		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	if !strings.Contains(stdout.String(), "Help about any command") || !strings.Contains(stdout.String(), "Utility:") {
+		t.Fatalf("root help missing generated help command:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := ExecuteWithIO([]string{"help", "status"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("help status returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Show clean, dirty, and tracking state.") {
+		t.Fatalf("command help missing status text:\n%s", stdout.String())
 	}
 }
 
