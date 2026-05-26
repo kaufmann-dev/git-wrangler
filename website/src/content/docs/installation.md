@@ -27,6 +27,8 @@ Homebrew installs bash, zsh, and fish completions automatically.
 
 Linux and Windows users can download the matching archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
 
+Manual binary installs do not install runtime dependencies. Install the dependencies below yourself as needed for the commands you run.
+
 ## Runtime dependencies
 
 `git` is required for normal repository operations.

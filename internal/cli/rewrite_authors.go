@@ -2,13 +2,13 @@ package cli
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	force, _ := cmd.Flags().GetBool("force")
+	confirmed, _ := cmd.Flags().GetBool("confirm")
 	repoName, _ := cmd.Flags().GetString("repo")
 	newName, _ := cmd.Flags().GetString("name")
 	newEmail, _ := cmd.Flags().GetString("email")
@@ -35,6 +35,10 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	if !confirmed {
+		a.error("Refusing to rewrite history without --confirm.")
+		return 1
+	}
 	filterArgs := []string{"--partial"}
 	if force {
 		filterArgs = append(filterArgs, "--force")
@@ -43,22 +47,22 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 		"--email-callback", `import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")`,
 		"--name-callback", `import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")`,
 	)
+	status := 0
 	for _, r := range repos {
-		remoteURL := strings.TrimSpace(mustStdout(r.dir, "git", "remote", "get-url", "origin"))
+		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
+		remoteURL := originURL(r.dir)
 		out, err := runFilterRepo(r.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
 		if err == nil {
-			if remoteURL != "" {
-				if _, err := runCapture(r.dir, nil, "git", "remote", "get-url", "origin"); err != nil {
-					if restore, err := runCapture(r.dir, nil, "git", "remote", "add", "origin", remoteURL); err != nil {
-						fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restore, a.ui.Reset)
-						return 1
-					}
-				}
+			if err := restoreOrigin(r.dir, remoteURL); err != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
+				continue
 			}
 			fmt.Fprintf(a.stdout, "%sAuthor and committer information updated for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Could not update git author and committer information for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }

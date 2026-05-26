@@ -212,7 +212,21 @@ func sortedUnique(lines []string) []string {
 	return out
 }
 
-func mustStdout(dir, name string, args ...string) string {
-	out, _ := runStdout(dir, nil, name, args...)
-	return out
+func originURL(dir string) string {
+	out, err := runStdout(dir, nil, "git", "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+func restoreOrigin(dir, remoteURL string) error {
+	if remoteURL == "" {
+		return nil
+	}
+	if _, err := runCapture(dir, nil, "git", "remote", "get-url", "origin"); err == nil {
+		return nil
+	}
+	_, err := runCapture(dir, nil, "git", "remote", "add", "origin", remoteURL)
+	return err
 }

@@ -1,6 +1,11 @@
 ---
 // BaseLayout.astro – Root layout with ViewTransitions
 import { ClientRouter } from 'astro:transitions';
+import '@fontsource/geist/400.css';
+import '@fontsource/geist/500.css';
+import '@fontsource/geist/600.css';
+import '@fontsource/geist-mono/400.css';
+import '@fontsource/geist-mono/500.css';
 import '../styles/global.css';
 
 interface Props {
@@ -18,6 +23,9 @@ const {
 const fullTitle = title === 'Git Wrangler'
   ? 'Git Wrangler'
   : `${title} – Git Wrangler`;
+const siteURL = Astro.site ?? new URL('https://git-wrangler.kaufmann.dev');
+const canonicalPath = Astro.url.pathname.replace(/\/{2,}/g, '/');
+const canonicalURL = new URL(canonicalPath, siteURL).href;
 ---
 
 <!DOCTYPE html>
@@ -35,7 +43,7 @@ const fullTitle = title === 'Git Wrangler'
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content="/git-wrangler.png" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="canonical" href={Astro.url.href} />
+    <link rel="canonical" href={canonicalURL} />
     <title>{fullTitle}</title>
     <ClientRouter />
   </head>

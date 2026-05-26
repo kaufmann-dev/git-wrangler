@@ -11,10 +11,7 @@ import (
 )
 
 func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
-	if len(args) > 0 {
-		a.errorf("Unknown option: %s", args[0])
-		return 1
-	}
+	confirmed, _ := cmd.Flags().GetBool("confirm")
 	if !requireGit(a, "fix-gitignore") {
 		return 1
 	}
@@ -27,6 +24,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	candidates := []string{"bin/", "obj/", ".idea/", "vendor/", "node_modules/", "dist/", "build/", "wp-includes/", ".DS_Store", "Thumbs.db", "*.log"}
+	status := 0
 	for _, r := range repos {
 		added := []string{}
 		covered := []string{}
@@ -47,17 +45,37 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 				added = append(added, entry)
 			}
 		}
+		printedRepo := false
 		if len(added) > 0 {
-			appendGitignoreEntries(filepath.Join(r.dir, ".gitignore"), added)
+			fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
+			fmt.Fprintf(a.stdout, "  %sWill add:%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(added, ", "))
+			printedRepo = true
+			fmt.Fprintf(a.stderr, "%sWARNING: This operation will modify .gitignore and create a commit in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
+			if !confirmed && !confirm(a, "Apply and commit .gitignore updates for "+r.display+"?") {
+				fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+				continue
+			}
+			if err := appendGitignoreEntries(filepath.Join(r.dir, ".gitignore"), added); err != nil {
+				fmt.Fprintf(a.stderr, "  %sError: Could not update .gitignore:\n%s%s\n", a.ui.Red, err.Error(), a.ui.Reset)
+				status = 1
+				continue
+			}
 		}
-		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
+		if !printedRepo {
+			fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
+		}
 		if len(added) > 0 {
 			fmt.Fprintf(a.stdout, "  %sAdded:%s %s\n", a.ui.Green, a.ui.Reset, strings.Join(added, ", "))
-			_, _ = runCapture(r.dir, nil, "git", "add", ".gitignore")
+			if out, err := runCapture(r.dir, nil, "git", "add", ".gitignore"); err != nil {
+				fmt.Fprintf(a.stderr, "  %sError: Could not stage .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
+				status = 1
+				continue
+			}
 			if out, err := runCapture(r.dir, nil, "git", "commit", "-m", "Update .gitignore with missing entries"); err == nil {
 				fmt.Fprintf(a.stdout, "  %sCommitted .gitignore updates%s\n", a.ui.Green, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "  %sError: Could not commit .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
+				status = 1
 			}
 		}
 		if len(covered) > 0 {
@@ -70,7 +88,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %sNo changes needed.%s\n", a.ui.Yellow, a.ui.Reset)
 		}
 	}
-	return 0
+	return status
 }
 
 func findExistingMatch(root, entry string) string {
@@ -120,20 +138,29 @@ func fileContainsLine(path, line string) bool {
 	return false
 }
 
-func appendGitignoreEntries(path string, entries []string) {
+func appendGitignoreEntries(path string, entries []string) error {
 	if data, err := os.ReadFile(path); err == nil && len(data) > 0 && data[len(data)-1] != '\n' {
 		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
-		if err == nil {
-			_, _ = f.WriteString("\n")
+		if err != nil {
+			return err
+		}
+		if _, err := f.WriteString("\n"); err != nil {
 			_ = f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
 		}
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return
+		return err
 	}
 	defer f.Close()
 	for _, entry := range entries {
-		fmt.Fprintln(f, entry)
+		if _, err := fmt.Fprintln(f, entry); err != nil {
+			return err
+		}
 	}
+	return nil
 }
