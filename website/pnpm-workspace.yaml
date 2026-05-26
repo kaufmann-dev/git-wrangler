@@ -1,5 +1,0 @@
-packages:
-  - '.'
-
-overrides:
-  yaml: ^2.9.0
