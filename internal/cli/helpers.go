@@ -56,7 +56,7 @@ func requireValue(a *app, option string, args []string) (string, bool) {
 
 func requireCommand(a *app, name, context string) bool {
 	if _, err := run.LookPath(name); err != nil {
-		a.errorf("'%s' is required for %s. Run 'git-wrangler doctor' for more information.", name, context)
+		a.errorf("'%s' is required for %s. Install it and make sure it is on PATH.", name, context)
 		return false
 	}
 	return true
@@ -70,7 +70,7 @@ func filterRepoCommand(a *app, commandContext string) ([]string, bool) {
 	if cmd, ok := git.FilterRepoCommand(context.Background()); ok {
 		return cmd, true
 	}
-	a.errorf("'git-filter-repo' is required for %s. Run 'git-wrangler doctor' for more information.", commandContext)
+	a.errorf("'git-filter-repo' or 'git filter-repo' is required for %s.", commandContext)
 	return nil, false
 }
 
