@@ -9,23 +9,23 @@ order: 2
 
 ## Homebrew
 
-Homebrew is the primary install path:
+Homebrew is the primary install path on macOS and Linux:
 
 ```bash
-brew install --cask kaufmann-dev/tap/git-wrangler
+brew install kaufmann-dev/tap/git-wrangler
 ```
 
 Upgrade with:
 
 ```bash
-brew upgrade --cask git-wrangler
+brew upgrade git-wrangler
 ```
 
 Homebrew installs bash, zsh, and fish completions automatically.
 
 ## GitHub Releases
 
-Linux and Windows users can download the matching archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
+Windows users can either run Git Wrangler inside WSL using the Linux/Homebrew path or download the matching Windows archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
 
 Manual binary installs do not install runtime dependencies. Install the dependencies below yourself as needed for the commands you run.
 
@@ -52,7 +52,7 @@ gh auth login
 If installed with Homebrew:
 
 ```bash
-brew uninstall --cask git-wrangler
+brew uninstall git-wrangler
 ```
 
 If installed manually, remove the binary from wherever you placed it on `PATH`.
