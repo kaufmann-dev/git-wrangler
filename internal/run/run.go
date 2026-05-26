@@ -7,20 +7,33 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 )
 
 type CommandFunc func(ctx context.Context, dir string, env []string, name string, args ...string) (stdout string, stderr string, err error)
 
-var commandFunc CommandFunc = realCommand
+const DefaultTimeout = 5 * time.Minute
+
+var (
+	commandMu   sync.RWMutex
+	commandFunc CommandFunc = realCommand
+)
 
 func SetCommandFunc(fn CommandFunc) func() {
+	commandMu.Lock()
 	previous := commandFunc
 	if fn == nil {
 		commandFunc = realCommand
 	} else {
 		commandFunc = fn
 	}
-	return func() { commandFunc = previous }
+	commandMu.Unlock()
+	return func() {
+		commandMu.Lock()
+		commandFunc = previous
+		commandMu.Unlock()
+	}
 }
 
 func LookPath(name string) (string, error) {
@@ -28,7 +41,8 @@ func LookPath(name string) (string, error) {
 }
 
 func Capture(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
-	stdout, stderr, err := commandFunc(ctx, dir, env, name, args...)
+	fn := currentCommandFunc()
+	stdout, stderr, err := fn(ctx, dir, env, name, args...)
 	output := stdout + stderr
 	if err != nil {
 		return output, err
@@ -37,7 +51,8 @@ func Capture(ctx context.Context, dir string, env []string, name string, args ..
 }
 
 func Stdout(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
-	stdout, stderr, err := commandFunc(ctx, dir, env, name, args...)
+	fn := currentCommandFunc()
+	stdout, stderr, err := fn(ctx, dir, env, name, args...)
 	if err != nil {
 		if strings.TrimSpace(stderr) != "" {
 			return stdout, errors.New(strings.TrimSpace(stderr))
@@ -45,6 +60,13 @@ func Stdout(ctx context.Context, dir string, env []string, name string, args ...
 		return stdout, err
 	}
 	return stdout, nil
+}
+
+func currentCommandFunc() CommandFunc {
+	commandMu.RLock()
+	fn := commandFunc
+	commandMu.RUnlock()
+	return fn
 }
 
 type stdinKey struct{}
@@ -69,6 +91,11 @@ func GetStdin(ctx context.Context) string {
 func realCommand(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
+		defer cancel()
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	if dir != "" {

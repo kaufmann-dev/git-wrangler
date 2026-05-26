@@ -23,6 +23,15 @@ func Discover(root string) ([]Repository, error) {
 			return err
 		}
 		if !d.IsDir() {
+			if d.Name() == ".git" && validGitFile(path) {
+				dir := filepath.Dir(path)
+				found = append(found, Repository{
+					GitDir:  path,
+					Dir:     dir,
+					Display: DisplayName(dir),
+				})
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if d.Name() == ".git" {
@@ -41,6 +50,26 @@ func Discover(root string) ([]Repository, error) {
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].Dir < found[j].Dir })
 	return found, nil
+}
+
+func validGitFile(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	target, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+	if !ok {
+		return false
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(path), target)
+	}
+	info, err := os.Stat(target)
+	return err == nil && info.IsDir()
 }
 
 func DirFromGitDir(gitDir string) string {

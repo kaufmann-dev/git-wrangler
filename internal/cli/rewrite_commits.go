@@ -8,14 +8,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/spf13/cobra"
 )
 
 func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
-	if len(args) > 0 {
-		a.errorf("Unknown option: %s", args[0])
-		return 1
-	}
+	confirmed, _ := cmd.Flags().GetBool("confirm")
 	if !requireGit(a, "rewrite-commits") {
 		return 1
 	}
@@ -31,38 +29,49 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "HEAD"); err != nil {
 			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		remoteURL := strings.TrimSpace(mustStdout(r.dir, "git", "remote", "get-url", "origin"))
+		remoteURL := originURL(r.dir)
 		mapping, err := buildCommitMessageMapping(r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
 			continue
 		}
 		if len(mapping) == 0 {
 			fmt.Fprintf(a.stdout, "%sNo commits require rewriting in %s (already format compliant). Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
+		if !confirmed {
+			a.error(r.display, "Refusing to rewrite history without --confirm.")
+			status = 1
+			continue
+		}
 		callback, err := writeCommitCallback(mapping)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not prepare commit callback for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
 			continue
 		}
+		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
 		out, err := runFilterRepo(r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
 		_ = os.Remove(callback)
 		if err == nil {
 			fmt.Fprintf(a.stdout, "%sRewrote commit messages for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if remoteURL != "" {
-				_, _ = runCapture(r.dir, nil, "git", "remote", "add", "origin", remoteURL)
+			if err := restoreOrigin(r.dir, remoteURL); err != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
 			}
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Could not update commit messages for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }
 
 var (
@@ -80,11 +89,17 @@ func buildCommitMessageMapping(dir string) (map[string]string, error) {
 	}
 	mapping := map[string]string{}
 	for _, commit := range splitLines(out) {
-		msg, _ := runStdout(dir, nil, "git", "log", "-1", "--format=%B", commit)
+		msg, err := runStdout(dir, nil, "git", "log", "-1", "--format=%B", commit)
+		if err != nil {
+			return nil, err
+		}
 		if conventionalRe.MatchString(firstLine(msg)) {
 			continue
 		}
-		diff, _ := runStdout(dir, nil, "git", "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit)
+		diff, err := runStdout(dir, nil, "git", "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit)
+		if err != nil {
+			return nil, err
+		}
 		if strings.TrimSpace(diff) == "" {
 			continue
 		}
@@ -178,7 +193,7 @@ func writeCommitCallback(mapping map[string]string) (string, error) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		fmt.Fprintf(f, "mapping[b%q] = b%q\n", key, mapping[key]+"\n")
+		fmt.Fprintf(f, "mapping[%s] = %s\n", git.PythonBytesLiteral(key), git.PythonBytesLiteral(mapping[key]+"\n"))
 	}
 	fmt.Fprintln(f, "if commit.original_id in mapping:")
 	fmt.Fprintln(f, "    commit.message = mapping[commit.original_id]")

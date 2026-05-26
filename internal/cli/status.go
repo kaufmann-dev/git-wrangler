@@ -31,10 +31,13 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	totalDirty := 0
 	totalBehind := 0
 	totalNoRemote := 0
+	status := 0
 
 	for _, r := range repos {
 		row, err := statusRow(a, r)
 		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%-30s | %s | %s\n", row.name, row.state, row.tracking)
@@ -48,7 +51,7 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		a.ui.Yellow, totalDirty, a.ui.Reset,
 		a.ui.Red, totalBehind, a.ui.Reset,
 		a.ui.Muted, totalNoRemote, a.ui.Reset)
-	return 0
+	return status
 }
 
 type statusTableRow struct {
@@ -61,7 +64,10 @@ type statusTableRow struct {
 }
 
 func statusRow(a *app, r repo) (statusTableRow, error) {
-	out, _ := runStdout(r.dir, nil, "git", "status", "--porcelain=v2", "--branch")
+	out, err := runStdout(r.dir, nil, "git", "status", "--porcelain=v2", "--branch")
+	if err != nil {
+		return statusTableRow{}, err
+	}
 	isDirty := false
 	hasUpstream := false
 	aheadCount := 0
