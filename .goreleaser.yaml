@@ -4,7 +4,6 @@ project_name: git-wrangler
 
 before:
   hooks:
-    - go mod tidy
     - mkdir -p completions
     - sh -c 'go run ./cmd/git-wrangler completion bash > completions/git-wrangler.bash'
     - sh -c 'go run ./cmd/git-wrangler completion zsh > completions/git-wrangler.zsh'

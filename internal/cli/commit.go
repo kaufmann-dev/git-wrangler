@@ -23,9 +23,11 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		if _, err := runCapture(r.dir, nil, "git", "add", "-A"); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not stage changes for %s%s\n", a.ui.Red, r.display, a.ui.Reset)
+			status = 1
 			continue
 		}
 		if _, err := runCapture(r.dir, nil, "git", "diff", "--cached", "--quiet"); err == nil {
@@ -36,7 +38,8 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%sCommit created for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Could not commit changes for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }

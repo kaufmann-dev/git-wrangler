@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "check": "astro check",
     "preview": "astro preview",
     "astro": "astro"
   },
@@ -17,6 +18,8 @@
     "astro": "^6.2.2"
   },
   "devDependencies": {
-    "@astrojs/sitemap": "^3.7.2"
+    "@astrojs/check": "^0.9.4",
+    "@astrojs/sitemap": "^3.7.2",
+    "typescript": "^5.9.3"
   }
 }

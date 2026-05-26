@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -48,4 +49,20 @@ func TestWithStdinAndGetStdin(t *testing.T) {
 	if input := GetStdin(ctx); input != "hello-world" {
 		t.Errorf("expected 'hello-world', got %q", input)
 	}
+}
+
+func TestSetCommandFuncConcurrentUse(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			restore := SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+				return "ok", "", nil
+			})
+			defer restore()
+			_, _ = Capture(context.Background(), "", nil, "cmd")
+		}()
+	}
+	wg.Wait()
 }
