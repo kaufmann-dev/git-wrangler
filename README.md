@@ -144,3 +144,5 @@ Git Wrangler is built on a modular, decentralized bash architecture designed for
 | `scripts/check` | Runs Bash syntax checks, optional ShellCheck/shfmt, and website build checks |
 | `scripts/test`  | Runs temp-directory integration tests for core Git Wrangler behavior         |
 | `scripts/bench` | Creates temporary repositories and times read-only status checks             |
+
+The Bash-to-Go compatibility contract is documented in `GO_REWRITE_CONTRACT.md`. Keep it passing with `scripts/test` before replacing Bash command behavior.

@@ -4,6 +4,7 @@ set -u
 
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 GW="$ROOT/git-wrangler"
+GOLDEN_DIR="$ROOT/tests/fixtures/golden"
 TMPDIR_ROOT=$(mktemp -d)
 TEST_OUTPUT="$TMPDIR_ROOT/output"
 export NO_COLOR=1
@@ -12,6 +13,31 @@ export TERM=dumb
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 
 failures=0
+
+PUBLIC_COMMANDS=(
+    clone
+    commit
+    doctor
+    fix-gitignore
+    help
+    info
+    license
+    pull
+    push
+    remove-secrets
+    rename-branch
+    rename-repo
+    reset
+    review
+    rewrite-authors
+    rewrite-commits
+    rewrite-commits-ai
+    rewrite-dates
+    status
+    uninstall
+    untrack
+    update
+)
 
 run_test() {
     local name="$1"
@@ -46,6 +72,45 @@ assert_file_contains() {
     fi
 }
 
+assert_fails_contains() {
+    local needle="$1"
+    shift
+
+    if "$@" >"$TEST_OUTPUT" 2>&1; then
+        printf "command unexpectedly succeeded: %s\n" "$*" >&2
+        return 1
+    fi
+
+    if ! grep -qF -- "$needle" "$TEST_OUTPUT"; then
+        printf "expected failure output to contain: %s\n" "$needle" >&2
+        printf "actual output:\n" >&2
+        cat "$TEST_OUTPUT" >&2
+        return 1
+    fi
+}
+
+normalize_output() {
+    sed -E \
+        -e "s#$TMPDIR_ROOT#<TMPDIR>#g" \
+        -e "s#$ROOT#<ROOT>#g" \
+        -e 's/[0-9a-f]{40}/<COMMIT>/g' \
+        -e 's/[0-9a-f]{12}/<COMMIT12>/g'
+}
+
+assert_golden() {
+    local name="$1"
+    local actual="$2"
+    local expected="$GOLDEN_DIR/$name"
+    local normalized="$TMPDIR_ROOT/normalized"
+
+    printf "%s\n" "$actual" | normalize_output > "$normalized"
+
+    if ! diff -u "$expected" "$normalized"; then
+        printf "golden output mismatch: %s\n" "$name" >&2
+        return 1
+    fi
+}
+
 git_config() {
     git -C "$1" config user.email "test@example.com"
     git -C "$1" config user.name "Test User"
@@ -62,6 +127,63 @@ init_repo() {
     git -C "$repo" commit -q -m "initial"
 }
 
+make_fake_filter_repo() {
+    local fakebin="$1"
+    local log="$2"
+
+    mkdir -p "$fakebin"
+    cat > "$fakebin/git-filter-repo" <<'FAKEFILTER'
+#!/bin/bash
+printf "%s\n" "$*" >> "$GIT_WRANGLER_FAKE_FILTER_LOG"
+FAKEFILTER
+    chmod +x "$fakebin/git-filter-repo"
+    : > "$log"
+}
+
+make_fake_gh() {
+    local fakebin="$1"
+    local log="$2"
+
+    mkdir -p "$fakebin"
+    cat > "$fakebin/gh" <<'FAKEGH'
+#!/bin/bash
+printf "%s\n" "$*" >> "$GIT_WRANGLER_FAKE_GH_LOG"
+
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+    printf "Logged in to github.com account %s \n" "${GIT_WRANGLER_FAKE_GH_USER:-testuser}"
+    exit 0
+fi
+
+if [ "$1" = "repo" ] && [ "$2" = "list" ]; then
+    printf "%s/repo-one\tPublic\n" "$3"
+    exit 0
+fi
+
+if [ "$1" = "repo" ] && [ "$2" = "clone" ]; then
+    mkdir -p "$4"
+    printf "cloned %s\n" "$3"
+    exit 0
+fi
+
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
+    exit 1
+fi
+
+exit 0
+FAKEGH
+    chmod +x "$fakebin/gh"
+    : > "$log"
+}
+
+copy_install_layout() {
+    local target="$1"
+
+    mkdir -p "$target"
+    cp "$ROOT/git-wrangler" "$target/git-wrangler"
+    cp -R "$ROOT/libexec" "$target/libexec"
+    chmod +x "$target/git-wrangler" "$target"/libexec/git-wrangler-*
+}
+
 test_dispatcher_help() {
     local output
 
@@ -74,21 +196,110 @@ test_dispatcher_help() {
     fi
 }
 
-test_option_parsing() {
+test_help_for_all_commands() {
+    local command
+    local output
+
+    for command in "${PUBLIC_COMMANDS[@]}"; do
+        output=$("$GW" help "$command") || return 1
+        assert_contains "$output" "Usage:" || return 1
+        assert_contains "$output" "Category:" || return 1
+    done
+}
+
+test_unknown_option_for_all_commands() {
+    local command
+    local work="$TMPDIR_ROOT/unknown-options"
+
+    mkdir -p "$work"
+    for command in "${PUBLIC_COMMANDS[@]}"; do
+        (
+            cd "$work" || exit 1
+            "$GW" "$command" --definitely-unknown
+        ) >"$TEST_OUTPUT" 2>&1 && {
+            printf "%s accepted an unknown option\n" "$command" >&2
+            return 1
+        }
+        assert_contains "$(cat "$TEST_OUTPUT")" "Unknown" || return 1
+    done
+}
+
+test_option_value_parsing() {
     local work="$TMPDIR_ROOT/options"
 
     mkdir -p "$work"
     (
         cd "$work" || exit 1
-        "$GW" commit --message >"$TEST_OUTPUT" 2>&1
-    ) && return 1
-    grep -q -- "--message requires a value" "$TEST_OUTPUT" || return 1
+        assert_fails_contains "--message requires a value" "$GW" commit --message &&
+            assert_fails_contains "--repo requires a value" "$GW" info --repo &&
+            assert_fails_contains "--user requires a value" "$GW" clone --user &&
+            assert_fails_contains "--visibility requires a value" "$GW" clone --visibility &&
+            assert_fails_contains "--limit requires a value" "$GW" clone --limit &&
+            assert_fails_contains "--into requires a value" "$GW" clone --into &&
+            assert_fails_contains "--name requires a value" "$GW" license --name &&
+            assert_fails_contains "--repo requires a value" "$GW" license --repo &&
+            assert_fails_contains "--oldbranch requires a value" "$GW" rename-branch --oldbranch &&
+            assert_fails_contains "--newbranch requires a value" "$GW" rename-branch --newbranch &&
+            assert_fails_contains "--name requires a value" "$GW" rewrite-authors --name &&
+            assert_fails_contains "--email requires a value" "$GW" rewrite-authors --email &&
+            assert_fails_contains "--repo requires a value" "$GW" rewrite-authors --repo &&
+            assert_fails_contains "--start-date requires a value" "$GW" rewrite-dates --start-date &&
+            assert_fails_contains "--end-date requires a value" "$GW" rewrite-dates --end-date &&
+            assert_fails_contains "--base-url requires a value" "$GW" rewrite-commits-ai --base-url &&
+            assert_fails_contains "--model requires a value" "$GW" rewrite-commits-ai --model &&
+            assert_fails_contains "--api-key requires a value" "$GW" rewrite-commits-ai --api-key &&
+            assert_fails_contains "--api-key-env requires a value" "$GW" rewrite-commits-ai --api-key-env &&
+            assert_fails_contains "--batch-size requires a value" "$GW" rewrite-commits-ai --batch-size &&
+            assert_fails_contains "--max-chars-per-commit requires a value" "$GW" rewrite-commits-ai --max-chars-per-commit &&
+            assert_fails_contains "--timeout requires a value" "$GW" rewrite-commits-ai --timeout
+    )
+}
 
+test_required_argument_combinations() {
+    local work="$TMPDIR_ROOT/required"
+
+    mkdir -p "$work"
     (
         cd "$work" || exit 1
-        "$GW" info --repo >"$TEST_OUTPUT" 2>&1
-    ) && return 1
-    grep -q -- "--repo requires a value" "$TEST_OUTPUT"
+        assert_fails_contains "A commit message is required" "$GW" commit &&
+            assert_fails_contains "The --user option is required" "$GW" clone &&
+            assert_fails_contains "Copyright holder name is required" "$GW" license &&
+            assert_fails_contains "Both --oldbranch and --newbranch options must be provided" "$GW" rename-branch &&
+            assert_fails_contains "Both --name and --email options must be provided" "$GW" rewrite-authors &&
+            assert_fails_contains "--batch-size must be a positive integer" "$GW" rewrite-commits-ai --batch-size 0 &&
+            assert_fails_contains "--max-chars-per-commit must be a positive integer" "$GW" rewrite-commits-ai --max-chars-per-commit 0 &&
+            assert_fails_contains "--timeout must be a positive integer" "$GW" rewrite-commits-ai --timeout 0
+    )
+}
+
+test_golden_outputs() {
+    local work="$TMPDIR_ROOT/golden-status"
+    local clean="$work/a-clean"
+    local dirty="$work/b-dirty"
+    local output
+
+    output=$("$GW" help 2>&1)
+    assert_golden "help.txt" "$output" || return 1
+
+    output=$("$GW" help push 2>&1)
+    assert_golden "help-push.txt" "$output" || return 1
+
+    output=$("$GW" help remove-secrets 2>&1)
+    assert_golden "help-remove-secrets.txt" "$output" || return 1
+
+    init_repo "$clean"
+    init_repo "$dirty"
+    printf "dirty\n" > "$dirty/dirty.txt"
+
+    output=$(cd "$work" && "$GW" status 2>&1)
+    assert_golden "status-clean-dirty-no-remote.txt" "$output" || return 1
+
+    output=$(
+        "$GW" clone --user 2>&1 || true
+        "$GW" rename-branch --oldbranch 2>&1 || true
+        "$GW" does-not-exist 2>&1 || true
+    )
+    assert_golden "parser-errors.txt" "$output"
 }
 
 test_repo_discovery_paths_and_status() {
@@ -127,6 +338,21 @@ test_fix_gitignore() {
 
     (cd "$work" && "$GW" fix-gitignore) >"$TEST_OUTPUT" 2>&1 || return 1
     assert_file_contains "$repo/.gitignore" "node_modules/"
+}
+
+test_license() {
+    local work="$TMPDIR_ROOT/license"
+    local repo="$work/repo"
+
+    init_repo "$repo"
+    (cd "$work" && "$GW" license --name "Test Holder") >"$TEST_OUTPUT" 2>&1 || return 1
+    grep -q "Copyright (c) Test Holder" "$repo/LICENSE" || return 1
+
+    (cd "$work" && "$GW" license --name "Other Holder") >"$TEST_OUTPUT" 2>&1 || return 1
+    grep -q "Copyright (c) Test Holder" "$repo/LICENSE" || return 1
+
+    (cd "$work" && "$GW" license --name "Other Holder" --overwrite) >"$TEST_OUTPUT" 2>&1 || return 1
+    grep -q "Copyright (c) Other Holder" "$repo/LICENSE"
 }
 
 test_untrack() {
@@ -227,6 +453,43 @@ test_reset() {
     grep -q "initial" "$repo/file.txt"
 }
 
+test_review() {
+    local work="$TMPDIR_ROOT/review"
+    local origin="$work/origin.git"
+    local repo="$work/repo"
+    local output
+
+    mkdir -p "$work"
+    git init --bare -q "$origin"
+    git clone -q "$origin" "$repo"
+    git_config "$repo"
+    printf "initial\n" > "$repo/file.txt"
+    git -C "$repo" add file.txt
+    git -C "$repo" commit -q -m "initial"
+    git -C "$repo" push -q origin HEAD
+
+    printf "local\n" > "$repo/local.txt"
+    git -C "$repo" add local.txt
+    git -C "$repo" commit -q -m "local"
+
+    output=$(cd "$work" && "$GW" review 2>&1)
+    assert_contains "$output" "repo:" || return 1
+    assert_contains "$output" "Added:" || return 1
+    assert_contains "$output" "local.txt"
+}
+
+test_rename_branch() {
+    local work="$TMPDIR_ROOT/rename-branch"
+    local repo="$work/repo"
+
+    init_repo "$repo"
+    git -C "$repo" branch legacy
+
+    (cd "$work" && "$GW" rename-branch --oldbranch legacy --newbranch mainline) >"$TEST_OUTPUT" 2>&1 || return 1
+    git -C "$repo" rev-parse --verify --quiet refs/heads/mainline >/dev/null || return 1
+    ! git -C "$repo" rev-parse --verify --quiet refs/heads/legacy >/dev/null
+}
+
 test_remove_secrets_confirm() {
     local work="$TMPDIR_ROOT/remove-secrets"
     local repo="$work/repo"
@@ -238,12 +501,7 @@ test_remove_secrets_confirm() {
     git -C "$repo" add .env
     git -C "$repo" commit -q -m "add secret"
 
-    mkdir -p "$fakebin"
-    cat > "$fakebin/git-filter-repo" <<'FAKEFILTER'
-#!/bin/bash
-printf "%s\n" "$*" >> "$GIT_WRANGLER_FAKE_FILTER_LOG"
-FAKEFILTER
-    chmod +x "$fakebin/git-filter-repo"
+    make_fake_filter_repo "$fakebin" "$log"
 
     (
         export PATH="$fakebin:$PATH"
@@ -251,7 +509,7 @@ FAKEFILTER
         cd "$work" || exit 1
         "$GW" remove-secrets
     ) >"$TEST_OUTPUT" 2>&1 && return 1
-    [ ! -f "$log" ] || return 1
+    [ ! -s "$log" ] || return 1
 
     (
         export PATH="$fakebin:$PATH"
@@ -263,16 +521,182 @@ FAKEFILTER
     grep -q -- "--invert-paths" "$log"
 }
 
+test_clone_fake_gh() {
+    local work="$TMPDIR_ROOT/clone"
+    local fakebin="$work/bin"
+    local log="$work/gh.log"
+
+    make_fake_gh "$fakebin" "$log"
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_GH_LOG="$log"
+        cd "$work" || exit 1
+        "$GW" clone --user testuser --visibility public --limit 1 --into repos
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    [ -d "$work/repos/repo-one" ] || return 1
+    grep -q -- "repo clone testuser/repo-one repos/repo-one" "$log"
+}
+
+test_rename_repo_fake_gh() {
+    local work="$TMPDIR_ROOT/rename-repo"
+    local repo="$work/repo"
+    local fakebin="$work/bin"
+    local log="$work/gh.log"
+
+    init_repo "$repo"
+    make_fake_gh "$fakebin" "$log"
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_GH_LOG="$log"
+        cd "$work" || exit 1
+        "$GW" rename-repo
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    grep -q -- "repo view --json name -q .name" "$log" || return 1
+    grep -q -- "Skipping repo: No remote or not a GitHub repository." "$TEST_OUTPUT"
+}
+
+test_doctor_summary() {
+    local output
+
+    output=$("$GW" doctor --summary 2>&1) || return 1
+    assert_contains "$output" "Dependencies"
+}
+
+test_rewrite_dates_fake_filter_repo() {
+    local work="$TMPDIR_ROOT/rewrite-dates"
+    local repo="$work/repo"
+    local fakebin="$work/bin"
+    local log="$work/filter.log"
+
+    init_repo "$repo"
+    printf "second\n" > "$repo/second.txt"
+    git -C "$repo" add second.txt
+    git -C "$repo" commit -q -m "second"
+
+    make_fake_filter_repo "$fakebin" "$log"
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_FILTER_LOG="$log"
+        cd "$work" || exit 1
+        "$GW" rewrite-dates --start-date 2024-01-01 --end-date 2024-01-02 --confirm
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    grep -q -- "--commit-callback" "$log"
+}
+
+test_rewrite_commits_ai_prereq_path() {
+    local work="$TMPDIR_ROOT/rewrite-commits-ai"
+    local fakebin="$work/bin"
+
+    mkdir -p "$fakebin"
+    cat > "$fakebin/git" <<'FAKEGIT'
+#!/bin/bash
+if [ "$1" = "filter-repo" ]; then
+    exit 1
+fi
+exit 0
+FAKEGIT
+    cat > "$fakebin/python3" <<'FAKEPY'
+#!/bin/bash
+exit 0
+FAKEPY
+    chmod +x "$fakebin/git" "$fakebin/python3"
+
+    (
+        export PATH="$fakebin:/usr/bin:/bin"
+        cd "$work" || exit 1
+        "$GW" rewrite-commits-ai --base-url http://example.test --model model --api-key key
+    ) >"$TEST_OUTPUT" 2>&1 && return 1
+
+    grep -q -- "'git-filter-repo' is required for rewrite-commits-ai" "$TEST_OUTPUT"
+}
+
+test_update_isolated_layout() {
+    local work="$TMPDIR_ROOT/update"
+    local install_dir="$work/install"
+    local fakebin="$work/bin"
+    local log="$work/git.log"
+
+    copy_install_layout "$install_dir"
+    mkdir -p "$install_dir/.git" "$fakebin"
+    cat > "$fakebin/git" <<'FAKEGIT'
+#!/bin/bash
+printf "%s\n" "$*" >> "$GIT_WRANGLER_FAKE_GIT_LOG"
+case "$*" in
+    *"rev-parse --abbrev-ref HEAD"*)
+        printf "main\n"
+        ;;
+    *"rev-parse HEAD"*)
+        printf "1111111111111111111111111111111111111111\n"
+        ;;
+    *"ls-remote origin refs/heads/main"*)
+        printf "1111111111111111111111111111111111111111\trefs/heads/main\n"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+FAKEGIT
+    chmod +x "$fakebin/git"
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_GIT_LOG="$log"
+        "$install_dir/git-wrangler" update --confirm
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    grep -q -- "Git Wrangler is already up to date." "$TEST_OUTPUT" || return 1
+    [ -d "$ROOT/.git" ]
+}
+
+test_uninstall_isolated_layout() {
+    local work="$TMPDIR_ROOT/uninstall"
+    local install_dir="$work/install"
+    local bin_dir="$work/bin"
+
+    copy_install_layout "$install_dir"
+    mkdir -p "$bin_dir"
+    ln -s "$install_dir/git-wrangler" "$bin_dir/git-wrangler"
+
+    (
+        export GIT_WRANGLER_BIN_DIR="$bin_dir"
+        "$install_dir/git-wrangler" uninstall --confirm
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    [ ! -e "$bin_dir/git-wrangler" ] || return 1
+    [ ! -d "$install_dir" ] || return 1
+    [ -d "$ROOT" ]
+}
+
 run_test "dispatcher and help" test_dispatcher_help
-run_test "option parsing" test_option_parsing
+run_test "help for all public commands" test_help_for_all_commands
+run_test "unknown option for all public commands" test_unknown_option_for_all_commands
+run_test "option value parsing" test_option_value_parsing
+run_test "required argument combinations" test_required_argument_combinations
+run_test "golden outputs" test_golden_outputs
 run_test "repo discovery paths and status" test_repo_discovery_paths_and_status
 run_test "commit percent message" test_commit_percent_message
 run_test "fix-gitignore" test_fix_gitignore
+run_test "license" test_license
 run_test "untrack" test_untrack
 run_test "pull" test_pull
 run_test "push force uses lease" test_push_force_uses_lease
 run_test "reset" test_reset
+run_test "review" test_review
+run_test "rename-branch" test_rename_branch
 run_test "remove-secrets confirm" test_remove_secrets_confirm
+run_test "clone with fake gh" test_clone_fake_gh
+run_test "rename-repo with fake gh" test_rename_repo_fake_gh
+run_test "doctor summary" test_doctor_summary
+run_test "rewrite-dates with fake git-filter-repo" test_rewrite_dates_fake_filter_repo
+run_test "rewrite-commits-ai prereq path" test_rewrite_commits_ai_prereq_path
+run_test "update isolated layout" test_update_isolated_layout
+run_test "uninstall isolated layout" test_uninstall_isolated_layout
 
 if [ "$failures" -gt 0 ]; then
     printf "%d test(s) failed\n" "$failures" >&2

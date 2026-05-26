@@ -20,6 +20,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 oldbranch=""
@@ -29,10 +31,12 @@ newbranch=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --oldbranch)
+            gw_require_option_value "$1" "$#" "${2-}"
             oldbranch="$2"
             shift 2
             ;;
         --newbranch)
+            gw_require_option_value "$1" "$#" "${2-}"
             newbranch="$2"
             shift 2
             ;;
@@ -45,18 +49,15 @@ done
 
 # Validate required arguments
 if [[ -z "$oldbranch" || -z "$newbranch" ]]; then
-    printf "${GW_RED}Error: Both --oldbranch and --newbranch options must be provided.${GW_RESET}\n" >&2
+    gw_error "Both --oldbranch and --newbranch options must be provided."
     exit 1
 fi
 
 # Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for rename-branch. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "rename-branch"
 
 # Find target repositories
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."
@@ -67,13 +68,8 @@ fi
 while IFS= read -r git_dir; do
     (
         # Get repository directory and name
-        repo_dir=$(dirname "$git_dir")
-
-        if [ "$repo_dir" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_dir")
-        fi
+        repo_dir=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name_display=$(gw_repo_display_name "$repo_dir")
 
         # Validate Git repository accessibility
         if ! cd "$repo_dir" >/dev/null 2>&1; then
