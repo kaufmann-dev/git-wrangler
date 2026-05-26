@@ -49,17 +49,19 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		remoteURL := originURL(a, r.dir)
-		out, err := runFilterRepo(a, r.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
 		if err == nil {
-			if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 				status = 1
 				continue
 			}
 			fmt.Fprintf(a.stdout, "%sAuthor and committer information updated for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Could not update git author and committer information for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+			}
 			status = 1
 		}
 	}

@@ -45,24 +45,17 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		matchedFiles := []string{}
 		scanFailed := false
 		for _, pattern := range patterns {
-			out, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--all", "--oneline", "--", pattern)
+			files, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--all", "--format=", "--name-only", "--", pattern)
 			if err != nil {
 				fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
 				scanFailed = true
 				continue
 			}
-			if strings.TrimSpace(out) == "" {
+			if strings.TrimSpace(files) == "" {
 				continue
 			}
 			matchedPatterns = append(matchedPatterns, pattern)
-			files, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--all", "--format=", "--name-only", "--", pattern)
-			if err != nil {
-				fmt.Fprintf(a.stderr, "%sError: Could not list matched files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-				status = 1
-				scanFailed = true
-				continue
-			}
 			matchedFiles = append(matchedFiles, splitLines(files)...)
 		}
 		if scanFailed {
@@ -89,16 +82,19 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			filterArgs = append(filterArgs, "--path-glob", pattern)
 		}
 		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
-		remoteURL := originURL(a, r.dir)
-		if out, err := runFilterRepo(a, r.dir, filterCmd, filterArgs, nil); err == nil {
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, filterArgs, nil)
+		if err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully purged %d sensitive file(s) from %s%s\n", a.ui.Green, len(matchedFiles), r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Rewrite failed for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+			}
 			status = 1
 			continue
 		}
-		if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+		if restoreErr != nil {
+			fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 			status = 1
 		}
 	}
@@ -110,4 +106,11 @@ func runFilterRepo(a *app, dir string, filterCmd []string, args []string, env []
 		return "", errors.New("missing filter command")
 	}
 	return a.runCapture(dir, env, filterCmd[0], append(filterCmd[1:], args...)...)
+}
+
+func runFilterRepoRestoringOrigin(a *app, dir string, filterCmd []string, args []string, env []string) (string, error, error) {
+	remoteURL := originURL(a, dir)
+	out, err := runFilterRepo(a, dir, filterCmd, args, env)
+	restoreErr := restoreOrigin(a, dir, remoteURL)
+	return out, err, restoreErr
 }
