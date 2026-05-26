@@ -1,20 +1,28 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/git"
+	"github.com/kaufmann-dev/git-wrangler/internal/githubcli"
+	"github.com/kaufmann-dev/git-wrangler/internal/run"
 	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"github.com/kaufmann-dev/git-wrangler/internal/version"
 	"github.com/spf13/cobra"
 )
 
 type app struct {
+	ctx    context.Context
 	stdout io.Writer
 	stderr io.Writer
 	stdin  io.Reader
 	ui     ui.Theme
+	runner run.Runner
+	git    git.Client
+	gh     githubcli.Client
 }
 
 type repo struct {
@@ -30,24 +38,38 @@ type exitError struct {
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
 func Execute() error {
-	return execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	return execute(context.Background(), run.New(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 }
 
 func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return execute(args, stdin, stdout, stderr)
+	return execute(context.Background(), run.New(), args, stdin, stdout, stderr)
 }
 
-func newApp(stdin io.Reader, stdout, stderr io.Writer) *app {
+func ExecuteWithRunner(ctx context.Context, runner run.Runner, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return execute(ctx, runner, args, stdin, stdout, stderr)
+}
+
+func newApp(ctx context.Context, runner run.Runner, stdin io.Reader, stdout, stderr io.Writer) *app {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if runner == nil {
+		runner = run.New()
+	}
 	return &app{
+		ctx:    ctx,
 		stdout: stdout,
 		stderr: stderr,
 		stdin:  stdin,
 		ui:     ui.New(stdout),
+		runner: runner,
+		git:    git.New(runner),
+		gh:     githubcli.New(runner),
 	}
 }
 
-func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	a := newApp(stdin, stdout, stderr)
+func execute(ctx context.Context, runner run.Runner, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	a := newApp(ctx, runner, stdin, stdout, stderr)
 	root := newRootCommand(a)
 	root.SetArgs(args)
 	root.SetIn(stdin)
@@ -88,7 +110,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "clone", "Clone multiple GitHub repositories for a user.", "remote", runClone, flags{
 			stringFlag("visibility", "all", "Repository visibility: all, public, or private."),
 			stringFlag("user", "", "GitHub user or organization to clone from."),
-			stringFlag("limit", "100", "Maximum repositories to list."),
+			intFlag("limit", 100, "Maximum repositories to list."),
 			stringFlag("into", "", "Directory to clone repositories into."),
 		}),
 		command(a, "pull", "Pull the latest changes for every discovered repository.", "remote", runPull, flags{
@@ -98,6 +120,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "push", "Push local commits to origin HEAD.", "remote", runPush, flags{
 			boolFlag("force", "Use --force-with-lease."),
 			boolFlag("force-unsafe", "Use raw --force after confirmation."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rename-repo", "Rename GitHub repositories with gh.", "remote", runRenameRepo, flags{
 			boolFlag("description", "Prompt for repository description updates."),
@@ -106,7 +129,7 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("message", "", "Commit message."),
 		}),
 		command(a, "fix-gitignore", "Add missing common generated-file patterns to .gitignore.", "local", runFixGitignore, flags{
-			boolFlag("confirm", "Apply and commit .gitignore updates."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "license", "Add or replace MIT LICENSE files.", "local", runLicense, flags{
 			stringFlag("repo", "", "Repository directory to target."),
@@ -118,39 +141,40 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("newbranch", "", "New branch name."),
 		}),
 		command(a, "reset", "Reset current branches to their origin counterparts.", "local", runReset, flags{
-			boolFlag("confirm", "Skip interactive reset confirmation."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "review", "Review unpushed changes across repositories.", "local", runReview, nil),
 		command(a, "untrack", "Stop tracking files already covered by .gitignore.", "local", runUntrack, flags{
-			boolFlag("confirm", "Stop tracking ignored files and commit the result."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "remove-secrets", "Purge sensitive files from Git history.", "history", runRemoveSecrets, flags{
-			boolFlag("confirm", "Allow history rewriting."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-authors", "Rewrite author and committer identity.", "history", runRewriteAuthors, flags{
 			stringFlag("name", "", "New author and committer name."),
 			stringFlag("email", "", "New author and committer email."),
 			stringFlag("repo", "", "Repository directory to target."),
 			boolFlag("force", "Pass --force to git-filter-repo."),
-			boolFlag("confirm", "Allow history rewriting."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-commits", "Rewrite commit messages to Conventional Commits.", "history", runRewriteCommits, flags{
-			boolFlag("confirm", "Allow history rewriting."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommitsAI, flags{
 			stringFlag("base-url", "", "OpenAI-compatible API base URL."),
 			stringFlag("model", "", "Model name."),
 			stringFlag("api-key", "", "API key for this run."),
 			stringFlag("api-key-env", "OPENAI_API_KEY", "Environment variable containing the API key."),
-			stringFlag("batch-size", "10", "Commits per API request."),
-			stringFlag("max-chars-per-commit", "3000", "Maximum redacted context characters per commit."),
-			stringFlag("timeout", "90", "API timeout in seconds."),
+			intFlag("batch-size", 10, "Commits per API request."),
+			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
+			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
 			stringFlag("start-date", "", "Earliest date in YYYY-MM-DD format."),
 			stringFlag("end-date", "", "Latest date in YYYY-MM-DD format."),
-			boolFlag("confirm", "Skip interactive rewrite confirmation."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
 			stringFlag("repo", "", "Repository directory to target."),
@@ -175,10 +199,13 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 		},
 	}
 	for _, spec := range specs {
-		if spec.boolean {
+		switch spec.kind {
+		case "bool":
 			cmd.Flags().Bool(spec.name, false, spec.description)
-		} else {
-			cmd.Flags().String(spec.name, spec.value, spec.description)
+		case "int":
+			cmd.Flags().Int(spec.name, spec.intValue, spec.description)
+		default:
+			cmd.Flags().String(spec.name, spec.stringValue, spec.description)
 		}
 	}
 	return cmd

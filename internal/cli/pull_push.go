@@ -13,7 +13,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "pull") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -30,7 +30,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		if force {
 			pullArgs = append(pullArgs, "--force")
 		}
-		out, err := runCapture(r.dir, nil, "git", pullArgs...)
+		out, err := a.git.Capture(a.ctx, r.dir, nil, pullArgs...)
 		if err == nil {
 			if strings.Contains(out, "Already up to date") {
 				a.skip(r.display, "Already up to date. Skipping...")
@@ -56,7 +56,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "push") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -70,13 +70,13 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		if force {
 			pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}
 		} else if forceUnsafe {
-			if !confirm(a, "Raw force push "+r.display+" with --force?") {
+			if !yesFlag(cmd) && !confirm(a, "Raw force push "+r.display+" with --force?") {
 				a.skip(r.display, "Skipping unsafe force push.")
 				continue
 			}
 			pushArgs = []string{"push", "--force", "origin", "HEAD"}
 		}
-		out, err := runCapture(r.dir, nil, "git", pushArgs...)
+		out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
 		if err == nil {
 			if strings.Contains(out, "Everything up-to-date") {
 				a.skip(r.display, "No changes to push. Skipping...")
