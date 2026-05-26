@@ -6,32 +6,26 @@ const features = [
   {
     title: 'Multi-Repo Management',
     description: 'Run common Git workflows across every repository in a directory with a single command and deterministic output.',
-    accentColor: 'var(--color-develop)',
   },
   {
     title: 'History Rewriting',
     description: 'Safely rewrite authors, commit messages, timestamps, and purge secrets across all repos at once — powered by git-filter-repo.',
-    accentColor: 'var(--color-ship)',
   },
   {
     title: 'Native Go CLI',
     description: 'A compiled Cobra command surface with built-in help, version metadata, and shell completions.',
-    accentColor: 'var(--color-preview)',
   },
   {
     title: 'Smart Status Dashboard',
     description: 'Instant at-a-glance view of every repo\'s dirty/clean state, ahead/behind counts, and remote tracking status.',
-    accentColor: 'var(--color-develop)',
   },
   {
     title: 'Homebrew Releases',
     description: 'GoReleaser publishes checksums, GitHub Release binaries, completions, and Homebrew tap updates.',
-    accentColor: 'var(--color-preview)',
   },
   {
     title: 'Cross-Platform',
     description: 'Distributed as native macOS, Linux, and Windows binaries, with Homebrew as the primary install path.',
-    accentColor: 'var(--color-ship)',
   },
 ];
 ---
@@ -50,7 +44,6 @@ const features = [
         <FeatureCard
           title={f.title}
           description={f.description}
-          accentColor={f.accentColor}
         />
       ))}
     </div>

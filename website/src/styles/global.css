@@ -7,7 +7,6 @@
 @import '@fontsource/geist/400.css';
 @import '@fontsource/geist/500.css';
 @import '@fontsource/geist/600.css';
-@import '@fontsource/geist/700.css';
 @import '@fontsource/geist-mono/400.css';
 @import '@fontsource/geist-mono/500.css';
 
@@ -38,12 +37,16 @@
   --color-gray-600:      #4d4d4d;
   --color-gray-500:      #666666;
   --color-gray-400:      #808080;
+  --color-gray-300:      #d4d4d4;
   --color-gray-100:      #ebebeb;
   --color-gray-50:       #fafafa;
 
   /* Color – Badges */
   --color-badge-bg:      #ebf5ff;
   --color-badge-text:    #0068d6;
+
+  /* Color – Semantic Success */
+  --color-success:       #28ca42;
 
   /* Shadow / Depth system */
   --shadow-border:       rgba(0, 0, 0, 0.08) 0px 0px 0px 1px;
@@ -677,6 +680,30 @@ a {
 .shiki-ignore,
 .shiki-ignore * {
   color: inherit !important;
+}
+
+/* ---------- Accessibility ---------- */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 20px;
+  background: var(--color-black);
+  color: var(--color-white);
+  padding: 10px 20px;
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 9999;
+  text-decoration: none;
+  box-shadow: var(--shadow-card);
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 20px;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 

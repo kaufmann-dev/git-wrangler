@@ -5,6 +5,7 @@ const currentPath = Astro.url.pathname;
 const isActive = (path: string) =>
   currentPath === path || (path !== '/' && currentPath.startsWith(path));
 ---
+<a href="#main-content" class="skip-link">Skip to content</a>
 
 <header class="navbar" id="navbar">
   <div class="navbar-inner container">
@@ -233,14 +234,6 @@ const isActive = (path: string) =>
     display: block;
     width: auto;
     height: 21px;
-  }
-
-  .navbar-wordmark {
-    font-family: var(--font-mono);
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-black);
-    letter-spacing: -0.02em;
   }
 
   /* Nav links */
