@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/kaufmann-dev/git-wrangler/internal/githubcli"
@@ -38,7 +40,9 @@ type exitError struct {
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
 func Execute() error {
-	return execute(context.Background(), run.New(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return execute(ctx, run.New(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 }
 
 func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -103,7 +107,7 @@ func newRootCommand(a *app) *cobra.Command {
 		&cobra.Group{ID: "history", Title: "History Rewriting:"},
 		&cobra.Group{ID: "utility", Title: "Utility:"},
 	)
-	root.SetHelpCommand(&cobra.Command{Use: "__help", Hidden: true, GroupID: "utility"})
+	root.SetHelpCommandGroupID("utility")
 	root.SetCompletionCommandGroupID("utility")
 
 	root.AddCommand(
