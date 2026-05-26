@@ -10,6 +10,7 @@ Git Wrangler is a command-line orchestrator that broadcasts Git operations from 
 - [Terminal Output](#terminal-output)
 - [Command Reference](#command-reference)
 - [Architecture](#architecture)
+- [Contributor Commands](#contributor-commands)
 
 ## Features
 - **Multi-Repo Management:** Execute operations across multiple `.git` repositories in a single command.
@@ -65,6 +66,12 @@ git-wrangler pull --rebase
 git-wrangler commit --message "chore: update dependencies"
 ```
 
+**Run local checks before changing the Bash CLI:**
+```bash
+scripts/check
+scripts/test
+```
+
 *For more detailed help, run `git-wrangler help` or `git-wrangler help <command>`.*
 
 ## Terminal Output
@@ -88,7 +95,7 @@ Color is also disabled automatically when output is not a TTY, so piped commands
 | `git-wrangler clone`       | Clones multiple GitHub repositories for a given user               |
 | `git-wrangler rename-repo` | Bulk renames GitHub repositories and optionally their descriptions |
 | `git-wrangler pull`        | Pulls the latest changes for all tracked repositories              |
-| `git-wrangler push`        | Pushes local commits to remote for all tracked repositories        |
+| `git-wrangler push`        | Pushes local commits to remote, with a lease-safe force mode       |
 
 ### Local Operations
 | Command                      | Description                                                          |
@@ -108,7 +115,7 @@ Color is also disabled automatically when output is not a TTY, so piped commands
 | `git-wrangler rewrite-commits`    | Rewrites commit messages to adhere to the Conventional Commits standard |
 | `git-wrangler rewrite-commits-ai` | Rewrites commit messages with an OpenAI-compatible AI endpoint          |
 | `git-wrangler rewrite-dates`      | Redistributes commit timestamps to mimic natural human activity         |
-| `git-wrangler remove-secrets`     | Permanently purges sensitive files from the entire Git history          |
+| `git-wrangler remove-secrets`     | Permanently purges sensitive files from history after confirmation      |
 
 ### Utility
 | Command                  | Description                                                       |
@@ -127,4 +134,13 @@ Git Wrangler is built on a modular, decentralized bash architecture designed for
 - **Thin Dispatcher:** The root `git-wrangler` script acts purely as a router, delegating `git-wrangler <command>` invocations to standalone executable scripts in the `libexec/` directory.
 - **Dynamic Help System:** There is no central registry for commands. The help menu is generated dynamically by parsing structured metadata headers embedded at the top of each script.
 - **Shared Terminal UI:** Subcommands source `libexec/git-wrangler-ui` for consistent colors, symbols, prompts, and plain-output behavior.
+- **Shared Bash Core:** Subcommands use `libexec/git-wrangler-core` for common repo discovery, display names, option value validation, prerequisites, and destructive confirmations.
 - **State Isolation:** When iterating over multiple repositories, operations are heavily sandboxed within subshells to guarantee that directory changes and variables never leak between iterations.
+
+## Contributor Commands
+
+| Command         | Description                                                                  |
+| --------------- | ---------------------------------------------------------------------------- |
+| `scripts/check` | Runs Bash syntax checks, optional ShellCheck/shfmt, and website build checks |
+| `scripts/test`  | Runs temp-directory integration tests for core Git Wrangler behavior         |
+| `scripts/bench` | Creates temporary repositories and times read-only status checks             |
