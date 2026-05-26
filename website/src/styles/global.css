@@ -405,6 +405,10 @@ code {
   overflow-x: auto;
 }
 
+.terminal-line {
+  white-space: nowrap;
+}
+
 .terminal-prompt {
   color: rgba(255,255,255,0.4);
   user-select: none;
@@ -412,6 +416,7 @@ code {
 
 .terminal-command {
   color: #ffffff;
+  word-spacing: 0.55em;
 }
 
 .terminal-comment {
