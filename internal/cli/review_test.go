@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
 func TestParseNameStatusZ(t *testing.T) {
@@ -57,20 +55,18 @@ func TestParseNameStatusZ(t *testing.T) {
 }
 
 func TestGroupDeletedFiles(t *testing.T) {
-	// Set up command mocking for git ls-tree
-	restore := run.SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+	t.Parallel()
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 		if name == "git" && len(args) >= 4 && args[0] == "ls-tree" {
 			current := args[3]
-			// Mock that "deleted-dir" and "parent/deleted-dir" do not exist in HEAD anymore (deleted folder)
 			if strings.Contains(current, "deleted-dir") {
 				return "", "", nil
 			}
-			// Other paths do exist in HEAD
 			return "some tree content", "", nil
 		}
 		return "", "", nil
-	})
-	defer restore()
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), nil, nil)
 
 	deleted := []string{
 		"deleted-dir/file1.go",
@@ -79,7 +75,7 @@ func TestGroupDeletedFiles(t *testing.T) {
 		"other-dir/file4.go",
 	}
 
-	folders, individual := groupDeletedFiles("dummy-dir", deleted)
+	folders, individual := groupDeletedFiles(a, "dummy-dir", deleted)
 
 	expectedFolders := []string{"deleted-dir", "parent/deleted-dir"}
 	expectedIndividual := []string{"other-dir/file4.go"}

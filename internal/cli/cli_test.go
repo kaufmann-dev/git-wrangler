@@ -2,7 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -107,11 +109,46 @@ func TestRewriteCommitsAIFlagValidation(t *testing.T) {
 
 func TestConfirmUsesInjectedStreams(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	a := newApp(strings.NewReader("y\n"), &stdout, &stderr)
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader("y\n"), &stdout, &stderr)
 	if !confirm(a, "Proceed?") {
 		t.Fatal("expected yes confirmation")
 	}
-	if !strings.Contains(stdout.String(), "Proceed? [y/N]") {
-		t.Fatalf("prompt not written to injected stdout: %q", stdout.String())
+	if stdout.String() != "" {
+		t.Fatalf("prompt should not be written to stdout: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Proceed? [y/N]") {
+		t.Fatalf("prompt not written to injected stderr: %q", stderr.String())
+	}
+}
+
+func TestRequiredFlagFailsNonInteractive(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), fakeRunner{}, []string{"commit"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected missing flag failure")
+	}
+	if !strings.Contains(stderr.String(), "--message is required") {
+		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	}
+}
+
+func TestYesDoesNotPromptForRequiredFlag(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stderr bytes.Buffer
+	cmd := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader("ignored\n"), io.Discard, &stderr))
+	cmd.SetArgs([]string{"rewrite-commits-ai", "--yes"})
+	cmd.SetIn(strings.NewReader("ignored\n"))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(&stderr)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing flag failure")
+	}
+	if strings.Contains(stderr.String(), "OpenAI-compatible API base URL:") {
+		t.Fatalf("--yes should not prompt:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--base-url is required") {
+		t.Fatalf("unexpected stderr:\n%s", stderr.String())
 	}
 }

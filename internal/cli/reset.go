@@ -8,11 +8,11 @@ import (
 )
 
 func runReset(a *app, cmd *cobra.Command, args []string) int {
-	confirmed, _ := cmd.Flags().GetBool("confirm")
+	yes := yesFlag(cmd)
 	if !requireGit(a, "reset") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -22,7 +22,7 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		branchOut, err := runStdout(r.dir, nil, "git", "rev-parse", "--abbrev-ref", "HEAD")
+		branchOut, err := a.git.CurrentBranch(a.ctx, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not determine current branch for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -33,22 +33,22 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%s%s is in detached HEAD state. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		if out, err := runCapture(r.dir, nil, "git", "fetch", "origin", branch); err != nil {
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "fetch", "origin", branch); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Fetch failed for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
 			status = 1
 			continue
 		}
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "--verify", "--quiet", "origin/"+branch); err != nil {
+		if !a.git.VerifyRef(a.ctx, r.dir, "origin/"+branch) {
 			fmt.Fprintf(a.stdout, "%sBranch '%s' has no remote counterpart in %s. Skipping...%s\n", a.ui.Yellow, branch, r.display, a.ui.Reset)
 			continue
 		}
-		ahead, err := runStdout(r.dir, nil, "git", "rev-list", "--count", "origin/"+branch+".."+branch)
+		ahead, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--count", "origin/"+branch+".."+branch)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not calculate ahead count for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
-		behind, err := runStdout(r.dir, nil, "git", "rev-list", "--count", branch+"..origin/"+branch)
+		behind, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--count", branch+"..origin/"+branch)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not calculate behind count for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -62,7 +62,7 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		fmt.Fprintf(a.stderr, "Divergence: %sahead %s%s, %sbehind %s%s\n", a.ui.Cyan, ahead, a.ui.Reset, a.ui.Red, behind, a.ui.Reset)
-		dirty, err := runStdout(r.dir, nil, "git", "status", "--porcelain")
+		dirty, err := a.git.StatusPorcelain(a.ctx, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect working tree for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -72,11 +72,11 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stderr, "%sWarning: Working tree has uncommitted changes that will be discarded.%s\n", a.ui.Red, a.ui.Reset)
 		}
 		fmt.Fprintf(a.stderr, "%sThis will hard reset %s to origin/%s, discarding %s local commit(s).%s\n", a.ui.Red, branch, branch, ahead, a.ui.Reset)
-		if !confirmed && !confirm(a, "Proceed with reset for "+r.display+"?") {
+		if !yes && !confirm(a, "Proceed with reset for "+r.display+"?") {
 			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		if out, err := runCapture(r.dir, nil, "git", "reset", "--hard", "origin/"+branch); err == nil {
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "reset", "--hard", "origin/"+branch); err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully reset %s to origin/%s%s\n", a.ui.Green, r.display, branch, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Reset failed for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)

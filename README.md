@@ -79,9 +79,9 @@ Utility:
 
 ## Safety
 
-Destructive history rewrite commands require confirmation before mutation. `remove-secrets`, `rewrite-authors`, and `rewrite-commits` require `--confirm`; `rewrite-dates` prompts unless `--confirm` is supplied. `rewrite-commits-ai` asks before sending redacted context to the configured API and asks again before applying generated messages.
+Destructive history rewrite commands require confirmation before mutation. `--yes` skips confirmation prompts for noninteractive runs. `rewrite-commits-ai` asks before sending redacted context to the configured API and asks again before applying generated messages unless `--yes` is supplied.
 
-Non-history commands that create commits or discard state also require explicit intent: `fix-gitignore --confirm`, `untrack --confirm`, and `reset --confirm` skip the interactive prompts.
+Non-history commands that create commits or discard state also require explicit intent: `fix-gitignore --yes`, `untrack --yes`, and `reset --yes` skip the interactive prompts.
 
 ## Architecture
 

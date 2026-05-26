@@ -13,7 +13,7 @@ import (
 )
 
 func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
-	confirmed, _ := cmd.Flags().GetBool("confirm")
+	yes := yesFlag(cmd)
 	if !requireGit(a, "rewrite-commits") {
 		return 1
 	}
@@ -21,7 +21,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -31,12 +31,12 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "HEAD"); err != nil {
+		if !a.git.HasHead(a.ctx, r.dir) {
 			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		remoteURL := originURL(r.dir)
-		mapping, err := buildCommitMessageMapping(r.dir)
+		remoteURL := originURL(a, r.dir)
+		mapping, err := buildCommitMessageMapping(a, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -46,8 +46,8 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%sNo commits require rewriting in %s (already format compliant). Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		if !confirmed {
-			a.error(r.display, "Refusing to rewrite history without --confirm.")
+		if !yes && !confirm(a, "Rewrite commit messages for "+r.display+"?") {
+			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
 			continue
 		}
@@ -58,11 +58,11 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		out, err := runFilterRepo(r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
+		out, err := runFilterRepo(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
 		_ = os.Remove(callback)
 		if err == nil {
 			fmt.Fprintf(a.stdout, "%sRewrote commit messages for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if err := restoreOrigin(r.dir, remoteURL); err != nil {
+			if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
 				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
 			}
@@ -82,21 +82,21 @@ var (
 	timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
 )
 
-func buildCommitMessageMapping(dir string) (map[string]string, error) {
-	out, err := runStdout(dir, nil, "git", "rev-list", "--all")
+func buildCommitMessageMapping(a *app, dir string) (map[string]string, error) {
+	out, err := a.git.Stdout(a.ctx, dir, nil, "rev-list", "--all")
 	if err != nil {
 		return nil, err
 	}
 	mapping := map[string]string{}
 	for _, commit := range splitLines(out) {
-		msg, err := runStdout(dir, nil, "git", "log", "-1", "--format=%B", commit)
+		msg, err := a.git.Stdout(a.ctx, dir, nil, "log", "-1", "--format=%B", commit)
 		if err != nil {
 			return nil, err
 		}
 		if conventionalRe.MatchString(firstLine(msg)) {
 			continue
 		}
-		diff, err := runStdout(dir, nil, "git", "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit)
+		diff, err := a.git.Stdout(a.ctx, dir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit)
 		if err != nil {
 			return nil, err
 		}

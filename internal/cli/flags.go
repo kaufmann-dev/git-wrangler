@@ -2,17 +2,22 @@ package cli
 
 type flagSpec struct {
 	name        string
-	value       string
+	stringValue string
+	intValue    int
 	description string
-	boolean     bool
+	kind        string
 }
 
 type flags []flagSpec
 
 func stringFlag(name, value, description string) flagSpec {
-	return flagSpec{name: name, value: value, description: description}
+	return flagSpec{name: name, stringValue: value, description: description, kind: "string"}
 }
 
 func boolFlag(name, description string) flagSpec {
-	return flagSpec{name: name, description: description, boolean: true}
+	return flagSpec{name: name, description: description, kind: "bool"}
+}
+
+func intFlag(name string, value int, description string) flagSpec {
+	return flagSpec{name: name, intValue: value, description: description, kind: "int"}
 }
