@@ -16,7 +16,7 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "status") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -33,13 +33,22 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	totalNoRemote := 0
 	status := 0
 
-	for _, r := range repos {
+	type statusResult struct {
+		repo repo
+		row  statusTableRow
+		err  error
+	}
+	results := parallelRepos(repos, func(r repo) statusResult {
 		row, err := statusRow(a, r)
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+		return statusResult{repo: r, row: row, err: err}
+	})
+	for _, result := range results {
+		if result.err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, result.repo.display, result.err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
+		row := result.row
 		fmt.Fprintf(a.stdout, "%-30s | %s | %s\n", row.name, row.state, row.tracking)
 		totalDirty += row.dirty
 		totalBehind += row.behind
@@ -64,7 +73,7 @@ type statusTableRow struct {
 }
 
 func statusRow(a *app, r repo) (statusTableRow, error) {
-	out, err := runStdout(r.dir, nil, "git", "status", "--porcelain=v2", "--branch")
+	out, err := a.git.StatusPorcelainBranch(a.ctx, r.dir)
 	if err != nil {
 		return statusTableRow{}, err
 	}

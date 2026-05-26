@@ -1,15 +1,15 @@
 package cli
 
 import (
-	"context"
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +18,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "info") {
 		return 1
 	}
-	root := "."
-	if repoName != "" {
-		root = repoName
-	}
-	repos, err := findGitRepositories(root)
+	repos, err := resolveRepositoryTargets(repoName)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -33,7 +29,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	statusCode := 0
 	for _, r := range repos {
 		fmt.Fprintf(a.stdout, "Repository:         %s%s%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
-		status, err := runStdout(r.dir, nil, "git", "status", "--porcelain")
+		status, err := a.git.StatusPorcelain(a.ctx, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			statusCode = 1
@@ -45,18 +41,15 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "Status:             %sDirty (uncommitted changes or untracked files)%s\n", a.ui.Yellow, a.ui.Reset)
 		}
 		printLicenseInfo(a, r.dir)
-		branch, err := runStdout(r.dir, nil, "git", "rev-parse", "--abbrev-ref", "HEAD")
+		branch, err := a.git.CurrentBranch(a.ctx, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect branch for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			statusCode = 1
 			continue
 		}
 		fmt.Fprintf(a.stdout, "Current branch:     %s\n", strings.TrimSpace(branch))
-		hasCommits := false
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "HEAD"); err == nil {
-			hasCommits = true
-		}
-		ab, _ := runStdout(r.dir, nil, "git", "rev-list", "--left-right", "--count", "HEAD...@{u}")
+		hasCommits := a.git.HasHead(a.ctx, r.dir)
+		ab, _ := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--left-right", "--count", "HEAD...@{u}")
 		if fields := strings.Fields(ab); len(fields) >= 2 {
 			fmt.Fprintf(a.stdout, "Ahead/behind:       %s ahead, %s behind remote\n", fields[0], fields[1])
 		} else {
@@ -72,7 +65,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 			statusCode = 1
 			continue
 		}
-		initial, err := runStdout(r.dir, nil, "git", "log", "--reverse", "--format=%ci - %s")
+		initial, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--reverse", "--format=%ci - %s")
 		if err != nil && hasCommits {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect initial commit for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			statusCode = 1
@@ -83,21 +76,21 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		} else {
 			fmt.Fprintln(a.stdout, "Initial commit:     None (repository is empty)")
 		}
-		commitCount, err := runStdout(r.dir, nil, "git", "rev-list", "--all", "--count")
+		commitCount, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count")
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not count commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			statusCode = 1
 			continue
 		}
 		fmt.Fprintf(a.stdout, "Total commits:      %s\n", strings.TrimSpace(commitCount))
-		lastMonth, err := runStdout(r.dir, nil, "git", "log", "--since=1 month ago", "--format=%ci")
+		lastMonth, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--since=1 month ago", "--format=%ci")
 		if err != nil && hasCommits {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect recent commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			statusCode = 1
 			continue
 		}
 		fmt.Fprintf(a.stdout, "Commits last month: %d\n", len(splitLines(lastMonth)))
-		last, err := runStdout(r.dir, nil, "git", "log", "-1", "--format=%ci - %s")
+		last, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "-1", "--format=%ci - %s")
 		if err != nil && hasCommits {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect last commit for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			statusCode = 1
@@ -139,7 +132,7 @@ func printLicenseInfo(a *app, dir string) {
 }
 
 func printBranches(a *app, dir string) error {
-	out, err := runStdout(dir, nil, "git", "branch", "-a", "--no-color")
+	out, err := a.git.Stdout(a.ctx, dir, nil, "branch", "-a", "--no-color")
 	if err != nil {
 		return err
 	}
@@ -168,7 +161,7 @@ func printBranches(a *app, dir string) error {
 }
 
 func printRemotes(a *app, dir string) error {
-	out, err := runStdout(dir, nil, "git", "remote", "-v")
+	out, err := a.git.Stdout(a.ctx, dir, nil, "remote", "-v")
 	if err != nil {
 		return err
 	}
@@ -197,7 +190,7 @@ func printRemotes(a *app, dir string) error {
 }
 
 func printTopAuthors(a *app, dir string) error {
-	out, err := runStdout(dir, nil, "git", "log", "--format=%an <%ae>")
+	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--format=%an <%ae>")
 	if err != nil {
 		return err
 	}
@@ -232,42 +225,36 @@ func printTopAuthors(a *app, dir string) error {
 	return nil
 }
 
+type largestFileRow struct {
+	size int64
+	path string
+}
+
 func printLargestFiles(a *app, dir string) error {
-	objects, err := runStdout(dir, nil, "git", "rev-list", "--objects", "--all")
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(objects) == "" {
-		return nil
-	}
-	type row struct {
-		size int64
-		path string
-	}
-	rows := []row{}
 	seen := map[string]bool{}
-	batch, err := git.CatFileBatchCheck(context.Background(), dir, objects)
+	rows := []largestFileRow{}
+	err := a.git.CatFileBatchCheckAllObjects(a.ctx, dir, func(output io.Reader) error {
+		scanner := bufio.NewScanner(output)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fields := strings.Fields(line)
+			if len(fields) < 3 {
+				continue
+			}
+			size, _ := strconv.ParseInt(fields[0], 10, 64)
+			path := strings.Join(fields[2:], " ")
+			if path == "" || seen[path] {
+				continue
+			}
+			seen[path] = true
+			rows = appendTopLargest(rows, largestFileRow{size: size, path: path}, 3)
+		}
+		return scanner.Err()
+	})
 	if err != nil {
 		return err
 	}
-	for _, line := range splitLines(batch) {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-		size, _ := strconv.ParseInt(fields[0], 10, 64)
-		path := strings.Join(fields[2:], " ")
-		if path == "" || seen[path] {
-			continue
-		}
-		seen[path] = true
-		rows = append(rows, row{size: size, path: path})
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].size > rows[j].size })
 	for i, row := range rows {
-		if i >= 3 {
-			break
-		}
 		if i == 0 {
 			fmt.Fprintf(a.stdout, "Largest files:      %s - %s\n", humanSize(row.size), row.path)
 		} else {
@@ -275,6 +262,15 @@ func printLargestFiles(a *app, dir string) error {
 		}
 	}
 	return nil
+}
+
+func appendTopLargest(rows []largestFileRow, next largestFileRow, limit int) []largestFileRow {
+	rows = append(rows, next)
+	sort.Slice(rows, func(i, j int) bool { return rows[i].size > rows[j].size })
+	if len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows
 }
 
 func humanSize(size int64) string {

@@ -75,6 +75,6 @@ cd website && pnpm audit --audit-level moderate
 
 ## History Rewrite Safety
 
-History rewrite commands must require explicit confirmation or a documented confirmation flag before mutation. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations. Bulk commands must return nonzero if any repository operation fails; no-op skips remain successful.
+History rewrite commands must require explicit confirmation before mutation, with `--yes` as the standard noninteractive confirmation flag. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations. Bulk commands must return nonzero if any repository operation fails; no-op skips remain successful.
 
 `rewrite-commits-ai` must fail before scanning repositories when no API key is available. It must not save plaintext API keys, must not send old commit messages as model context, and must redact sensitive file contents and common secret patterns before API calls.

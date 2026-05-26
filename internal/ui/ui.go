@@ -3,6 +3,8 @@ package ui
 import (
 	"io"
 	"os"
+
+	"golang.org/x/term"
 )
 
 type Theme struct {
@@ -69,14 +71,10 @@ func UnicodeEnabled(stdout io.Writer) bool {
 	return os.Getenv("TERM") != "dumb" && IsTerminal(stdout)
 }
 
-func IsTerminal(w io.Writer) bool {
-	file, ok := w.(*os.File)
+func IsTerminal(stream any) bool {
+	file, ok := stream.(*os.File)
 	if !ok {
 		return false
 	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(file.Fd()))
 }

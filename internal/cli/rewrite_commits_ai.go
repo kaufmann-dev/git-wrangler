@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
@@ -17,36 +15,35 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	model, _ := cmd.Flags().GetString("model")
 	apiKey, _ := cmd.Flags().GetString("api-key")
 	apiKeyEnv, _ := cmd.Flags().GetString("api-key-env")
-	batchSize, _ := cmd.Flags().GetString("batch-size")
-	maxChars, _ := cmd.Flags().GetString("max-chars-per-commit")
-	timeoutSeconds, _ := cmd.Flags().GetString("timeout")
+	batch, _ := cmd.Flags().GetInt("batch-size")
+	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
+	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
+	yes := yesFlag(cmd)
 
-	if !positiveInt(batchSize) {
+	if batch <= 0 {
 		a.plainErrorf("--batch-size must be a positive integer.")
 		return 1
 	}
-	batch, _ := strconv.Atoi(batchSize)
 	if batch > 50 {
 		a.plainErrorf("--batch-size must be 50 or less.")
 		return 1
 	}
-	if !positiveInt(maxChars) {
+	if maxCharsInt <= 0 {
 		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
 		return 1
 	}
-	if !positiveInt(timeoutSeconds) {
+	if timeoutInt <= 0 {
 		a.plainErrorf("--timeout must be a positive integer.")
 		return 1
 	}
-	maxCharsInt, _ := strconv.Atoi(maxChars)
-	timeoutInt, _ := strconv.Atoi(timeoutSeconds)
-	if baseURL == "" {
-		a.plainErrorf("--base-url is required.")
+	var ok bool
+	baseURL, ok = requiredStringFlag(a, cmd, "base-url", "OpenAI-compatible API base URL: ")
+	if !ok {
 		return 1
 	}
-	if model == "" {
-		a.plainErrorf("--model is required.")
+	model, ok = requiredStringFlag(a, cmd, "model", "Model name: ")
+	if !ok {
 		return 1
 	}
 	if envKey := os.Getenv(apiKeyEnv); envKey != "" {
@@ -65,7 +62,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -84,7 +81,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	for _, r := range repos {
 		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
 	}
-	plan, err := ai.Generate(context.Background(), aiRepos, ai.Config{
+	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
 		BaseURL:           baseURL,
 		Model:             model,
 		APIKey:            apiKey,
@@ -93,7 +90,11 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		Timeout:           time.Duration(timeoutInt) * time.Second,
 		SkipConventional:  skipConventional,
 		WorkDir:           workDir,
-	}, a.stdout, func(question string) bool {
+		Git:               a.git,
+	}, a.stderr, func(question string) bool {
+		if yes {
+			return true
+		}
 		return confirm(a, question)
 	})
 	if errors.Is(err, ai.ErrCancelled) {
@@ -109,25 +110,20 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		return 0
 	}
 	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update remotes.%s\n", a.ui.Red, a.ui.Reset)
-	if !confirm(a, "Apply these generated commit messages to all listed repositories?") {
+	if !yes && !confirm(a, "Apply these generated commit messages to all listed repositories?") {
 		fmt.Fprintf(a.stdout, "%sRewrite cancelled. Generated AI messages were temporary and have been discarded.%s\n", a.ui.Yellow, a.ui.Reset)
 		return 1
 	}
 	return applyAIPlan(a, plan, filterCmd)
 }
 
-func positiveInt(s string) bool {
-	n, err := strconv.Atoi(s)
-	return err == nil && n > 0
-}
-
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	hadError := false
 	for _, repoPlan := range plan.Repos {
-		remoteURL := originURL(repoPlan.Dir)
-		out, err := runFilterRepo(repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+		remoteURL := originURL(a, repoPlan.Dir)
+		out, err := runFilterRepo(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 		if err == nil {
-			if err := restoreOrigin(repoPlan.Dir, remoteURL); err != nil {
+			if err := restoreOrigin(a, repoPlan.Dir, remoteURL); err != nil {
 				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, err.Error(), a.ui.Reset)
 				hadError = true
 				continue

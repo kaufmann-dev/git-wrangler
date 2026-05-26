@@ -24,3 +24,10 @@ func TestColorForced(t *testing.T) {
 		t.Fatal("expected forced color")
 	}
 }
+
+func TestNonFileStreamIsNotTerminal(t *testing.T) {
+	t.Parallel()
+	if IsTerminal(&bytes.Buffer{}) {
+		t.Fatal("buffer should not be detected as a terminal")
+	}
+}
