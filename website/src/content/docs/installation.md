@@ -1,99 +1,62 @@
 ---
 title: "Installation"
-description: "Install Git Wrangler with a single curl command."
+description: "Install Git Wrangler with Homebrew or GitHub Release binaries."
 category: "General"
 order: 2
 ---
 
 # Installation
 
-## Prerequisites
+## Homebrew
 
-Before installing Git Wrangler, make sure you have:
-
-| Dependency                   | Required for                          | Install                                             |
-| ---------------------------- | ------------------------------------- | --------------------------------------------------- |
-| `git`                        | All operations                        | [git-scm.com](https://git-scm.com/)                 |
-| `gh`                         | `clone`, `rename-repo`                | [cli.github.com](https://cli.github.com/)           |
-| `git-filter-repo`            | History rewriting                     | [GitHub](https://github.com/newren/git-filter-repo) |
-| Python 3                     | `rewrite-commits-ai`, `rewrite-dates` | [python.org](https://www.python.org/)               |
-| OpenAI-compatible API access | `rewrite-commits-ai`                  | Your provider's API dashboard                       |
-
-`git` is required for everything. `gh`, `git-filter-repo`, Python 3, and API access are only needed if you plan to use their respective commands.
-
-## One-liner install
-
-Run the following in your terminal:
+Homebrew is the primary install path:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kaufmann-dev/git-wrangler/main/install | bash
+brew install kaufmann-dev/tap/git-wrangler
 ```
 
-This will:
-1. Clone the repository to `~/.git-wrangler`
-2. Create a symlink at `~/.local/bin/git-wrangler` (or `/usr/local/bin` as fallback)
-3. Show a short dependency summary
+Upgrade with:
 
-For package-manager-specific dependency instructions and update status, run:
+```bash
+brew upgrade git-wrangler
+```
+
+Homebrew installs bash, zsh, and fish completions automatically.
+
+## GitHub Releases
+
+Linux and Windows users can download the matching archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
+
+## Runtime dependencies
+
+`git` is required for normal repository operations.
+
+`gh` is required for GitHub repository operations such as `clone` and `rename-repo`. Run this before private or all-repository workflows:
+
+```bash
+gh auth login
+```
+
+`git-filter-repo` is required for history rewrite commands:
+
+- `remove-secrets`
+- `rewrite-authors`
+- `rewrite-commits`
+- `rewrite-commits-ai`
+- `rewrite-dates`
+
+Check your environment with:
 
 ```bash
 git-wrangler doctor
 ```
 
-## Platform support
+## Uninstall
 
-| Platform           | Status       |
-| ------------------ | ------------ |
-| macOS              | ✅ Native    |
-| Linux              | ✅ Native    |
-| Windows (Git Bash) | ✅ Supported |
-| Windows (WSL)      | ✅ Supported |
-
-## Verify the installation
+If installed with Homebrew:
 
 ```bash
-git-wrangler help
+brew uninstall git-wrangler
 ```
 
-You should see the help menu listing all available commands.
-
-## Terminal output
-
-Git Wrangler uses colored status output in interactive terminals and plain output when stdout is piped or the terminal does not support styling.
-
-Presentation controls:
-
-- `NO_COLOR=1` disables color and styling.
-- `CLICOLOR=0` disables color and styling.
-- `CLICOLOR_FORCE=1` forces color unless `NO_COLOR`, `CLICOLOR=0`, or `TERM=dumb` is set.
-- `TERM=dumb` disables color and Unicode symbols.
-
-## Updating
-
-Keep Git Wrangler up to date by running:
-
-```bash
-git-wrangler update
-```
-
-This compares your local commit against the remote and applies the update if one is available.
-
-## Uninstalling
-
-To remove Git Wrangler cleanly:
-
-```bash
-git-wrangler uninstall
-```
-
-This removes the `~/.git-wrangler` directory and the `git-wrangler` symlink. No other files are touched.
-
-## Manual install
-
-If you prefer to clone manually:
-
-```bash
-git clone https://github.com/kaufmann-dev/git-wrangler ~/.git-wrangler
-ln -s ~/.git-wrangler/git-wrangler ~/.local/bin/git-wrangler
-chmod +x ~/.git-wrangler/git-wrangler ~/.git-wrangler/libexec/git-wrangler-*
-```
+If installed manually, remove the binary from wherever you placed it on `PATH`.

@@ -22,10 +22,10 @@ Renames a specified branch to a new name across all managed Git repositories. Re
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
+| Flag                 | Required     | Description                                |
+| -------------------- | ------------ | ------------------------------------------ |
 | `--oldbranch <name>` | **Required** | The name of the existing branch to rename. |
-| `--newbranch <name>` | **Required** | The new name for the branch. |
+| `--newbranch <name>` | **Required** | The new name for the branch.               |
 
 ## Example
 

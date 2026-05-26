@@ -1,3 +1,0 @@
-ERROR --user requires a value.
-ERROR --oldbranch requires a value.
-ERROR Unknown subcommand 'does-not-exist'. Run 'git-wrangler help' for a list of available commands.
