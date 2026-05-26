@@ -1,34 +1,38 @@
 ---
 title: "doctor"
-description: "Checks dependencies, install guidance, and update status."
+description: "Checks runtime dependencies and GitHub authentication guidance."
 category: "Utility"
 order: 3
-usage: "git-wrangler doctor"
+usage: "git-wrangler doctor [--summary]"
 ---
 
 # doctor
 
-Checks whether Git Wrangler's command dependencies are installed, prints install instructions for your detected package manager, and reports whether your installed Git Wrangler checkout is up to date.
+Checks whether the normal runtime dependencies are available.
 
 ## Usage
 
 ```bash
-git-wrangler doctor
+git-wrangler doctor [--summary]
 ```
 
-## What it does
+## What it checks
 
-`doctor` checks for `git`, `gh`, `git-filter-repo`, and Python 3. If anything is missing, it detects the available package manager and prints commands for installing the dependencies.
+`doctor` checks for:
 
-It also compares the local Git Wrangler commit with the remote branch. If a newer version is available, it tells you to run `git-wrangler update`.
+- `git`
+- `gh`
+- `git-filter-repo` or `git filter-repo`
+
+It also reminds users to run `gh auth login` before private or all-repository GitHub operations.
+
+## Options
+
+- `--summary` prints only dependency status.
 
 ## Examples
 
 ```bash
 git-wrangler doctor
+git-wrangler doctor --summary
 ```
-
-## Notes
-
-- `doctor` only prints install instructions; it never installs dependencies.
-- If the remote repository cannot be reached, the update check reports a warning and the dependency check still completes.

@@ -24,14 +24,14 @@ Rewrites the commit messages of Git repositories to adhere to the [Conventional 
 
 ## Type detection logic
 
-| Condition | Assigned type |
-|---|---|
-| Only doc files changed (`.md`, `.txt`, `docs/`) | `docs` |
-| Only test files changed (`test/`, `spec/`, `*.test.*`) | `test` |
-| Only config files changed (`.yml`, `.json`, `Makefile`) | `chore` |
-| Source files added (no deletions) | `feat` |
-| Source files modified/mixed | `fix` |
-| Everything else | `chore` |
+| Condition                                               | Assigned type |
+| ------------------------------------------------------- | ------------- |
+| Only doc files changed (`.md`, `.txt`, `docs/`)         | `docs`        |
+| Only test files changed (`test/`, `spec/`, `*.test.*`)  | `test`        |
+| Only config files changed (`.yml`, `.json`, `Makefile`) | `chore`       |
+| Source files added (no deletions)                       | `feat`        |
+| Source files modified/mixed                             | `fix`         |
+| Everything else                                         | `chore`       |
 
 ## Prerequisites
 

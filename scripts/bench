@@ -3,7 +3,6 @@
 set -u
 
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
-GW="$ROOT/git-wrangler"
 TMPDIR_ROOT=$(mktemp -d)
 COUNT="${1:-25}"
 export NO_COLOR=1
@@ -17,6 +16,9 @@ case "$COUNT" in
         exit 1
         ;;
 esac
+
+GW="$TMPDIR_ROOT/git-wrangler"
+go build -o "$GW" "$ROOT/cmd/git-wrangler" || exit 1
 
 git_config() {
     git -C "$1" config user.email "bench@example.com"

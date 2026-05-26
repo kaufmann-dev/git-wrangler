@@ -7,39 +7,41 @@ order: 1
 
 # Introduction
 
-**Git Wrangler** is a command-line orchestrator that broadcasts Git operations — from simple pulls to complex history rewrites — across an entire directory of repositories simultaneously.
+Git Wrangler is a compiled Go command-line tool for running Git workflows across many repositories from one directory.
 
-If you manage more than a handful of repositories, you know the pain: running `git pull` in twelve directories, committing the same change across five projects, or trying to scrub a secret that leaked into six repos. Git Wrangler solves that.
+It is built for maintainers who regularly need to pull, inspect, commit, push, rename, or rewrite history across a group of related repositories.
 
 ## What it does
 
-Instead of writing brittle shell loops or reaching for heavyweight tools, Git Wrangler gives you a clean, Git-like interface:
+Git Wrangler provides a Git-like command surface:
 
 ```bash
-git-wrangler <command> [options]
+git-wrangler <command> [flags]
 ```
 
-Every subcommand is a purpose-built script that targets all `.git` repositories it can find in the current directory — automatically, without configuration files or setup steps.
+Commands discover `.git` repositories from the filesystem, process them in deterministic order, and print a compact status-oriented summary.
 
 ## Why it exists
 
-Git Wrangler was built on three principles:
+Git Wrangler keeps repetitive multi-repository work in one focused CLI:
 
-1. **Zero friction** — One install command. No config files. No daemons. Works anywhere Git does.
-2. **Safety first** — Every repository operation runs in an isolated subshell. Variables and directory changes never leak between iterations.
-3. **Extensibility** — Adding a new command is just adding a new file to `libexec/`. The help system discovers it automatically.
+1. Install through Homebrew or GitHub Release binaries.
+2. Use `gh` for GitHub operations so authentication stays familiar.
+3. Use `git-filter-repo` for history rewrite commands.
+4. Use Cobra-native help, version output, and shell completions.
 
 ## Command categories
 
-| Category              | What it covers                                                |
-| --------------------- | ------------------------------------------------------------- |
-| **Remote Operations** | Cloning, pulling, pushing, GitHub renaming                    |
-| **Local Operations**  | Committing, reviewing, license management, `.gitignore` fixes |
-| **History Rewriting** | Author/date/message rewrites, secret purging                  |
-| **Utility**           | Status dashboard, environment diagnostics, update, uninstall  |
+Remote operations cover cloning, pulling, pushing, and GitHub repository renames.
+
+Local operations cover status-adjacent repository maintenance such as commits, reviews, license files, branch renames, resets, and ignore cleanup.
+
+History rewriting covers author, date, message, AI-assisted message, and secret-removal rewrites.
+
+Utility commands cover diagnostics, repository information, version metadata, and completions.
 
 ## Next steps
 
-- [Install Git Wrangler](/docs/installation) — the one-liner
-- [Understand the architecture](/docs/architecture) — how it all fits together
-- [Browse command reference](/docs/status) — every command documented
+- [Install Git Wrangler](/docs/installation)
+- [Understand the architecture](/docs/architecture)
+- [Browse command reference](/docs/status)
