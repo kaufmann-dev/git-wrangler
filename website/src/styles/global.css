@@ -3,13 +3,6 @@
    Inspired by the Vercel / Geist design system (DESIGN.md)
    ============================================================ */
 
-/* ---------- Fontsource imports ---------- */
-@import '@fontsource/geist/400.css';
-@import '@fontsource/geist/500.css';
-@import '@fontsource/geist/600.css';
-@import '@fontsource/geist-mono/400.css';
-@import '@fontsource/geist-mono/500.css';
-
 /* ---------- CSS Custom Properties (Design Tokens) ---------- */
 :root {
   /* Color – Primary */
@@ -705,5 +698,4 @@ a {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
-
 

@@ -8,13 +8,13 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `internal/cli` owns Cobra command registration, command groups, help, flags, `version`, `completion`, and command wiring. Use `SilenceUsage: true` and `SilenceErrors: true`, and print command errors once to stderr.
 
-`internal/repos` is filesystem-only repository discovery and display-name handling. It must not call Git, `gh`, or any subprocess.
+`internal/repos` is filesystem-only repository discovery and display-name handling. It discovers normal `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. It must not call Git, `gh`, or any subprocess.
 
 `internal/git` owns Git subprocess behavior, including `git-filter-repo` detection and history rewrite helper execution. Support both `git-filter-repo` and `git filter-repo`, preferring the standalone executable.
 
 `internal/githubcli` owns `gh` subprocess behavior. `clone` and `rename-repo` must keep using `gh`; do not reimplement GitHub authentication or API flows.
 
-`internal/run` owns command execution wrappers and fake-command support for tests.
+`internal/run` owns command execution wrappers, default subprocess timeouts, and concurrency-safe fake-command support for tests.
 
 `internal/ui` owns output streams, colors, plain output behavior, status vocabulary, prompts, and terminal detection.
 
@@ -62,14 +62,19 @@ Required checks:
 go test ./...
 go test -race ./...
 go vet ./...
+govulncheck ./...
 goreleaser check
+goreleaser release --snapshot --clean
 git diff --check
+cd website && pnpm run check
+cd website && pnpm run build
+cd website && pnpm audit --audit-level moderate
 ```
 
-`scripts/check` wraps the Go checks and website build when local website dependencies are installed. `scripts/test` runs `go test ./...`. `scripts/bench` builds a temporary CLI binary and times read-only status checks against temporary repositories.
+`scripts/check` wraps `git diff --check`, Go tests, race tests, vet, optional `govulncheck`, GoReleaser v2 checks, and website check/build/audit when local website dependencies are installed. `scripts/test` runs `go test ./...`. `scripts/bench` builds a temporary CLI binary and times read-only status checks against temporary repositories.
 
 ## History Rewrite Safety
 
-History rewrite commands must require explicit confirmation or a documented confirmation flag before mutation. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations.
+History rewrite commands must require explicit confirmation or a documented confirmation flag before mutation. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations. Bulk commands must return nonzero if any repository operation fails; no-op skips remain successful.
 
 `rewrite-commits-ai` must fail before scanning repositories when no API key is available. It must not save plaintext API keys, must not send old commit messages as model context, and must redact sensitive file contents and common secret patterns before API calls.

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -223,10 +224,18 @@ func IsSensitivePath(path string) bool {
 		return true
 	}
 	switch base {
-	case "id_rsa", "id_rsa.pub", "id_ed25519", "id_ed25519.pub", "credentials.json", "secrets.json":
+	case ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa", "id_rsa.pub", "id_ed25519", "id_ed25519.pub", "credentials.json", "secrets.json", "kubeconfig":
+		return true
+	case "application_default_credentials.json", "azureprofile.json", "accesstokens.json":
 		return true
 	}
-	if strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".p12") || strings.HasSuffix(base, ".pfx") {
+	if strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".p12") || strings.HasSuffix(base, ".pfx") || strings.HasSuffix(base, ".asc") || strings.HasSuffix(base, ".gpg") || strings.HasSuffix(base, ".crt") || strings.HasSuffix(base, ".cer") || strings.HasSuffix(base, ".cert") {
+		return true
+	}
+	if strings.Contains(normalized, ".docker/config.json") || strings.Contains(normalized, ".kube/config") {
+		return true
+	}
+	if strings.Contains(normalized, ".aws/") || strings.Contains(normalized, ".config/gcloud/") || strings.Contains(normalized, "cloud/credentials") {
 		return true
 	}
 	if strings.Contains(normalized, "secret") || strings.Contains(normalized, "credential") {
@@ -244,8 +253,8 @@ func RedactDiff(diffText string) string {
 	hiding := false
 	for _, line := range strings.Split(diffText, "\n") {
 		if strings.HasPrefix(line, "diff --git ") {
-			path := diffPath(line)
-			hiding = IsSensitivePath(path)
+			path, ok := diffPath(line)
+			hiding = !ok || IsSensitivePath(path)
 			lines = append(lines, RedactLine(line))
 			if hiding {
 				lines = append(lines, "[SENSITIVE FILE CONTENT HIDDEN]")
@@ -502,19 +511,77 @@ func writeCommitCallback(path string, mappings []mapping) error {
 	fmt.Fprintln(f, "mapping = {}")
 	sort.Slice(mappings, func(i, j int) bool { return mappings[i].hash < mappings[j].hash })
 	for _, row := range mappings {
-		fmt.Fprintf(f, "mapping[b%q] = b%q\n", row.hash, row.message+"\n")
+		fmt.Fprintf(f, "mapping[%s] = %s\n", git.PythonBytesLiteral(row.hash), git.PythonBytesLiteral(row.message+"\n"))
 	}
 	fmt.Fprintln(f, "if commit.original_id in mapping:")
 	fmt.Fprintln(f, "    commit.message = mapping[commit.original_id]")
 	return nil
 }
 
-func diffPath(line string) string {
-	matches := regexp.MustCompile(`^diff --git a/(.*?) b/(.*)$`).FindStringSubmatch(line)
-	if len(matches) == 3 {
-		return matches[2]
+func diffPath(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(line, "diff --git ")
+	if !ok {
+		return "", false
 	}
-	return ""
+	if strings.HasPrefix(rest, `"`) {
+		first, remaining, ok := nextDiffToken(rest)
+		if !ok {
+			return "", false
+		}
+		second, remaining, ok := nextDiffToken(strings.TrimSpace(remaining))
+		if !ok || strings.TrimSpace(remaining) != "" {
+			return "", false
+		}
+		_ = first
+		return trimDiffPrefix(second), trimDiffPrefix(second) != ""
+	}
+	if strings.HasPrefix(rest, "a/") {
+		idx := strings.LastIndex(rest, " b/")
+		if idx < 0 {
+			return "", false
+		}
+		return rest[idx+3:], rest[idx+3:] != ""
+	}
+	fields := strings.Fields(rest)
+	if len(fields) != 2 {
+		return "", false
+	}
+	return trimDiffPrefix(fields[1]), trimDiffPrefix(fields[1]) != ""
+}
+
+func nextDiffToken(s string) (token string, rest string, ok bool) {
+	if s == "" {
+		return "", "", false
+	}
+	if s[0] != '"' {
+		idx := strings.IndexByte(s, ' ')
+		if idx < 0 {
+			return s, "", true
+		}
+		return s[:idx], s[idx+1:], true
+	}
+	escaped := false
+	for i := 1; i < len(s); i++ {
+		switch {
+		case escaped:
+			escaped = false
+		case s[i] == '\\':
+			escaped = true
+		case s[i] == '"':
+			unquoted, err := strconv.Unquote(s[:i+1])
+			if err != nil {
+				return "", "", false
+			}
+			return unquoted, s[i+1:], true
+		}
+	}
+	return "", "", false
+}
+
+func trimDiffPrefix(path string) string {
+	path = strings.TrimPrefix(path, "a/")
+	path = strings.TrimPrefix(path, "b/")
+	return path
 }
 
 func limitedLines(text string, maxLines int) string {
