@@ -10,8 +10,8 @@ import (
 func TestRootHelpUsesCobraGroups(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{"help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
-		t.Fatalf("help returned error: %v", err)
+	if err := ExecuteWithIO([]string{"--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("--help returned error: %v", err)
 	}
 	out := stdout.String()
 	for _, want := range []string{
@@ -28,6 +28,21 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 	}
 	if strings.Contains(out, "update") || strings.Contains(out, "uninstall") {
 		t.Fatalf("removed commands appeared in help:\n%s", out)
+	}
+	if strings.Contains(out, "\n  doctor") || strings.Contains(out, "\n  help") {
+		t.Fatalf("removed commands appeared in help:\n%s", out)
+	}
+}
+
+func TestHelpCommandIsRemoved(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"help"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected help command to return an error")
+	}
+	if !strings.Contains(stderr.String(), `unknown command "help"`) {
+		t.Fatalf("unexpected stderr:\n%s", stderr.String())
 	}
 }
 
