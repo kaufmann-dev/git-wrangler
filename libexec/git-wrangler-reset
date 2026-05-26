@@ -21,6 +21,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 confirm=false
@@ -38,12 +40,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for reset. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "reset"
 
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."
@@ -52,13 +51,8 @@ fi
 
 while IFS= read -r git_dir; do
     (
-        repo_dir=$(dirname "$git_dir")
-
-        if [ "$repo_dir" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_dir")
-        fi
+        repo_dir=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name_display=$(gw_repo_display_name "$repo_dir")
 
         cd "$repo_dir" || exit
 
@@ -101,9 +95,7 @@ while IFS= read -r git_dir; do
         printf "${GW_RED}This will hard reset %s to origin/%s, discarding %s local commit(s).${GW_RESET}\n" "$current_branch" "$current_branch" "$ahead_count" >&2
 
         if [ "$confirm" != true ]; then
-            gw_prompt "Proceed with reset for $repo_name_display?"
-            read -r answer < /dev/tty
-            if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+            if ! gw_confirm "Proceed with reset for $repo_name_display?"; then
                 printf "${GW_YELLOW}Skipping %s.${GW_RESET}\n" "$repo_name_display"
                 exit 0
             fi

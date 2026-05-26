@@ -115,11 +115,13 @@ fi
 Always use `$repo_name_display` in user-facing output.
 
 ## 10. Output Formatting and Colors
-Subcommands MUST source the shared UI helper immediately after the header block:
+Subcommands MUST source the shared UI helper immediately after the header block. Commands that need shared repo discovery, display-name handling, option value validation, prerequisite checks, filter-repo detection, confirmations, or CPU-count detection MUST source `git-wrangler-core` immediately after `git-wrangler-ui`:
 ```bash
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 ```
 
 Use the helper vocabulary instead of hardcoded ANSI escapes:
@@ -142,3 +144,20 @@ fi
 
 ## 12. Error Streams and Pipe Safety
 When a script encounters a fatal error or a prerequisite failure, the output MUST be redirected to standard error (`>&2`). This ensures that if a user pipes a `git-wrangler` command (e.g., `git-wrangler status | grep "dirty"`), the error message still correctly appears on their screen instead of being swallowed by the pipe.
+
+## 13. Bash Performance Policy
+Optimize measured bottlenecks, not every line. Prefer changes that remove complexity while reducing repeated work.
+
+- In repository loops, prefer Bash parameter expansion for simple path pieces instead of `dirname`/`basename` subprocesses.
+- Batch parsing when possible: one `awk` or one `git status --porcelain=v2 --branch` parse is preferable to repeated `grep | awk | tr` chains.
+- Cache repeated Git output inside each repository loop instead of running the same Git query more than once.
+- Keep mutating and destructive commands sequential unless a future explicit flag defines parallel semantics.
+- Any parallel read-only command must preserve deterministic output order.
+- Benchmark meaningful performance changes with `scripts/bench`; do not add broad `# PERF:` comments for obvious shell idioms.
+
+## 14. Project Checks
+Use root-level contributor scripts for verification:
+
+- `scripts/check` runs Bash syntax checks, optional ShellCheck/shfmt checks, and the website build when dependencies are installed.
+- `scripts/test` runs integration tests against temporary Git repositories only.
+- `scripts/bench` creates temporary multi-repo fixtures for lightweight timing.
