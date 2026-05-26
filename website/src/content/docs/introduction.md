@@ -38,7 +38,7 @@ Local operations cover status-adjacent repository maintenance such as commits, r
 
 History rewriting covers author, date, message, AI-assisted message, and secret-removal rewrites.
 
-Utility commands cover diagnostics, repository information, version metadata, and completions.
+Utility commands cover repository information, version metadata, and completions.
 
 ## Next steps
 

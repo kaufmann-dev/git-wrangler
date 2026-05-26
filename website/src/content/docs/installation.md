@@ -45,18 +45,12 @@ gh auth login
 - `rewrite-commits-ai`
 - `rewrite-dates`
 
-Check your environment with:
-
-```bash
-git-wrangler doctor
-```
-
 ## Uninstall
 
 If installed with Homebrew:
 
 ```bash
-brew uninstall git-wrangler
+brew uninstall --cask git-wrangler
 ```
 
 If installed manually, remove the binary from wherever you placed it on `PATH`.

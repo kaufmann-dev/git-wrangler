@@ -81,7 +81,7 @@ func newRootCommand(a *app) *cobra.Command {
 		&cobra.Group{ID: "history", Title: "History Rewriting:"},
 		&cobra.Group{ID: "utility", Title: "Utility:"},
 	)
-	root.SetHelpCommandGroupID("utility")
+	root.SetHelpCommand(&cobra.Command{Use: "__help", Hidden: true, GroupID: "utility"})
 	root.SetCompletionCommandGroupID("utility")
 
 	root.AddCommand(
@@ -144,9 +144,6 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("start-date", "", "Earliest date in YYYY-MM-DD format."),
 			stringFlag("end-date", "", "Latest date in YYYY-MM-DD format."),
 			boolFlag("confirm", "Skip interactive rewrite confirmation."),
-		}),
-		command(a, "doctor", "Check runtime dependencies.", "utility", runDoctor, flags{
-			boolFlag("summary", "Only print dependency status."),
 		}),
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
 			stringFlag("repo", "", "Repository directory to target."),
