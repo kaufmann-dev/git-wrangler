@@ -22,6 +22,11 @@ install
 $(find libexec scripts -type f | sort)
 EOF
 
+print_step "go test"
+if ! go test ./...; then
+    status=1
+fi
+
 if command -v shellcheck >/dev/null 2>&1; then
     print_step "shellcheck"
     if ! shellcheck git-wrangler install libexec/git-wrangler-* scripts/check scripts/test scripts/bench; then
