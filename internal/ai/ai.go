@@ -220,7 +220,7 @@ func IsConventional(message string) bool {
 func IsSensitivePath(path string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
 	base := filepath.Base(normalized)
-	if base == ".env" || strings.HasPrefix(base, ".env.") {
+	if base == ".env" || strings.HasPrefix(base, ".env.") || strings.HasSuffix(base, ".env") {
 		return true
 	}
 	switch base {
