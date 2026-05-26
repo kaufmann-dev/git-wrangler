@@ -23,6 +23,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 visibility="all"
@@ -33,7 +35,7 @@ into=""
 clone_repository() {
     local repo="$1"
     local repo_name
-    repo_name=$(basename "$repo")
+    repo_name="${repo##*/}"
 
     if [[ -d "$into/$repo_name" ]]; then
         printf "${GW_YELLOW}%s already exists in %s. Skipping...${GW_RESET}\n" "$repo_name" "$(realpath "$into")"
@@ -51,18 +53,22 @@ clone_repository() {
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --visibility)
+            gw_require_option_value "$1" "$#" "${2-}"
             visibility="$2"
             shift 2
             ;;
         --user)
+            gw_require_option_value "$1" "$#" "${2-}"
             user="$2"
             shift 2
             ;;
         --limit)
+            gw_require_option_value "$1" "$#" "${2-}"
             limit="$2"
             shift 2
             ;;
         --into)
+            gw_require_option_value "$1" "$#" "${2-}"
             into="$2"
             shift 2
             ;;
@@ -75,31 +81,30 @@ done
 
 # Validate required arguments
 if [[ -z "$user" ]]; then
-    printf "${GW_RED}Error: The --user option is required.${GW_RESET}\n" >&2
+    gw_error "The --user option is required."
     exit 1
 fi
 
 # Check prerequisites
-if ! command -v gh &> /dev/null; then
-    printf "${GW_RED}Error: 'gh' is required for clone. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
-
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for clone. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_command gh "clone"
+gw_require_git "clone"
 
 # Validate limit option
 if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
-    printf "${GW_RED}Error: --limit must be 1 or greater.${GW_RESET}\n" >&2
+    gw_error "--limit must be 1 or greater."
+    exit 1
+fi
+
+# Validate visibility option
+if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "private" ]]; then
+    gw_error "Invalid visibility option. Use 'all', 'public', or 'private'."
     exit 1
 fi
 
 # Check authentication for private repositories
 if [[ "$visibility" == "private" || "$visibility" == "all" ]]; then
     if ! gh auth status | grep -q "Logged in to .* account $user "; then
-        printf "${GW_RED}Error: You are not logged in as the specified user: %s. Set --visibility to 'public' or use 'gh auth login'.${GW_RESET}\n" "$user" >&2
+        gw_error "You are not logged in as the specified user: $user. Set --visibility to 'public' or use 'gh auth login'."
         exit 1
     fi
 fi
@@ -107,20 +112,14 @@ fi
 # Check if repositories exist for the user
 if [[ "$visibility" == "private" || "$visibility" == "public" ]]; then
     if [[ "$(gh repo list "$user" --limit 1 --visibility "$visibility" 2>/dev/null | wc -l)" -eq 0 ]]; then
-        printf "${GW_RED}Error: No %s repositories found for '%s'.${GW_RESET}\n" "$visibility" "$user" >&2
+        gw_error "No $visibility repositories found for '$user'."
         exit 1
     fi
 else
     if [[ "$(gh repo list "$user" --limit 1 2>/dev/null | wc -l)" -eq 0 ]]; then
-        printf "${GW_RED}Error: No repositories found for '%s'.${GW_RESET}\n" "$user" >&2
+        gw_error "No repositories found for '$user'."
         exit 1
     fi
-fi
-
-# Validate visibility option
-if [[ "$visibility" != "all" && "$visibility" != "public" && "$visibility" != "private" ]]; then
-    printf "${GW_RED}Error: Invalid visibility option. Use 'all', 'public', or 'private'.${GW_RESET}\n" >&2
-    exit 1
 fi
 
 # Set default into directory if not specified
@@ -130,17 +129,17 @@ fi
 
 # Create or access the target directory
 if [[ -d "$into" && ! -w "$into" ]] || ! mkdir -p "$into"; then
-    printf "${GW_RED}Error: Unable to create or access the specified directory '%s'.${GW_RESET}\n" "$into" >&2
+    gw_error "Unable to create or access the specified directory '$into'."
     exit 1
 fi
 
 # Clone repositories based on visibility
 if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
-    while IFS= read -r repo _; do
+    while IFS=$'\t' read -r repo _; do
         clone_repository "$repo"
     done < <(gh repo list "$user" --visibility "$visibility" --limit "$limit")
 else
-    while IFS= read -r repo _; do
+    while IFS=$'\t' read -r repo _; do
         clone_repository "$repo"
     done < <(gh repo list "$user" --limit "$limit")
 fi

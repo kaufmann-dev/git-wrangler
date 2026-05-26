@@ -29,6 +29,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 base_url=""
@@ -335,20 +337,9 @@ if ! is_positive_integer "$timeout_seconds"; then
     exit 1
 fi
 
-if ! command -v git &> /dev/null; then
-    print_error "'git' is required for rewrite-commits-ai. Run 'git-wrangler doctor' for more information."
-    exit 1
-fi
-
-filter_repo_cmd=()
-if command -v git-filter-repo &> /dev/null; then
-    filter_repo_cmd=(git-filter-repo)
-elif git filter-repo --version &> /dev/null; then
-    filter_repo_cmd=(git filter-repo)
-else
-    print_error "'git-filter-repo' is required for rewrite-commits-ai. Run 'git-wrangler doctor' for more information."
-    exit 1
-fi
+gw_require_git "rewrite-commits-ai"
+gw_require_filter_repo "rewrite-commits-ai"
+filter_repo_cmd=("${gw_filter_repo_cmd[@]}")
 
 if command -v python3 &> /dev/null; then
     python_cmd="python3"
@@ -405,7 +396,7 @@ fi
 
 maybe_save_nonsecret_config
 
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."

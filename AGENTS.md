@@ -161,3 +161,8 @@ Use root-level contributor scripts for verification:
 - `scripts/check` runs Bash syntax checks, optional ShellCheck/shfmt checks, and the website build when dependencies are installed.
 - `scripts/test` runs integration tests against temporary Git repositories only.
 - `scripts/bench` creates temporary multi-repo fixtures for lightweight timing.
+
+## 15. Go Rewrite Contract and Golden Fixtures
+`GO_REWRITE_CONTRACT.md` defines the Bash behavior that any future Go implementation must match before replacing a command. Keep it synced when dispatch, parsing, repo discovery, output streams, color behavior, confirmation behavior, or destructive safeguards change.
+
+Golden output fixtures live in `tests/fixtures/golden/` and are compared by `scripts/test` with `NO_COLOR=1 TERM=dumb`. Update these fixtures only for intentional user-visible output changes. Tests must normalize temporary paths and hashes instead of baking nondeterministic values into fixtures.
