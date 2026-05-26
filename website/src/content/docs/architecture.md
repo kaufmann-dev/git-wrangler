@@ -44,10 +44,22 @@ Every script in `libexec/` follows this structure:
 # ====
 
 # 1. Default variables + argument parsing
-# 2. Prerequisite checks (git, gh, git-filter-repo, python3 as needed)
-# 3. Repository discovery via find
-# 4. Execution loop with subshell isolation
+# 2. Shared UI helper source
+# 3. Prerequisite checks (git, gh, git-filter-repo, python3 as needed)
+# 4. Repository discovery via find
+# 5. Execution loop with subshell isolation
 ```
+
+## Terminal UI helper
+
+Every subcommand sources `libexec/git-wrangler-ui` after its metadata header. The helper centralizes colors, status labels, repository headers, and confirmation prompts.
+
+The helper follows common CLI conventions:
+
+- Color is enabled only for TTY output.
+- `NO_COLOR=1`, `CLICOLOR=0`, and `TERM=dumb` disable styling.
+- `CLICOLOR_FORCE=1` forces color unless one of the disabling controls is set.
+- Unicode symbols are used only for capable interactive terminals; plain output uses ASCII labels.
 
 ## Repository discovery
 
@@ -80,7 +92,7 @@ done <<< "$git_repositories"
 
 ## Dynamic help system
 
-The `git-wrangler help` command scans every file in `libexec/` and reads its structured metadata header. No registration step is needed — add a file, get a help entry automatically.
+The `git-wrangler help` command scans command files in `libexec/` and reads their structured metadata headers. Helper files without command metadata are ignored. No registration step is needed — add a command file with a valid header, get a help entry automatically.
 
 ## Error handling
 
@@ -89,5 +101,6 @@ All errors are written to **stderr** (`>&2`) so that piped commands still receiv
 ## Adding a new command
 
 1. Create `libexec/git-wrangler-mycommand` with the standard header block
-2. Make it executable: `chmod +x libexec/git-wrangler-mycommand`
-3. That's it — `git-wrangler help` discovers it immediately
+2. Source `libexec/git-wrangler-ui`
+3. Make it executable: `chmod +x libexec/git-wrangler-mycommand`
+4. That's it — `git-wrangler help` discovers it immediately

@@ -17,6 +17,11 @@
 #     git-wrangler uninstall --confirm
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 confirm=false
 
 while [[ $# -gt 0 ]]; do
@@ -26,7 +31,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -55,7 +60,7 @@ LINK_TARGET="$BIN_DIR/git-wrangler"
 
 # ── Show what will be removed ────────────────────────────────────────────────
 
-printf "\e[33mThis will remove Git Wrangler from your system:\e[0m\n\n"
+printf "${GW_YELLOW}This will remove Git Wrangler from your system:${GW_RESET}\n\n"
 
 if [ -d "$INSTALL_DIR" ]; then
     printf "  Installation directory: %s\n" "$INSTALL_DIR"
@@ -70,10 +75,10 @@ printf "\n"
 # ── Confirm ──────────────────────────────────────────────────────────────────
 
 if [ "$confirm" != true ]; then
-    printf "Are you sure you want to uninstall? [y/N] "
+    gw_prompt "Are you sure you want to uninstall?"
     read -r answer < /dev/tty
     if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-        printf "\e[33mAborted.\e[0m\n"
+        printf "${GW_YELLOW}Aborted.${GW_RESET}\n"
         exit 0
     fi
     printf "\n"
@@ -83,16 +88,16 @@ fi
 
 if [ -L "$LINK_TARGET" ]; then
     rm "$LINK_TARGET"
-    printf "\e[32m✔ Removed symlink %s\e[0m\n" "$LINK_TARGET"
+    printf "${GW_GREEN}${GW_OK_SYMBOL} Removed symlink %s${GW_RESET}\n" "$LINK_TARGET"
 elif [ -e "$LINK_TARGET" ]; then
-    printf "\e[33m⚠ %s exists but is not a symlink — skipping\e[0m\n" "$LINK_TARGET"
+    printf "${GW_YELLOW}${GW_WARN_SYMBOL} %s exists but is not a symlink - skipping${GW_RESET}\n" "$LINK_TARGET"
 fi
 
 # ── Remove installation directory ────────────────────────────────────────────
 
 if [ -d "$INSTALL_DIR" ]; then
     rm -rf "$INSTALL_DIR"
-    printf "\e[32m✔ Removed %s\e[0m\n" "$INSTALL_DIR"
+    printf "${GW_GREEN}${GW_OK_SYMBOL} Removed %s${GW_RESET}\n" "$INSTALL_DIR"
 fi
 
-printf "\n\e[32m✔ Git Wrangler uninstalled.\e[0m\n\n"
+printf "\n${GW_GREEN}${GW_OK_SYMBOL} Git Wrangler uninstalled.${GW_RESET}\n\n"

@@ -19,6 +19,11 @@
 #     git-wrangler pull --force
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 rebase=false
 force=false
 
@@ -34,7 +39,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+      gw_error "Unknown option: $1"
       exit 1
       ;;
   esac
@@ -42,7 +47,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is required for pull. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git' is required for pull. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -50,7 +55,7 @@ fi
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
-    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    gw_warn "No Git repositories found in the specified directory."
     exit 0
 fi
 
@@ -79,13 +84,13 @@ while IFS= read -r git_dir; do
 
         # Perform Git pull
         if pull_output=$(git pull$pull_args 2>&1); then
-            if ! printf "$pull_output" | grep -q "Already up to date"; then
-                printf "\e[32mGit pull completed for %s\e[0m\n" "$repo_name_display"
+            if ! printf "%s" "$pull_output" | grep -q "Already up to date"; then
+                printf "${GW_GREEN}Git pull completed for %s${GW_RESET}\n" "$repo_name_display"
             else
-                printf "\e[33mAlready up to date for %s. Skipping...\e[0m\n" "$repo_name_display"
+                printf "${GW_YELLOW}Already up to date for %s. Skipping...${GW_RESET}\n" "$repo_name_display"
             fi
         else
-            printf "\e[31mError: Git pull failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$pull_output" >&2
+            printf "${GW_RED}Error: Git pull failed for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$pull_output" >&2
         fi
     )
 done <<< "$git_repositories"
