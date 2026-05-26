@@ -12,13 +12,13 @@ order: 2
 Homebrew is the primary install path:
 
 ```bash
-brew install kaufmann-dev/tap/git-wrangler
+brew install --cask kaufmann-dev/tap/git-wrangler
 ```
 
 Upgrade with:
 
 ```bash
-brew upgrade git-wrangler
+brew upgrade --cask git-wrangler
 ```
 
 Homebrew installs bash, zsh, and fish completions automatically.
