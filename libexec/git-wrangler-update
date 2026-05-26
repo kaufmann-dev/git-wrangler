@@ -20,6 +20,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 confirm=false
@@ -37,10 +39,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for update. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "update"
 
 # ── Resolve the git-wrangler installation directory ──────────────────────────────
 # This script lives in libexec/, so the install root is one level up.
@@ -89,9 +88,7 @@ printf "  Remote: %s\n" "${remote_sha:0:12}"
 printf "\n"
 
 if [ "$confirm" != true ]; then
-    gw_prompt "Update Git Wrangler?"
-    read -r answer < /dev/tty
-    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+    if ! gw_confirm "Update Git Wrangler?"; then
         printf "${GW_YELLOW}Aborted.${GW_RESET}\n"
         exit 0
     fi
