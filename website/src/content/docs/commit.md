@@ -18,12 +18,12 @@ git-wrangler commit --message <commit_message>
 
 ## What it does
 
-Iterates through Git repositories found in the current directory and its immediate subdirectories, stages all changes (`git add -A`), and creates a commit with the provided message. Repositories with no staged changes are skipped automatically.
+Iterates through Git repositories found under the current directory, stages all changes (`git add -A`), and creates a commit with the provided message. Repositories with no staged changes are skipped automatically.
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
+| Flag               | Required     | Description                                     |
+| ------------------ | ------------ | ----------------------------------------------- |
 | `--message <text>` | **Required** | The commit message to use for all repositories. |
 
 ## Example

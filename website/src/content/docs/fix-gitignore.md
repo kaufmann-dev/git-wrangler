@@ -20,23 +20,23 @@ This command takes no arguments.
 
 ## What it does
 
-Audits and fixes `.gitignore` files across Git repositories found in the current directory and its immediate subdirectories. Adds missing entries for files and directories that physically exist in the repo but are not yet covered by `.gitignore` rules.
+Audits and fixes `.gitignore` files across Git repositories found under the current directory. Adds missing entries for files and directories that physically exist in the repo but are not yet covered by `.gitignore` rules.
 
 **Candidate entries checked:**
 
-| Pattern | Applies to |
-|---|---|
+| Pattern         | Applies to               |
+| --------------- | ------------------------ |
 | `node_modules/` | JavaScript/Node projects |
-| `dist/` | Build output |
-| `build/` | Build output |
-| `bin/` | Compiled binaries |
-| `obj/` | .NET intermediate files |
-| `.idea/` | JetBrains IDE config |
-| `vendor/` | PHP/Go dependencies |
-| `wp-includes/` | WordPress core |
-| `.DS_Store` | macOS metadata |
-| `Thumbs.db` | Windows thumbnail cache |
-| `*.log` | Log files |
+| `dist/`         | Build output             |
+| `build/`        | Build output             |
+| `bin/`          | Compiled binaries        |
+| `obj/`          | .NET intermediate files  |
+| `.idea/`        | JetBrains IDE config     |
+| `vendor/`       | PHP/Go dependencies      |
+| `wp-includes/`  | WordPress core           |
+| `.DS_Store`     | macOS metadata           |
+| `Thumbs.db`     | Windows thumbnail cache  |
+| `*.log`         | Log files                |
 
 ## Example output
 

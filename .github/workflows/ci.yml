@@ -5,11 +5,23 @@ on:
   pull_request:
 
 jobs:
-  bash:
+  go:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Check
-        run: scripts/check
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Test
-        run: scripts/test
+        run: go test ./...
+      - name: Race test
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: GoReleaser check
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: v2.9.0
+          args: check
