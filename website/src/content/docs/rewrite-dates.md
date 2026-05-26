@@ -3,51 +3,34 @@ title: "rewrite-dates"
 description: "Redistributes commit timestamps to mimic natural human activity."
 category: "History Rewriting"
 order: 4
-usage: "git-wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]"
+usage: "git-wrangler rewrite-dates [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--confirm]"
 ---
 
 # rewrite-dates
 
-Redistributes commit timestamps to mimic natural human activity.
+Redistributes commit timestamps across a date range and applies the rewrite with `git-filter-repo`.
 
 ## Usage
 
 ```bash
-git-wrangler rewrite-dates [--start-date <YYYY-MM-DD>] [--end-date <YYYY-MM-DD>] [--confirm]
+git-wrangler rewrite-dates [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--confirm]
 ```
-
-## What it does
-
-Rewrites commit author and committer dates across all managed repositories using a statistically natural redistribution algorithm. Timestamps are spread across the given date range with:
-
-- **Stratified jitter** — commits are evenly distributed across time slots, then randomly offset within each slot
-- **Bimodal time-of-day weighting** — peaks at 10am and 3pm, matching real developer activity
-- **Weekend dampening** — 65% of weekend commits are moved to adjacent Friday evening or Monday morning
-- **Micro-clustering** — same-day commits are spaced 25–90 minutes apart
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
-| `--start-date <YYYY-MM-DD>` | Optional | Earliest date for redistributed commits. Defaults to the first commit date. |
-| `--end-date <YYYY-MM-DD>` | Optional | Latest date for redistributed commits. Defaults to the last commit date. |
-| `--confirm` | Optional | Skip the interactive confirmation prompt. |
+- `--start-date YYYY-MM-DD` sets the earliest date. Defaults to the oldest commit timestamp.
+- `--end-date YYYY-MM-DD` sets the latest date. Defaults to the newest commit timestamp.
+- `--confirm` skips the interactive confirmation.
 
 ## Prerequisites
 
-- `git-filter-repo` must be installed
-- Python 3 must be available
+- `git`
+- `git-filter-repo`
 
 ## Example
 
 ```bash
-git-wrangler rewrite-dates --start-date 2024-01-01 --end-date 2024-12-31 --confirm
+git-wrangler rewrite-dates --start-date 2024-01-01 --end-date 2024-06-30
 ```
 
-## Notes
-
 > **Warning:** This rewrites Git history. You will need to force-push to update remotes.
-
-- Repositories with fewer than 2 commits are skipped
-- A before/after summary is printed for review before the rewrite is applied
-- The repository's original timezone offset is inferred and preserved

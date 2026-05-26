@@ -18,7 +18,7 @@ git-wrangler push [--force] [--force-unsafe]
 
 ## What it does
 
-Iterates through Git repositories found in the current directory and its immediate subdirectories, checks if there are changes to push, and performs a `git push origin HEAD`. `--force` uses `--force-with-lease`; `--force-unsafe` performs a raw force push only after confirmation. Repositories that are already up to date are reported and skipped.
+Iterates through Git repositories found under the current directory, checks if there are changes to push, and performs a `git push origin HEAD`. `--force` uses `--force-with-lease`; `--force-unsafe` performs a raw force push only after confirmation. Repositories that are already up to date are reported and skipped.
 
 ## Options
 

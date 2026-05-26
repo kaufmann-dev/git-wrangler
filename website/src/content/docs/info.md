@@ -18,12 +18,12 @@ git-wrangler info [--repo <repository_name>]
 
 ## What it does
 
-Iterates through Git repositories found in the current directory and its immediate subdirectories, and provides detailed information about each repository including name, status, license, branches, remotes, commits, top authors, and largest files in history.
+Iterates through Git repositories found under the current directory, and provides detailed information about each repository including name, status, license, branches, remotes, commits, top authors, and largest files in history.
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
+| Flag            | Required | Description                                                          |
+| --------------- | -------- | -------------------------------------------------------------------- |
 | `--repo <name>` | Optional | Analyze a single repository instead of all in the current directory. |
 
 ## Example output

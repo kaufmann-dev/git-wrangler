@@ -20,7 +20,7 @@ This command takes no arguments.
 
 ## What it does
 
-Iterates through Git repositories found in the current directory and its immediate subdirectories and displays a unified dashboard of their real-time sync state, dirty/clean working tree status, and commit metrics.
+Iterates through Git repositories found under the current directory and displays a unified dashboard of their real-time sync state, dirty/clean working tree status, and commit metrics.
 
 ## Example output
 
