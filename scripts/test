@@ -180,6 +180,9 @@ copy_install_layout() {
 
     mkdir -p "$target"
     cp "$ROOT/git-wrangler" "$target/git-wrangler"
+    cp "$ROOT/go.mod" "$target/go.mod"
+    mkdir -p "$target/cmd"
+    cp -R "$ROOT/cmd/git-wrangler" "$target/cmd/git-wrangler"
     cp -R "$ROOT/libexec" "$target/libexec"
     chmod +x "$target/git-wrangler" "$target"/libexec/git-wrangler-*
 }
