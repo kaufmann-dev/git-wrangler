@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -u
+
+ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+GW="$ROOT/git-wrangler"
+TMPDIR_ROOT=$(mktemp -d)
+COUNT="${1:-25}"
+export NO_COLOR=1
+export TERM=dumb
+
+trap 'rm -rf "$TMPDIR_ROOT"' EXIT
+
+case "$COUNT" in
+    ''|*[!0-9]*|0)
+        printf "Usage: scripts/bench [repo-count]\n" >&2
+        exit 1
+        ;;
+esac
+
+git_config() {
+    git -C "$1" config user.email "bench@example.com"
+    git -C "$1" config user.name "Bench User"
+}
+
+printf "creating %s temporary repositories...\n" "$COUNT"
+i=1
+while [ "$i" -le "$COUNT" ]; do
+    repo="$TMPDIR_ROOT/repo-$i"
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git_config "$repo"
+    printf "repo %s\n" "$i" > "$repo/file.txt"
+    git -C "$repo" add file.txt
+    git -C "$repo" commit -q -m "initial"
+    i=$((i + 1))
+done
+
+if command -v hyperfine >/dev/null 2>&1; then
+    (
+        cd "$TMPDIR_ROOT" || exit 1
+        hyperfine --warmup 1 "$GW status >/dev/null 2>&1"
+    )
+else
+    start=$(date +%s)
+    (
+        cd "$TMPDIR_ROOT" || exit 1
+        "$GW" status >/dev/null 2>&1
+    )
+    end=$(date +%s)
+    printf "status over %s repos: %ss\n" "$COUNT" "$((end - start))"
+fi

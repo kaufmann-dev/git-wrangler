@@ -41,7 +41,7 @@ git-wrangler rewrite-authors --name "Jane Doe" --email "jane@example.com" --forc
 
 ## Notes
 
-> **Warning:** This rewrites Git history. You will need to force-push (`git-wrangler push --force`) to update all remotes.
+> **Warning:** This rewrites Git history. Use `git-wrangler push --force` for a lease-safe remote update, or `git-wrangler push --force-unsafe` only when a raw force push is intentional.
 
 - The remote `origin` URL is preserved and restored automatically after the rewrite
 - `--force` is required when running on a non-fresh clone (which is the typical use case)

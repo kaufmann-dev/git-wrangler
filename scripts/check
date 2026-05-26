@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -u
+
+ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+cd "$ROOT" || exit 1
+
+status=0
+
+print_step() {
+    printf "==> %s\n" "$1"
+}
+
+print_step "bash syntax"
+while IFS= read -r file; do
+    if ! bash -n "$file"; then
+        status=1
+    fi
+done <<EOF
+git-wrangler
+install
+$(find libexec scripts -type f | sort)
+EOF
+
+if command -v shellcheck >/dev/null 2>&1; then
+    print_step "shellcheck"
+    if ! shellcheck git-wrangler install libexec/git-wrangler-* scripts/check scripts/test scripts/bench; then
+        status=1
+    fi
+else
+    printf "skip shellcheck: not installed\n"
+fi
+
+if command -v shfmt >/dev/null 2>&1; then
+    print_step "shfmt"
+    if ! shfmt -d git-wrangler install libexec/git-wrangler-* scripts/check scripts/test scripts/bench; then
+        status=1
+    fi
+else
+    printf "skip shfmt: not installed\n"
+fi
+
+if [ -x website/node_modules/.bin/astro ]; then
+    print_step "website build"
+    if ! (cd website && ./node_modules/.bin/astro build); then
+        status=1
+    fi
+else
+    printf "skip website build: website dependencies not installed\n"
+fi
+
+exit "$status"
