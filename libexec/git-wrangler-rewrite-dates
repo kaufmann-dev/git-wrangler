@@ -23,6 +23,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 start_date=""
@@ -32,10 +34,12 @@ confirm=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --start-date)
+            gw_require_option_value "$1" "$#" "${2-}"
             start_date="$2"
             shift 2
             ;;
         --end-date)
+            gw_require_option_value "$1" "$#" "${2-}"
             end_date="$2"
             shift 2
             ;;
@@ -51,30 +55,19 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -n "$start_date" ] && ! date -d "$start_date" &>/dev/null; then
-    printf "${GW_RED}Error: --start-date must be in YYYY-MM-DD format.${GW_RESET}\n" >&2
+    gw_error "--start-date must be in YYYY-MM-DD format."
     exit 1
 fi
 if [ -n "$end_date" ] && ! date -d "$end_date" &>/dev/null; then
-    printf "${GW_RED}Error: --end-date must be in YYYY-MM-DD format.${GW_RESET}\n" >&2
+    gw_error "--end-date must be in YYYY-MM-DD format."
     exit 1
 fi
 
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for rewrite-dates. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "rewrite-dates"
+gw_require_filter_repo "rewrite-dates"
+filter_repo_cmd=("${gw_filter_repo_cmd[@]}")
 
-filter_repo_cmd=()
-if command -v git-filter-repo &> /dev/null; then
-    filter_repo_cmd=(git-filter-repo)
-elif git filter-repo --version &> /dev/null; then
-    filter_repo_cmd=(git filter-repo)
-else
-    printf "${GW_RED}Error: 'git-filter-repo' is required for rewrite-dates. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
-
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."
@@ -83,14 +76,10 @@ fi
 
 while IFS= read -r git_dir; do
     (
-        repo_dir=$(dirname "$git_dir")
+        repo_dir=$(gw_repo_dir_from_git_dir "$git_dir")
         cd "$repo_dir" || exit
 
-        if [ "$repo_dir" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_dir")
-        fi
+        repo_name_display=$(gw_repo_display_name "$repo_dir")
 
         if ! git rev-parse HEAD &> /dev/null; then
             printf "${GW_YELLOW}%s has no commits. Skipping...${GW_RESET}\n" "$repo_name_display"
@@ -306,9 +295,7 @@ PYEOF
         printf "${GW_RED}\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.${GW_RESET}\n\n" >&2
 
         if [ "$confirm" != true ]; then
-            gw_prompt "Proceed with rewrite for $repo_name_display?"
-            read -r answer < /dev/tty
-            if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+            if ! gw_confirm "Proceed with rewrite for $repo_name_display?"; then
                 printf "${GW_YELLOW}Skipping %s.${GW_RESET}\n" "$repo_name_display"
                 rm -f "$gen_script" "$commits_file" "$callback_file" "$summary_file"
                 exit 0
