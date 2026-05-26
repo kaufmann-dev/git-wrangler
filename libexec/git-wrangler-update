@@ -17,6 +17,11 @@
 #     git-wrangler update --confirm
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 confirm=false
 
 while [[ $# -gt 0 ]]; do
@@ -26,14 +31,14 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
 done
 
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is required for update. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git' is required for update. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -43,7 +48,7 @@ fi
 INSTALL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
 if [ ! -d "$INSTALL_DIR/.git" ]; then
-    printf "\e[31mError: %s is not a git repository. Cannot check for updates.\e[0m\n" "$INSTALL_DIR" >&2
+    printf "${GW_RED}Error: %s is not a git repository. Cannot check for updates.${GW_RESET}\n" "$INSTALL_DIR" >&2
     exit 1
 fi
 
@@ -52,42 +57,42 @@ fi
 branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
 
 if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
-    printf "\e[31mError: Could not determine the current branch.\e[0m\n" >&2
+    printf "${GW_RED}Error: Could not determine the current branch.${GW_RESET}\n" >&2
     exit 1
 fi
 
 # ── Compare local vs remote ─────────────────────────────────────────────────
 
-printf "\e[1m\e[36m▸\e[0m Checking for updates on %s…\n" "$branch"
+printf "${GW_BOLD}${GW_CYAN}${GW_STEP_SYMBOL}${GW_RESET} Checking for updates on %s...\n" "$branch"
 
 local_sha=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null)
 
 remote_sha=$(git -C "$INSTALL_DIR" ls-remote origin "refs/heads/$branch" 2>/dev/null | cut -f1)
 
 if [ -z "$remote_sha" ]; then
-    printf "\e[31mError: Could not reach the remote repository. Check your network connection.\e[0m\n" >&2
+    printf "${GW_RED}Error: Could not reach the remote repository. Check your network connection.${GW_RESET}\n" >&2
     exit 1
 fi
 
 if [ "$local_sha" = "$remote_sha" ]; then
-    printf "\e[32m✔ Git Wrangler is already up to date.\e[0m\n"
+    printf "${GW_GREEN}${GW_OK_SYMBOL} Git Wrangler is already up to date.${GW_RESET}\n"
     exit 0
 fi
 
 # ── Update available ─────────────────────────────────────────────────────────
 
 printf "\n"
-printf "\e[33m⚠ A newer version is available.\e[0m\n"
+printf "${GW_YELLOW}${GW_WARN_SYMBOL} A newer version is available.${GW_RESET}\n"
 printf "\n"
 printf "  Local:  %s\n" "${local_sha:0:12}"
 printf "  Remote: %s\n" "${remote_sha:0:12}"
 printf "\n"
 
 if [ "$confirm" != true ]; then
-    printf "Update Git Wrangler? [y/N] "
+    gw_prompt "Update Git Wrangler?"
     read -r answer < /dev/tty
     if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-        printf "\e[33mAborted.\e[0m\n"
+        printf "${GW_YELLOW}Aborted.${GW_RESET}\n"
         exit 0
     fi
     printf "\n"
@@ -95,7 +100,7 @@ fi
 
 # ── Apply update ─────────────────────────────────────────────────────────────
 
-printf "\e[1m\e[36m▸\e[0m Updating…\n"
+printf "${GW_BOLD}${GW_CYAN}${GW_STEP_SYMBOL}${GW_RESET} Updating...\n"
 
 if update_output=$(git -C "$INSTALL_DIR" fetch origin "$branch" 2>&1) && \
    update_output=$(git -C "$INSTALL_DIR" reset --hard "origin/$branch" 2>&1); then
@@ -103,8 +108,8 @@ if update_output=$(git -C "$INSTALL_DIR" fetch origin "$branch" 2>&1) && \
     chmod +x "$INSTALL_DIR/git-wrangler" 2>/dev/null || true
     chmod +x "$INSTALL_DIR"/libexec/git-wrangler-* 2>/dev/null || true
 
-    printf "\e[32m✔ Git Wrangler updated successfully.\e[0m\n"
+    printf "${GW_GREEN}${GW_OK_SYMBOL} Git Wrangler updated successfully.${GW_RESET}\n"
 else
-    printf "\e[31mError: Update failed:\n%s\e[0m\n" "$update_output" >&2
+    printf "${GW_RED}Error: Update failed:\n%s${GW_RESET}\n" "$update_output" >&2
     exit 1
 fi

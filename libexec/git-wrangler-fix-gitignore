@@ -18,6 +18,11 @@
 #     git-wrangler fix-gitignore
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 # Candidate entries to audit and add to .gitignore if needed
 CANDIDATE_ENTRIES=(
     "bin/"
@@ -37,7 +42,7 @@ CANDIDATE_ENTRIES=(
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -45,7 +50,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is required for fix-gitignore. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git' is required for fix-gitignore. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -53,7 +58,7 @@ fi
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
-    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    gw_warn "No Git repositories found in the specified directory."
     exit 0
 fi
 
@@ -148,33 +153,33 @@ while IFS= read -r git_dir; do
         fi
 
         # Print per-repository summary
-        printf "\e[1;34m%s:\e[0m\n" "$repo_name_display"
+        printf "${GW_REPO_COLOR}%s:${GW_RESET}\n" "$repo_name_display"
 
         if [ ${#added[@]} -gt 0 ]; then
             added_list=$(printf '%s, ' "${added[@]}")
-            printf "  \e[32mAdded:\e[0m %s\n" "${added_list%, }"
+            printf "  ${GW_GREEN}Added:${GW_RESET} %s\n" "${added_list%, }"
 
             # Commit the changes
             git add .gitignore 2>/dev/null
             if commit_output=$(git commit -m "Update .gitignore with missing entries" 2>&1); then
-                printf "  \e[32mCommitted .gitignore updates\e[0m\n"
+                printf "  ${GW_GREEN}Committed .gitignore updates${GW_RESET}\n"
             else
-                printf "  \e[31mError: Could not commit .gitignore:\n%s\e[0m\n" "$commit_output" >&2
+                printf "  ${GW_RED}Error: Could not commit .gitignore:\n%s${GW_RESET}\n" "$commit_output" >&2
             fi
         fi
 
         if [ ${#skipped_covered[@]} -gt 0 ]; then
             covered_list=$(printf '%s, ' "${skipped_covered[@]}")
-            printf "  \e[33mSkipped (already covered):\e[0m %s\n" "${covered_list%, }"
+            printf "  ${GW_YELLOW}Skipped (already covered):${GW_RESET} %s\n" "${covered_list%, }"
         fi
 
         if [ ${#skipped_not_present[@]} -gt 0 ]; then
             not_present_list=$(printf '%s, ' "${skipped_not_present[@]}")
-            printf "  \e[33mSkipped (not present on disk):\e[0m %s\n" "${not_present_list%, }"
+            printf "  ${GW_YELLOW}Skipped (not present on disk):${GW_RESET} %s\n" "${not_present_list%, }"
         fi
 
         if [ ${#added[@]} -eq 0 ] && [ ${#skipped_covered[@]} -eq 0 ] && [ ${#skipped_not_present[@]} -eq 0 ]; then
-            printf "  \e[33mNo changes needed.\e[0m\n"
+            printf "  ${GW_YELLOW}No changes needed.${GW_RESET}\n"
         fi
     )
 done <<< "$git_repositories"

@@ -26,6 +26,11 @@
 #     git-wrangler rewrite-commits-ai --base-url https://api.deepseek.com --model deepseek-v4-flash --api-key-env DEEPSEEK_API_KEY
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 base_url=""
 model=""
 api_key=""
@@ -48,7 +53,7 @@ CONFIG_DIR="$HOME/.git-wrangler"
 CONFIG_FILE="$CONFIG_DIR/config"
 
 print_error() {
-    printf "\e[31mError: %s\e[0m\n" "$1" >&2
+    printf "${GW_RED}Error: %s${GW_RESET}\n" "$1" >&2
 }
 
 require_value() {
@@ -200,7 +205,7 @@ prompt_secret() {
 prompt_api_key() {
     local choice
 
-    prompt_write "\e[33mNo API key was found for rewrite-commits-ai.\e[0m\n"
+    prompt_write "${GW_YELLOW}No API key was found for rewrite-commits-ai.${GW_RESET}\n"
     prompt_write "Choose how to continue:\n"
     prompt_write "  1) Stop so I can configure it manually\n"
     prompt_write "  2) Enter an API key for this run only\n"
@@ -210,7 +215,7 @@ prompt_api_key() {
 
     case "$choice" in
         1)
-            printf "\e[33mStopped before sending any data. Set --api-key, --api-key-env, or save a key in %s.\e[0m\n" "$CONFIG_FILE"
+            printf "${GW_YELLOW}Stopped before sending any data. Set --api-key, --api-key-env, or save a key in %s.${GW_RESET}\n" "$CONFIG_FILE"
             exit 0
             ;;
         2)
@@ -218,11 +223,11 @@ prompt_api_key() {
             api_key_source="prompt"
             ;;
         3)
-            prompt_write "\e[33mThe API key will be stored as plaintext in %s with file mode 600.\e[0m\n" "$CONFIG_FILE"
+            prompt_write "${GW_YELLOW}The API key will be stored as plaintext in %s with file mode 600.${GW_RESET}\n" "$CONFIG_FILE"
             prompt_write "Save the key anyway? [y/N] "
             prompt_read confirm_save
             if [ "$confirm_save" != "y" ] && [ "$confirm_save" != "Y" ]; then
-                prompt_write "\e[33mKey was not saved. Enter it for this run instead.\e[0m\n"
+                prompt_write "${GW_YELLOW}Key was not saved. Enter it for this run instead.${GW_RESET}\n"
                 api_key=$(prompt_secret "API key for this run")
                 api_key_source="prompt"
             else
@@ -246,7 +251,7 @@ prompt_api_key() {
 maybe_save_nonsecret_config() {
     if [ "$save_api_key" = true ]; then
         save_config true
-        printf "\e[32mSaved rewrite-commits-ai settings to %s\e[0m\n" "$CONFIG_FILE"
+        printf "${GW_GREEN}Saved rewrite-commits-ai settings to %s${GW_RESET}\n" "$CONFIG_FILE"
         return
     fi
 
@@ -256,7 +261,7 @@ maybe_save_nonsecret_config() {
         prompt_read answer
         if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
             save_config false
-            printf "\e[32mSaved rewrite-commits-ai settings to %s\e[0m\n" "$CONFIG_FILE"
+            printf "${GW_GREEN}Saved rewrite-commits-ai settings to %s${GW_RESET}\n" "$CONFIG_FILE"
         fi
     fi
 }
@@ -304,7 +309,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -403,7 +408,7 @@ maybe_save_nonsecret_config
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
-    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    gw_warn "No Git repositories found in the specified directory."
     exit 0
 fi
 
@@ -430,11 +435,26 @@ import time
 import urllib.error
 import urllib.request
 
-RED = "\033[31m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-CYAN = "\033[36m"
-RESET = "\033[0m"
+def color_enabled():
+    if os.environ.get("NO_COLOR") or os.environ.get("CLICOLOR") == "0" or os.environ.get("TERM") == "dumb":
+        return False
+    if os.environ.get("CLICOLOR_FORCE") and os.environ.get("CLICOLOR_FORCE") != "0":
+        return True
+    return sys.stdout.isatty()
+
+
+if color_enabled():
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    CYAN = "\033[36m"
+    RESET = "\033[0m"
+else:
+    RED = ""
+    GREEN = ""
+    YELLOW = ""
+    CYAN = ""
+    RESET = ""
 
 CONVENTIONAL_RE = re.compile(
     r"^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+"
@@ -1028,12 +1048,12 @@ if [ ! -s "$manifest_file" ]; then
     exit 0
 fi
 
-printf "\e[31mWARNING: This operation rewrites Git history. A force push will be required to update remotes.\e[0m\n" >&2
+printf "${GW_RED}WARNING: This operation rewrites Git history. A force push will be required to update remotes.${GW_RESET}\n" >&2
 prompt_write "Apply these generated commit messages to all listed repositories? [y/N] "
 prompt_read apply_answer
 
 if [ "$apply_answer" != "y" ] && [ "$apply_answer" != "Y" ]; then
-    printf "\e[33mRewrite cancelled. Generated AI messages were temporary and have been discarded.\e[0m\n"
+    printf "${GW_YELLOW}Rewrite cancelled. Generated AI messages were temporary and have been discarded.${GW_RESET}\n"
     exit 0
 fi
 
@@ -1051,14 +1071,14 @@ while IFS= read -r manifest_line; do
         if filter_output=$("${filter_repo_cmd[@]}" --partial --commit-callback "$callback_file" --force 2>&1); then
             if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                 if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
-                    printf "\e[31mWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output" >&2
+                    printf "${GW_RED}Warning: Commit rewrite completed for %s, but origin could not be restored:\n%s${GW_RESET}\n\n" "$repo_name_display" "$restore_output" >&2
                     exit 1
                 fi
             fi
 
-            printf "\e[32mRewrote %s commit message(s) for %s\e[0m\n" "$changed_count" "$repo_name_display"
+            printf "${GW_GREEN}Rewrote %s commit message(s) for %s${GW_RESET}\n" "$changed_count" "$repo_name_display"
         else
-            printf "\e[31mError: Could not rewrite commit messages for %s:\n%s\e[0m\n\n" "$repo_name_display" "$filter_output" >&2
+            printf "${GW_RED}Error: Could not rewrite commit messages for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$filter_output" >&2
             exit 1
         fi
     ); then
