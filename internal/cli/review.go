@@ -16,7 +16,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "review") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -26,7 +26,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		unpushed, err := runStdout(r.dir, nil, "git", "rev-list", "HEAD", "--not", "--remotes")
+		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not list unpushed commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -38,12 +38,12 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		oldest := commits[len(commits)-1]
-		base, err := runStdout(r.dir, nil, "git", "rev-parse", "--verify", oldest+"^")
+		base, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-parse", "--verify", oldest+"^")
 		base = strings.TrimSpace(base)
 		if err != nil || base == "" {
 			base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 		}
-		diff, err := runStdout(r.dir, nil, "git", "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
+		diff, err := a.git.Stdout(a.ctx, r.dir, nil, "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect unpushed diff for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
@@ -54,7 +54,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		deletedFolders, individualDeleted := groupDeletedFiles(r.dir, deleted)
+		deletedFolders, individualDeleted := groupDeletedFiles(a, r.dir, deleted)
 		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
 		for _, f := range added {
 			fmt.Fprintf(a.stdout, "  %sAdded:%s    %s\n", a.ui.Green, a.ui.Reset, f)
@@ -93,7 +93,7 @@ func parseNameStatusZ(data string) (added, modified, deleted []string) {
 	return
 }
 
-func groupDeletedFiles(dir string, deleted []string) ([]string, []string) {
+func groupDeletedFiles(a *app, dir string, deleted []string) ([]string, []string) {
 	deletedFolders := []string{}
 	individual := []string{}
 	for _, file := range deleted {
@@ -120,7 +120,7 @@ func groupDeletedFiles(dir string, deleted []string) ([]string, []string) {
 			} else {
 				current += "/" + part
 			}
-			if out, _ := runStdout(dir, nil, "git", "ls-tree", "-d", "HEAD", current); strings.TrimSpace(out) == "" {
+			if out, _ := a.git.Stdout(a.ctx, dir, nil, "ls-tree", "-d", "HEAD", current); strings.TrimSpace(out) == "" {
 				found = current
 				break
 			}

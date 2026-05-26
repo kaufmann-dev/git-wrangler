@@ -2,11 +2,10 @@ package cli
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
 func TestWeekdayAndWeekend(t *testing.T) {
@@ -60,14 +59,15 @@ func TestWriteDateCallbackUsesBytesLiterals(t *testing.T) {
 }
 
 func TestFirstCommitEpochChecksMalformedOutput(t *testing.T) {
-	restore := run.SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+	t.Parallel()
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 		if name == "git" && len(args) >= 1 && args[0] == "log" {
 			return "not-a-timestamp\n", "", nil
 		}
 		return "", "", nil
-	})
-	defer restore()
-	if _, err := firstCommitEpoch("repo", "--reverse"); err == nil {
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+	if _, err := firstCommitEpoch(a, "repo", "--reverse"); err == nil {
 		t.Fatal("expected malformed timestamp error")
 	}
 }
