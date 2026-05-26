@@ -24,6 +24,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 repo=""
@@ -34,10 +36,12 @@ overwrite=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
+            gw_require_option_value "$1" "$#" "${2-}"
             repo="$2"
             shift 2
             ;;
         --name)
+            gw_require_option_value "$1" "$#" "${2-}"
             copyright_holder="$2"
             shift 2
             ;;
@@ -54,21 +58,18 @@ done
 
 # Validate required arguments
 if [ -z "$copyright_holder" ]; then
-    printf "${GW_RED}Error: Copyright holder name is required. Use --name <NAME>.${GW_RESET}\n" >&2
+    gw_error "Copyright holder name is required. Use --name <NAME>."
     exit 1
 fi
 
 # Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for license. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "license"
 
 # Find target repositories
 if [ -n "$repo" ]; then
-    git_repositories=$(find "$repo" -maxdepth 2 -type d -name '.git')
+    git_repositories=$(gw_find_git_repositories "$repo")
 else
-    git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+    git_repositories=$(gw_find_git_repositories)
 fi
 
 if [ -z "$git_repositories" ]; then
@@ -80,12 +81,8 @@ fi
 while IFS= read -r git_dir; do
     (
         # Get repository directory and name
-        repo_root=$(dirname "$git_dir")
-
-        repo_name=$(basename "$(dirname "$git_dir")")
-        if [ "$repo_name" = "." ]; then
-            repo_name="${PWD##*/}"
-        fi
+        repo_root=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name=$(gw_repo_display_name "$repo_root")
 
         # Define license file path
         license_file="$repo_root/LICENSE"
