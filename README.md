@@ -7,13 +7,13 @@ Git Wrangler is a compiled Go CLI that orchestrates Git operations across every 
 Primary install path:
 
 ```bash
-brew install kaufmann-dev/tap/git-wrangler
+brew install --cask kaufmann-dev/tap/git-wrangler
 ```
 
 Upgrade with Homebrew:
 
 ```bash
-brew upgrade git-wrangler
+brew upgrade --cask git-wrangler
 ```
 
 Homebrew installs shell completions automatically. Linux and Windows users can download binaries from GitHub Releases.
@@ -99,9 +99,7 @@ Package boundaries:
 
 ## Release
 
-Releases are built with GoReleaser. Tagged releases publish GitHub Release archives, checksums, completions, and update the `kaufmann-dev/homebrew-tap` formula.
-
-CI pins GoReleaser `v2.9.0` so formula publishing remains compatible with the Homebrew install model.
+Releases are built with GoReleaser. Tagged releases publish GitHub Release archives, checksums, completions, and update the `kaufmann-dev/homebrew-tap` cask.
 
 Local dry run:
 
