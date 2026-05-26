@@ -2,7 +2,18 @@ name: CI
 
 on:
   push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   go:
@@ -13,6 +24,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Git diff check
+        run: git diff --check
       - name: Test
         run: go test ./...
       - name: Race test

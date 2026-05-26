@@ -1,10 +1,7 @@
 package git
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
-	"strings"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
@@ -32,12 +29,8 @@ func FilterRepoCommand(ctx context.Context) ([]string, bool) {
 	return nil, false
 }
 
-func CatFileBatchCheck(dir, input string) string {
-	cmd := exec.Command("git", "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
-	cmd.Dir = dir
-	cmd.Stdin = strings.NewReader(input)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	_ = cmd.Run()
-	return out.String()
+func CatFileBatchCheck(ctx context.Context, dir, input string) string {
+	ctx = run.WithStdin(ctx, input)
+	out, _ := Capture(ctx, dir, nil, "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
+	return out
 }

@@ -1,0 +1,191 @@
+package cli
+
+import (
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/ui"
+	"github.com/kaufmann-dev/git-wrangler/internal/version"
+	"github.com/spf13/cobra"
+)
+
+type app struct {
+	stdout io.Writer
+	stderr io.Writer
+	stdin  io.Reader
+	ui     ui.Theme
+}
+
+type repo struct {
+	gitDir  string
+	dir     string
+	display string
+}
+
+type exitError struct {
+	code int
+}
+
+func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+
+func Execute() error {
+	return execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+}
+
+func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return execute(args, stdin, stdout, stderr)
+}
+
+func newApp(stdin io.Reader, stdout, stderr io.Writer) *app {
+	return &app{
+		stdout: stdout,
+		stderr: stderr,
+		stdin:  stdin,
+		ui:     ui.New(stdout),
+	}
+}
+
+func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	a := newApp(stdin, stdout, stderr)
+	root := newRootCommand(a)
+	root.SetArgs(args)
+	root.SetIn(stdin)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	if err := root.Execute(); err != nil {
+		if _, ok := err.(exitError); !ok {
+			fmt.Fprintf(stderr, "Error: %s\n", err)
+		}
+		return err
+	}
+	return nil
+}
+
+func newRootCommand(a *app) *cobra.Command {
+	root := &cobra.Command{
+		Use:           "git-wrangler",
+		Short:         "Orchestrate Git operations across many repositories.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Version:       version.Full(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	root.SetVersionTemplate("{{.Version}}\n")
+	root.CompletionOptions.DisableDescriptions = false
+	root.AddGroup(
+		&cobra.Group{ID: "remote", Title: "Remote Operations:"},
+		&cobra.Group{ID: "local", Title: "Local Operations:"},
+		&cobra.Group{ID: "history", Title: "History Rewriting:"},
+		&cobra.Group{ID: "utility", Title: "Utility:"},
+	)
+	root.SetHelpCommandGroupID("utility")
+	root.SetCompletionCommandGroupID("utility")
+
+	root.AddCommand(
+		command(a, "clone", "Clone multiple GitHub repositories for a user.", "remote", runClone, flags{
+			stringFlag("visibility", "all", "Repository visibility: all, public, or private."),
+			stringFlag("user", "", "GitHub user or organization to clone from."),
+			stringFlag("limit", "100", "Maximum repositories to list."),
+			stringFlag("into", "", "Directory to clone repositories into."),
+		}),
+		command(a, "pull", "Pull the latest changes for every discovered repository.", "remote", runPull, flags{
+			boolFlag("rebase", "Rebase local commits while pulling."),
+			boolFlag("force", "Pass --force to git pull."),
+		}),
+		command(a, "push", "Push local commits to origin HEAD.", "remote", runPush, flags{
+			boolFlag("force", "Use --force-with-lease."),
+			boolFlag("force-unsafe", "Use raw --force after confirmation."),
+		}),
+		command(a, "rename-repo", "Rename GitHub repositories with gh.", "remote", runRenameRepo, flags{
+			boolFlag("description", "Prompt for repository description updates."),
+		}),
+		command(a, "commit", "Stage all changes and create a commit in every repository.", "local", runCommit, flags{
+			stringFlag("message", "", "Commit message."),
+		}),
+		command(a, "fix-gitignore", "Add missing common generated-file patterns to .gitignore.", "local", runFixGitignore, nil),
+		command(a, "license", "Add or replace MIT LICENSE files.", "local", runLicense, flags{
+			stringFlag("repo", "", "Repository directory to target."),
+			stringFlag("name", "", "Copyright holder name."),
+			boolFlag("overwrite", "Replace an existing LICENSE file."),
+		}),
+		command(a, "rename-branch", "Rename a branch across repositories.", "local", runRenameBranch, flags{
+			stringFlag("oldbranch", "", "Existing branch name."),
+			stringFlag("newbranch", "", "New branch name."),
+		}),
+		command(a, "reset", "Reset current branches to their origin counterparts.", "local", runReset, flags{
+			boolFlag("confirm", "Skip interactive reset confirmation."),
+		}),
+		command(a, "review", "Review unpushed changes across repositories.", "local", runReview, nil),
+		command(a, "untrack", "Stop tracking files already covered by .gitignore.", "local", runUntrack, nil),
+		command(a, "remove-secrets", "Purge sensitive files from Git history.", "history", runRemoveSecrets, flags{
+			boolFlag("confirm", "Allow history rewriting."),
+		}),
+		command(a, "rewrite-authors", "Rewrite author and committer identity.", "history", runRewriteAuthors, flags{
+			stringFlag("name", "", "New author and committer name."),
+			stringFlag("email", "", "New author and committer email."),
+			stringFlag("repo", "", "Repository directory to target."),
+			boolFlag("force", "Pass --force to git-filter-repo."),
+		}),
+		command(a, "rewrite-commits", "Rewrite commit messages to Conventional Commits.", "history", runRewriteCommits, nil),
+		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommitsAI, flags{
+			stringFlag("base-url", "", "OpenAI-compatible API base URL."),
+			stringFlag("model", "", "Model name."),
+			stringFlag("api-key", "", "API key for this run."),
+			stringFlag("api-key-env", "OPENAI_API_KEY", "Environment variable containing the API key."),
+			stringFlag("batch-size", "10", "Commits per API request."),
+			stringFlag("max-chars-per-commit", "3000", "Maximum redacted context characters per commit."),
+			stringFlag("timeout", "90", "API timeout in seconds."),
+			boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
+		}),
+		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
+			stringFlag("start-date", "", "Earliest date in YYYY-MM-DD format."),
+			stringFlag("end-date", "", "Latest date in YYYY-MM-DD format."),
+			boolFlag("confirm", "Skip interactive rewrite confirmation."),
+		}),
+		command(a, "doctor", "Check runtime dependencies.", "utility", runDoctor, flags{
+			boolFlag("summary", "Only print dependency status."),
+		}),
+		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
+			stringFlag("repo", "", "Repository directory to target."),
+		}),
+		command(a, "status", "Show clean, dirty, and tracking state.", "utility", runStatus, nil),
+		versionCommand(a),
+	)
+	return root
+}
+
+func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, []string) int, specs flags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     use,
+		Short:   short,
+		GroupID: group,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if code := runFn(a, cmd, args); code != 0 {
+				return exitError{code: code}
+			}
+			return nil
+		},
+	}
+	for _, spec := range specs {
+		if spec.boolean {
+			cmd.Flags().Bool(spec.name, false, spec.description)
+		} else {
+			cmd.Flags().String(spec.name, spec.value, spec.description)
+		}
+	}
+	return cmd
+}
+
+func versionCommand(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:     "version",
+		Short:   "Print version metadata.",
+		GroupID: "utility",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Fprintln(a.stdout, version.Full())
+		},
+	}
+}
