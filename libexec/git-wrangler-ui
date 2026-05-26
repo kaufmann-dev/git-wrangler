@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# Shared terminal presentation helpers for git-wrangler commands.
+
+gw__color_enabled() {
+    local fd="${1:-1}"
+
+    if [ -n "${NO_COLOR:-}" ] || [ "${CLICOLOR:-}" = "0" ] || [ "${TERM:-}" = "dumb" ]; then
+        return 1
+    fi
+
+    if [ -n "${CLICOLOR_FORCE:-}" ] && [ "${CLICOLOR_FORCE:-}" != "0" ]; then
+        return 0
+    fi
+
+    [ -t "$fd" ]
+}
+
+gw__unicode_enabled() {
+    [ "${TERM:-}" != "dumb" ] && [ -t 1 ]
+}
+
+if gw__color_enabled 1; then
+    GW_RED=$'\e[31m'
+    GW_GREEN=$'\e[32m'
+    GW_YELLOW=$'\e[33m'
+    GW_BLUE=$'\e[34m'
+    GW_CYAN=$'\e[36m'
+    GW_MUTED=$'\e[90m'
+    GW_BOLD=$'\e[1m'
+    GW_RESET=$'\e[0m'
+else
+    GW_RED=""
+    GW_GREEN=""
+    GW_YELLOW=""
+    GW_BLUE=""
+    GW_CYAN=""
+    GW_MUTED=""
+    GW_BOLD=""
+    GW_RESET=""
+fi
+
+GW_REPO_COLOR="${GW_BOLD}${GW_BLUE}"
+
+if gw__unicode_enabled; then
+    GW_OK_SYMBOL="✔"
+    GW_WARN_SYMBOL="⚠"
+    GW_ERROR_SYMBOL="✖"
+    GW_INFO_SYMBOL="ℹ"
+    GW_STEP_SYMBOL="▸"
+    GW_SKIP_SYMBOL="↷"
+else
+    GW_OK_SYMBOL="OK"
+    GW_WARN_SYMBOL="WARN"
+    GW_ERROR_SYMBOL="ERROR"
+    GW_INFO_SYMBOL="INFO"
+    GW_STEP_SYMBOL=">"
+    GW_SKIP_SYMBOL="SKIP"
+fi
+
+gw__status() {
+    local stream="$1"
+    local color="$2"
+    local symbol="$3"
+    shift 3
+
+    local message
+    if [ "$#" -eq 1 ]; then
+        message="$1"
+    else
+        message="$1: $2"
+    fi
+
+    printf "%s%s%s %s\n" "$color" "$symbol" "$GW_RESET" "$message" >&"$stream"
+}
+
+gw_ok() {
+    gw__status 1 "$GW_GREEN" "$GW_OK_SYMBOL" "$@"
+}
+
+gw_warn() {
+    gw__status 1 "$GW_YELLOW" "$GW_WARN_SYMBOL" "$@"
+}
+
+gw_error() {
+    gw__status 2 "$GW_RED" "$GW_ERROR_SYMBOL" "$@"
+}
+
+gw_info() {
+    gw__status 1 "$GW_CYAN" "$GW_INFO_SYMBOL" "$@"
+}
+
+gw_step() {
+    gw__status 1 "${GW_BOLD}${GW_CYAN}" "$GW_STEP_SYMBOL" "$@"
+}
+
+gw_skip() {
+    gw__status 1 "$GW_YELLOW" "$GW_SKIP_SYMBOL" "$@"
+}
+
+gw_header() {
+    printf "\n%s%s%s\n\n" "$GW_BOLD" "$1" "$GW_RESET"
+}
+
+gw_repo() {
+    printf "%s%s%s\n" "$GW_REPO_COLOR" "$1" "$GW_RESET"
+}
+
+gw_prompt() {
+    local question="$1"
+    if [ -r /dev/tty ]; then
+        printf "%s [y/N] " "$question" > /dev/tty
+    else
+        printf "%s [y/N] " "$question"
+    fi
+}
