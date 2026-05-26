@@ -69,12 +69,6 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: check
-
-      - uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: '~> v2'
           args: release --snapshot --clean
 
       - name: Release archive smoke check
