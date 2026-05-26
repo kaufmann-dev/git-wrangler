@@ -83,9 +83,9 @@ jobs:
           test -f dist/checksums.txt
           test -n "$(find dist -name '*checksums.txt' -o -name '*.tar.gz' -o -name '*.zip')"
           test -n "$(find dist -path '*git-wrangler*' -type f)"
-          test -n "$(find dist -path '*completions*git-wrangler.bash' -type f)"
-          test -n "$(find dist -path '*completions*git-wrangler.zsh' -type f)"
-          test -n "$(find dist -path '*completions*git-wrangler.fish' -type f)"
+          test -f completions/git-wrangler.bash
+          test -f completions/git-wrangler.zsh
+          test -f completions/git-wrangler.fish
           test -n "$(find dist -path '*Casks*git-wrangler*' -type f)"
 
       - name: Whitespace
