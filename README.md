@@ -28,12 +28,6 @@ Homebrew installs shell completions automatically. Linux and Windows users can d
 
 `rewrite-commits-ai` also needs an OpenAI-compatible chat completions endpoint, a model name, and an API key.
 
-Check your machine with:
-
-```bash
-git-wrangler doctor
-```
-
 ## Quick Start
 
 ```bash
@@ -43,7 +37,7 @@ git-wrangler pull --rebase
 git-wrangler commit --message "chore: update dependencies"
 ```
 
-Run `git-wrangler help` for the full command list and `git-wrangler help <command>` for command-specific flags.
+Run `git-wrangler --help` for the full command list and `git-wrangler <command> --help` for command-specific flags.
 
 ## Commands
 
@@ -75,7 +69,6 @@ History rewriting:
 Utility:
 
 - `completion`
-- `doctor`
 - `info`
 - `status`
 - `version`

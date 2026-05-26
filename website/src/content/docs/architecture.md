@@ -22,7 +22,7 @@ The command groups are:
 - History Rewriting
 - Utility
 
-Cobra generates the help and completion commands. There is no external help metadata source.
+Cobra generates help output and the completion command. There is no external help metadata source.
 
 ## Package boundaries
 
