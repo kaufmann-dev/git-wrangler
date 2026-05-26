@@ -47,8 +47,10 @@ func TestDisplayNameForCurrentDirectory(t *testing.T) {
 }
 
 func TestDiscoverFindsLinkedWorktreeGitFile(t *testing.T) {
-	root := t.TempDir()
-	commonGitDir := filepath.Join(root, ".git", "worktrees", "linked")
+	temp := t.TempDir()
+	mainDir := filepath.Join(temp, "main")
+	root := filepath.Join(temp, "worktrees_root")
+	commonGitDir := filepath.Join(mainDir, ".git", "worktrees", "linked")
 	worktree := filepath.Join(root, "linked")
 	if err := os.MkdirAll(commonGitDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -56,7 +58,7 @@ func TestDiscoverFindsLinkedWorktreeGitFile(t *testing.T) {
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: ../.git/worktrees/linked\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: ../../main/.git/worktrees/linked\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	repositories, err := Discover(root)
