@@ -44,9 +44,9 @@ Do not add Python, Node, npm, pnpm, Go, or shell-script runtimes as normal CLI d
 
 ## Release
 
-Use GoReleaser for release builds, GitHub Release archives, checksums, completions, and Homebrew tap formula updates. CI pins GoReleaser `v2.9.0` because later GoReleaser versions deprecate formula publishing in favor of casks, which would change the requested Homebrew install UX.
+Use GoReleaser for release builds, GitHub Release archives, checksums, completions, and Homebrew tap cask updates. CI uses the latest GoReleaser v2 release.
 
-The Homebrew formula is generated for `kaufmann-dev/homebrew-tap` with dependencies on `git`, `gh`, and `git-filter-repo`. It must install bash, zsh, and fish completions from release archives.
+The Homebrew cask is generated for `kaufmann-dev/homebrew-tap` with dependencies on `git`, `gh`, and `git-filter-repo`. It must install bash, zsh, and fish completions from release archives.
 
 Local release dry run:
 
