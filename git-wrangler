@@ -1,31 +1,47 @@
-#!/bin/bash
+#!/bin/sh
 
-# Git-Wrangler dispatcher — routes subcommands to libexec/git-wrangler-<subcommand>
-
-SOURCE="${BASH_SOURCE[0]}"
-while [ -h "$SOURCE" ]; do
-    DIR_OF_SOURCE="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
-    SOURCE="$( readlink "$SOURCE" )"
-    [[ $SOURCE != /* ]] && SOURCE="$DIR_OF_SOURCE/$SOURCE"
+SOURCE=$0
+while [ -L "$SOURCE" ]; do
+    DIR_OF_SOURCE=$(cd -P "$(dirname "$SOURCE")" && pwd)
+    LINK_TARGET=$(readlink "$SOURCE")
+    case "$LINK_TARGET" in
+        /*) SOURCE=$LINK_TARGET ;;
+        *) SOURCE=$DIR_OF_SOURCE/$LINK_TARGET ;;
+    esac
 done
-DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
-# shellcheck source=libexec/git-wrangler-ui
-source "$DIR/libexec/git-wrangler-ui"
+DIR=$(cd -P "$(dirname "$SOURCE")" && pwd)
+ORIGINAL_CWD=$(pwd)
 
-subcommand="${1:-help}"
+GIT_WRANGLER_INSTALL_DIR=$DIR
+GIT_WRANGLER_LIBEXEC_DIR=$DIR/libexec
+GIT_WRANGLER_ORIGINAL_CWD=$ORIGINAL_CWD
+export GIT_WRANGLER_INSTALL_DIR GIT_WRANGLER_LIBEXEC_DIR GIT_WRANGLER_ORIGINAL_CWD
 
-# Validate subcommand contains no path separators
-if [[ "$subcommand" == */* || "$subcommand" == *\\* ]]; then
-    gw_error "Invalid subcommand '$subcommand'. Subcommand must not contain path separators."
-    exit 1
+cd "$DIR" || exit 1
+
+CACHE_ROOT=${XDG_CACHE_HOME:-"$HOME/.cache"}
+CACHE_DIR=$CACHE_ROOT/git-wrangler
+BIN=$CACHE_DIR/git-wrangler-go
+
+needs_build=0
+if [ ! -x "$BIN" ]; then
+    needs_build=1
+elif find "$DIR/go.mod" "$DIR/cmd" -type f -newer "$BIN" -print -quit | grep -q .; then
+    needs_build=1
 fi
 
-target="$DIR/libexec/git-wrangler-$subcommand"
-
-if [ -f "$target" ] && awk '/^# Category:/{found=1} END{exit found ? 0 : 1}' "$target"; then
-    exec bash "$target" "${@:2}"
-else
-    gw_error "Unknown subcommand '$subcommand'. Run 'git-wrangler help' for a list of available commands."
-    exit 1
+if [ "$needs_build" -eq 1 ]; then
+    GO_CMD=$(command -v go 2>/dev/null || true)
+    if [ -z "$GO_CMD" ] && [ -x /usr/local/go/bin/go ]; then
+        GO_CMD=/usr/local/go/bin/go
+    fi
+    if [ -z "$GO_CMD" ]; then
+        printf "Error: go is required to build Git Wrangler.\n" >&2
+        exit 1
+    fi
+    mkdir -p "$CACHE_DIR" || exit 1
+    "$GO_CMD" build -buildvcs=false -o "$BIN" ./cmd/git-wrangler || exit 1
 fi
+
+exec "$BIN" "$@"

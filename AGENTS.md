@@ -3,9 +3,11 @@
 This file documents critical bug classes and architectural decisions discovered during audits of the bash scripts in this repository. Any new scripts or modifications to existing scripts MUST adhere to these guidelines to ensure cross-platform compatibility, security, and correctness.
 
 ## 0. Repository Architecture
-All subcommand scripts live in `libexec/` and follow the naming convention `git-wrangler-<subcommand>` (no `.sh` extension). The root `git-wrangler` dispatcher routes `git-wrangler <subcommand>` invocations to `libexec/git-wrangler-<subcommand>` via `exec bash`.
+The public command implementation lives in Go under `cmd/git-wrangler`. The root `git-wrangler` launcher resolves the install directory, builds a cached Go binary when needed, and executes it.
 
-When adding a new subcommand, create `libexec/git-wrangler-<subcommand>` and include the standard header block (see §7). The help system discovers subcommands dynamically — no registration step is needed.
+The original Bash subcommand scripts remain in `libexec/` as reference documentation and dynamic help metadata. They follow the naming convention `git-wrangler-<subcommand>` (no `.sh` extension), but the launcher must not dispatch to them for command execution.
+
+When adding a new subcommand, implement it in Go and create or update `libexec/git-wrangler-<subcommand>` with the standard header block (see §7). The help system discovers subcommand documentation dynamically from the headers.
 
 ## 1. `while read` Loop Safety (Whitespace and Backslashes)
 **DO NOT** use a bare `read` command (e.g., `while read var; do`). 
@@ -158,11 +160,11 @@ Optimize measured bottlenecks, not every line. Prefer changes that remove comple
 ## 14. Project Checks
 Use root-level contributor scripts for verification:
 
-- `scripts/check` runs Bash syntax checks, optional ShellCheck/shfmt checks, and the website build when dependencies are installed.
+- `scripts/check` runs Bash syntax checks, Go tests, optional ShellCheck/shfmt checks, and the website build when dependencies are installed.
 - `scripts/test` runs integration tests against temporary Git repositories only.
 - `scripts/bench` creates temporary multi-repo fixtures for lightweight timing.
 
 ## 15. Go Rewrite Contract and Golden Fixtures
-`GO_REWRITE_CONTRACT.md` defines the Bash behavior that any future Go implementation must match before replacing a command. Keep it synced when dispatch, parsing, repo discovery, output streams, color behavior, confirmation behavior, or destructive safeguards change.
+`GO_REWRITE_CONTRACT.md` defines the Bash behavior that the Go implementation must preserve. Keep it synced when dispatch, parsing, repo discovery, output streams, color behavior, confirmation behavior, or destructive safeguards change.
 
 Golden output fixtures live in `tests/fixtures/golden/` and are compared by `scripts/test` with `NO_COLOR=1 TERM=dumb`. Update these fixtures only for intentional user-visible output changes. Tests must normalize temporary paths and hashes instead of baking nondeterministic values into fixtures.

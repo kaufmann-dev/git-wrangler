@@ -1,20 +1,20 @@
 # Go Rewrite Contract
 
-This document defines the Bash behavior that a future Go implementation must match before it replaces any production command. The Bash implementation remains production until the Go command set passes the same root-level checks and command contracts.
+This document defines the Bash behavior that the Go implementation must preserve. The Bash command files remain in `libexec/` as reference documentation and help metadata, but public command execution is implemented in Go.
 
 ## Replacement Rule
 
-Go may replace a Bash command only after it matches the relevant `scripts/test` contract coverage and golden fixtures. A full Go replacement must pass `scripts/check`, `scripts/test`, and the command-specific golden outputs before the dispatcher points to Go by default.
+Go command behavior must continue to match the relevant `scripts/test` contract coverage and golden fixtures. A full replacement must pass `scripts/check`, `scripts/test`, and the command-specific golden outputs before Bash reference behavior is changed.
 
-No Go module, Go command scaffold, or mixed dispatcher behavior is part of this contract. This file records compatibility expectations for a later rewrite.
+The root `git-wrangler` launcher builds and executes the Go CLI. It must not dispatch public commands to the Bash reference scripts.
 
 ## Command Dispatch
 
 The root `git-wrangler` dispatcher accepts `git-wrangler <subcommand> [options]`. If no subcommand is provided, it dispatches to `help`.
 
-Subcommands are resolved from `libexec/git-wrangler-<subcommand>`. Subcommand names must not contain `/` or `\`. Unknown subcommands fail with a message that includes `Unknown subcommand` and exit nonzero.
+Subcommands are resolved by the Go command registry. Subcommand names must not contain `/` or `\`. Unknown subcommands fail with a message that includes `Unknown subcommand` and exit nonzero.
 
-The help menu is discovered dynamically from subcommand header metadata. A Go implementation must preserve the public command names, usage text, categories, descriptions, and detailed help rendering unless a deliberate public behavior change updates the golden fixtures and docs.
+The help menu is discovered dynamically from subcommand header metadata in `libexec/git-wrangler-*`. The Go implementation must preserve the public command names, usage text, categories, descriptions, and detailed help rendering unless a deliberate public behavior change updates the golden fixtures and docs.
 
 ## Repository Discovery
 
