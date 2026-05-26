@@ -9,7 +9,7 @@ import (
 )
 
 func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
-	confirmed, _ := cmd.Flags().GetBool("confirm")
+	yes := yesFlag(cmd)
 	if !requireGit(a, "remove-secrets") {
 		return 1
 	}
@@ -17,7 +17,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -36,7 +36,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "--is-inside-work-tree"); err != nil {
+		if _, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: %s is not a valid or accessible git repository. Skipping...%s\n", a.ui.Red, r.display, a.ui.Reset)
 			status = 1
 			continue
@@ -45,7 +45,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		matchedFiles := []string{}
 		scanFailed := false
 		for _, pattern := range patterns {
-			out, err := runStdout(r.dir, nil, "git", "log", "--all", "--oneline", "--", pattern)
+			out, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--all", "--oneline", "--", pattern)
 			if err != nil {
 				fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
@@ -56,7 +56,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 				continue
 			}
 			matchedPatterns = append(matchedPatterns, pattern)
-			files, err := runStdout(r.dir, nil, "git", "log", "--all", "--format=", "--name-only", "--", pattern)
+			files, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--all", "--format=", "--name-only", "--", pattern)
 			if err != nil {
 				fmt.Fprintf(a.stderr, "%sError: Could not list matched files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 				status = 1
@@ -78,8 +78,8 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %s\n", file)
 		}
 		fmt.Fprintln(a.stdout)
-		if !confirmed {
-			a.error(r.display, "Refusing to rewrite history without --confirm.")
+		if !yes && !confirm(a, "Purge these files from history for "+r.display+"?") {
+			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
 			continue
 		}
@@ -89,15 +89,15 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			filterArgs = append(filterArgs, "--path-glob", pattern)
 		}
 		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
-		remoteURL := originURL(r.dir)
-		if out, err := runFilterRepo(r.dir, filterCmd, filterArgs, nil); err == nil {
+		remoteURL := originURL(a, r.dir)
+		if out, err := runFilterRepo(a, r.dir, filterCmd, filterArgs, nil); err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully purged %d sensitive file(s) from %s%s\n", a.ui.Green, len(matchedFiles), r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Rewrite failed for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
 			status = 1
 			continue
 		}
-		if err := restoreOrigin(r.dir, remoteURL); err != nil {
+		if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
 			fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
 		}
@@ -105,9 +105,9 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	return status
 }
 
-func runFilterRepo(dir string, filterCmd []string, args []string, env []string) (string, error) {
+func runFilterRepo(a *app, dir string, filterCmd []string, args []string, env []string) (string, error) {
 	if len(filterCmd) == 0 {
 		return "", errors.New("missing filter command")
 	}
-	return runCapture(dir, env, filterCmd[0], append(filterCmd[1:], args...)...)
+	return a.runCapture(dir, env, filterCmd[0], append(filterCmd[1:], args...)...)
 }

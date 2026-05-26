@@ -2,34 +2,100 @@ package git
 
 import (
 	"context"
+	"io"
+	"strings"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
-func Capture(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	return run.Capture(ctx, dir, env, "git", args...)
+type Client struct {
+	runner run.Runner
 }
 
-func Stdout(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	return run.Stdout(ctx, dir, env, "git", args...)
+func New(runner run.Runner) Client {
+	if runner == nil {
+		runner = run.New()
+	}
+	return Client{runner: runner}
 }
 
-func Installed() bool {
-	_, err := run.LookPath("git")
+func (c Client) IsZero() bool {
+	return c.runner == nil
+}
+
+func (c Client) Capture(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	return run.Capture(ctx, c.runner, dir, env, "git", args...)
+}
+
+func (c Client) Stdout(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	return run.Stdout(ctx, c.runner, dir, env, "git", args...)
+}
+
+func (c Client) Installed() bool {
+	_, err := c.runner.LookPath("git")
 	return err == nil
 }
 
-func FilterRepoCommand(ctx context.Context) ([]string, bool) {
-	if path, err := run.LookPath("git-filter-repo"); err == nil {
+func (c Client) FilterRepoCommand(ctx context.Context) ([]string, bool) {
+	if path, err := c.runner.LookPath("git-filter-repo"); err == nil {
 		return []string{path}, true
 	}
-	if _, err := Capture(ctx, "", nil, "filter-repo", "--version"); err == nil {
+	if _, err := c.Capture(ctx, "", nil, "filter-repo", "--version"); err == nil {
 		return []string{"git", "filter-repo"}, true
 	}
 	return nil, false
 }
 
-func CatFileBatchCheck(ctx context.Context, dir, input string) (string, error) {
+func (c Client) CatFileBatchCheck(ctx context.Context, dir, input string) (string, error) {
 	ctx = run.WithStdin(ctx, input)
-	return Capture(ctx, dir, nil, "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
+	return c.Capture(ctx, dir, nil, "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
+}
+
+func (c Client) CatFileBatchCheckAllObjects(ctx context.Context, dir string, consume func(io.Reader) error) error {
+	return c.runner.Pipe(ctx, dir, nil,
+		run.Command{Name: "git", Args: []string{"rev-list", "--objects", "--all"}},
+		run.Command{Name: "git", Args: []string{"cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)"}},
+		consume,
+	)
+}
+
+func (c Client) StatusPorcelain(ctx context.Context, dir string) (string, error) {
+	return c.Stdout(ctx, dir, nil, "status", "--porcelain")
+}
+
+func (c Client) StatusPorcelainBranch(ctx context.Context, dir string) (string, error) {
+	return c.Stdout(ctx, dir, nil, "status", "--porcelain=v2", "--branch")
+}
+
+func (c Client) CurrentBranch(ctx context.Context, dir string) (string, error) {
+	return c.Stdout(ctx, dir, nil, "rev-parse", "--abbrev-ref", "HEAD")
+}
+
+func (c Client) HasHead(ctx context.Context, dir string) bool {
+	_, err := c.Capture(ctx, dir, nil, "rev-parse", "HEAD")
+	return err == nil
+}
+
+func (c Client) VerifyRef(ctx context.Context, dir, ref string) bool {
+	_, err := c.Capture(ctx, dir, nil, "rev-parse", "--verify", "--quiet", ref)
+	return err == nil
+}
+
+func (c Client) RemoteURL(ctx context.Context, dir, name string) string {
+	out, err := c.Stdout(ctx, dir, nil, "remote", "get-url", name)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+func (c Client) RestoreRemote(ctx context.Context, dir, name, remoteURL string) error {
+	if remoteURL == "" {
+		return nil
+	}
+	if _, err := c.Capture(ctx, dir, nil, "remote", "get-url", name); err == nil {
+		return nil
+	}
+	_, err := c.Capture(ctx, dir, nil, "remote", "add", name, remoteURL)
+	return err
 }

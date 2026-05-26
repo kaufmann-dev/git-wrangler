@@ -11,11 +11,11 @@ import (
 )
 
 func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
-	confirmed, _ := cmd.Flags().GetBool("confirm")
+	yes := yesFlag(cmd)
 	if !requireGit(a, "fix-gitignore") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -35,7 +35,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 				notPresent = append(notPresent, entry)
 				continue
 			}
-			if _, err := runCapture(r.dir, nil, "git", "check-ignore", "-q", match); err == nil {
+			if _, err := a.git.Capture(a.ctx, r.dir, nil, "check-ignore", "-q", match); err == nil {
 				covered = append(covered, entry)
 				continue
 			}
@@ -51,7 +51,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %sWill add:%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(added, ", "))
 			printedRepo = true
 			fmt.Fprintf(a.stderr, "%sWARNING: This operation will modify .gitignore and create a commit in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
-			if !confirmed && !confirm(a, "Apply and commit .gitignore updates for "+r.display+"?") {
+			if !yes && !confirm(a, "Apply and commit .gitignore updates for "+r.display+"?") {
 				fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 				continue
 			}
@@ -66,12 +66,12 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		}
 		if len(added) > 0 {
 			fmt.Fprintf(a.stdout, "  %sAdded:%s %s\n", a.ui.Green, a.ui.Reset, strings.Join(added, ", "))
-			if out, err := runCapture(r.dir, nil, "git", "add", ".gitignore"); err != nil {
+			if out, err := a.git.Capture(a.ctx, r.dir, nil, "add", ".gitignore"); err != nil {
 				fmt.Fprintf(a.stderr, "  %sError: Could not stage .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
 				status = 1
 				continue
 			}
-			if out, err := runCapture(r.dir, nil, "git", "commit", "-m", "Update .gitignore with missing entries"); err == nil {
+			if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", "Update .gitignore with missing entries"); err == nil {
 				fmt.Fprintf(a.stdout, "  %sCommitted .gitignore updates%s\n", a.ui.Green, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "  %sError: Could not commit .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
