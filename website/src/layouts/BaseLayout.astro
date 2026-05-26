@@ -29,10 +29,13 @@ const fullTitle = title === 'Git Wrangler'
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content={ogType} />
+    <meta property="og:image" content="/git-wrangler.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="/git-wrangler.png" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href={Astro.url.href} />
     <title>{fullTitle}</title>
     <ClientRouter />
   </head>

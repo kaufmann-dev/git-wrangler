@@ -15,5 +15,8 @@
     "@fontsource/geist": "^5.1.0",
     "@fontsource/geist-mono": "^5.1.0",
     "astro": "^6.2.2"
+  },
+  "devDependencies": {
+    "@astrojs/sitemap": "^3.7.2"
   }
 }
