@@ -39,7 +39,7 @@ git-wrangler pull --rebase
 git-wrangler commit --message "chore: update dependencies"
 ```
 
-Run `git-wrangler --help` for the full command list and `git-wrangler <command> --help` for command-specific flags.
+Run `git-wrangler --help` or `git-wrangler help` for the full command list. Run `git-wrangler <command> --help` or `git-wrangler help <command>` for command-specific flags.
 
 Repository discovery supports regular `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. Bulk commands process discovered repositories in deterministic order. If any repository operation fails, the command exits nonzero after processing the remaining repositories; clean no-op skips still exit successfully.
 
@@ -87,7 +87,7 @@ Non-history commands that create commits or discard state also require explicit 
 
 The public command implementation lives in Go under `cmd/git-wrangler` and `internal/`.
 
-`cmd/git-wrangler/main.go` only calls `internal/cli.Execute()`. Cobra owns command registration, help, flags, command groups, version output, and shell completions.
+`cmd/git-wrangler/main.go` only calls `internal/cli.Execute()`. Cobra owns command registration, generated help, flags, command groups, version output, and shell completions.
 
 Package boundaries:
 
