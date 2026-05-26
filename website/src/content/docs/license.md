@@ -22,11 +22,11 @@ Iterates through Git repositories found in the current directory and creates or 
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
-| `--name <name>` | **Required** | The copyright holder's name to embed in the license. |
-| `--overwrite` | Optional | Replace existing LICENSE files instead of skipping them. |
-| `--repo <name>` | Optional | Target a single repository instead of all in the current directory. |
+| Flag            | Required     | Description                                                         |
+| --------------- | ------------ | ------------------------------------------------------------------- |
+| `--name <name>` | **Required** | The copyright holder's name to embed in the license.                |
+| `--overwrite`   | Optional     | Replace existing LICENSE files instead of skipping them.            |
+| `--repo <name>` | Optional     | Target a single repository instead of all in the current directory. |
 
 ## Examples
 

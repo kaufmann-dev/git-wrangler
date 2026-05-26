@@ -1,42 +1,34 @@
 # Git Wrangler Website
 
-This is the documentation hub and landing page for the **Git Wrangler** CLI, built with [Astro](https://astro.build).
+This is the documentation hub and landing page for the Git Wrangler CLI, built with Astro.
 
-## 🚀 Overview
+## Overview
 
-The Git Wrangler website is designed to be a premium, high-performance documentation site featuring:
-- **Geist-inspired Design System**: A sleek, developer-focused aesthetic with dark/light mode support.
-- **Dynamic Content Collections**: Automated documentation generation directly from the CLI's `README.md` and metadata headers in the `libexec` scripts.
-- **Modular Component Architecture**: Built using a Vanilla-CSS component library for maximum flexibility and performance.
-- **Seamless Navigation**: Powered by Astro's client-side routing for an app-like feel.
+The site documents the current Go/Cobra CLI, Homebrew installation, GitHub Release binaries, command usage, and release architecture.
 
-## 🧞 Commands
+## Commands
 
-All commands are run from the root of the `website` directory from a terminal:
+Run these from the `website` directory:
 
-| Command        | Action                                       |
-| -------------- | -------------------------------------------- |
-| `pnpm install` | Installs dependencies                        |
-| `pnpm dev`     | Starts local dev server at `localhost:4321`  |
-| `pnpm build`   | Build the production site to `./dist/`       |
-| `pnpm preview` | Preview your build locally, before deploying |
+```bash
+pnpm install
+pnpm dev
+pnpm build
+pnpm preview
+```
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 website/
-├── public/           # Static assets (images, fonts, etc.)
+├── public/
 ├── src/
-│   ├── components/   # Modular Vanilla-CSS and Astro components
-│   ├── content/      # Astro Content Collections (Documentation)
-│   ├── layouts/      # Page layouts
-│   ├── pages/        # File-based routing (e.g., index.astro, docs/[...slug].astro)
-│   └── styles/       # Global CSS variables and design system tokens
-└── astro.config.mjs  # Astro configuration
+│   ├── components/
+│   ├── content/
+│   ├── layouts/
+│   ├── pages/
+│   └── styles/
+└── astro.config.mjs
 ```
 
-## 🛠️ Development
-
-When developing the site, keep in mind:
-- **Component Styling**: We use vanilla CSS. Please avoid ad-hoc utility classes (like Tailwind) and instead utilize the defined CSS variables in our design system.
-- **Documentation Sync**: Documentation pages are automatically sourced using Astro's Content Collections API. Ensure that changes to CLI metadata headers map correctly in the glob loader pipeline.
+Use the existing CSS variables and component patterns when changing the site. Documentation pages are Markdown files loaded through Astro Content Collections.

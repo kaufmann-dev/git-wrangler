@@ -1,0 +1,74 @@
+version: 2
+
+project_name: git-wrangler
+
+before:
+  hooks:
+    - go mod tidy
+    - mkdir -p completions
+    - sh -c 'go run ./cmd/git-wrangler completion bash > completions/git-wrangler.bash'
+    - sh -c 'go run ./cmd/git-wrangler completion zsh > completions/git-wrangler.zsh'
+    - sh -c 'go run ./cmd/git-wrangler completion fish > completions/git-wrangler.fish'
+
+builds:
+  - id: git-wrangler
+    main: ./cmd/git-wrangler
+    binary: git-wrangler
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/kaufmann-dev/git-wrangler/internal/version.Version={{ .Version }}
+      - -X github.com/kaufmann-dev/git-wrangler/internal/version.Commit={{ .Commit }}
+      - -X github.com/kaufmann-dev/git-wrangler/internal/version.Date={{ .Date }}
+
+archives:
+  - id: default
+    ids:
+      - git-wrangler
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+      - completions/*
+
+checksum:
+  name_template: checksums.txt
+
+brews:
+  - name: git-wrangler
+    repository:
+      owner: kaufmann-dev
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/kaufmann-dev/git-wrangler
+    description: Orchestrate Git operations across many repositories.
+    license: MIT
+    dependencies:
+      - name: git
+      - name: gh
+      - name: git-filter-repo
+    test: |
+      system "#{bin}/git-wrangler", "version"
+    caveats: |
+      Run `gh auth login` before private or all GitHub repository operations.
+      History rewrite commands use git-filter-repo and rewrite Git history.
+    extra_install: |-
+      bash_completion.install "completions/git-wrangler.bash" => "git-wrangler"
+      zsh_completion.install "completions/git-wrangler.zsh" => "_git-wrangler"
+      fish_completion.install "completions/git-wrangler.fish"
