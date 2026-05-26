@@ -6,11 +6,10 @@
 # Category: History Rewriting
 #
 # Rewrites commit messages across all managed repositories using an
-# OpenAI-compatible chat completions endpoint. The command scans all commits,
-# skips messages that already use Conventional Commits, sends compact redacted
-# commit context to the configured API in batches, previews a single global
-# summary, and asks once before applying the generated messages with
-# git-filter-repo.
+# OpenAI-compatible chat completions endpoint. The command scans all commits
+# with usable file context, sends compact redacted commit context to the
+# configured API in batches, previews a single global summary, and asks once
+# before applying the generated messages with git-filter-repo.
 #
 # Options:
 #   --base-url <url>                 (optional) OpenAI-compatible API base URL. Prompts if missing.
@@ -20,6 +19,7 @@
 #   --batch-size <number>            (optional) Commits per API request. Defaults to 10.
 #   --max-chars-per-commit <number>  (optional) Per-commit context budget. Defaults to 3000.
 #   --timeout <seconds>              (optional) API request timeout. Defaults to 90.
+#   --skip-conventional              (optional) Only process commits that do not already use Conventional Commits.
 #
 # Examples:
 #     git-wrangler rewrite-commits-ai --base-url https://api.openai.com/v1 --model gpt-4o-mini
@@ -33,6 +33,7 @@ api_key_env="OPENAI_API_KEY"
 batch_size=10
 max_chars_per_commit=3000
 timeout_seconds=90
+skip_conventional=false
 
 config_base_url=""
 config_model=""
@@ -297,6 +298,10 @@ while [[ $# -gt 0 ]]; do
             require_value "$1" "${2:-}"
             timeout_seconds="$2"
             shift 2
+            ;;
+        --skip-conventional)
+            skip_conventional=true
+            shift
             ;;
         *)
             printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
@@ -614,10 +619,11 @@ def build_context(repo_dir, repo_name, commit_hash, char_budget):
     return truncate_text(context, char_budget)
 
 
-def collect_items(repos_file, char_budget):
+def collect_items(repos_file, char_budget, skip_conventional):
     root_dir = os.getcwd()
     items = []
     repo_count = 0
+    total_commits = 0
     skipped_formatted = 0
     skipped_empty = 0
     skipped_unborn = 0
@@ -643,10 +649,11 @@ def collect_items(repos_file, char_budget):
             continue
 
         commits = [line.strip() for line in commits_output.splitlines() if line.strip()]
+        total_commits += len(commits)
 
         for commit_hash in commits:
             old_message = run_git(repo_dir, ["log", "-1", "--format=%B", commit_hash]).strip()
-            if is_conventional(old_message):
+            if skip_conventional and is_conventional(old_message):
                 skipped_formatted += 1
                 continue
 
@@ -676,6 +683,7 @@ def collect_items(repos_file, char_budget):
 
     return items, {
         "repo_count": repo_count,
+        "total_commits": total_commits,
         "skipped_formatted": skipped_formatted,
         "skipped_empty": skipped_empty,
         "skipped_unborn": skipped_unborn,
@@ -898,12 +906,16 @@ def write_outputs(items, results, stats, manifest_file, summary_file, output_dir
         "-------------------------",
         f"Repositories scanned: {stats['repo_count']}",
         f"Repositories with generated rewrites: {len(changed_by_repo)}",
+        f"Total commits found: {stats['total_commits']}",
+        f"Commits selected for processing: {len(items)}",
         f"Commits sent to API: {len(items)}",
         f"Generated rewrites: {changed_count}",
         f"Generated but unchanged: {unchanged_generated}",
-        f"Skipped already Conventional Commits: {stats['skipped_formatted']}",
         f"Skipped empty/unreadable commits: {stats['skipped_empty']}",
     ]
+
+    if stats["skipped_formatted"] > 0:
+        summary.append(f"Skipped already Conventional Commits: {stats['skipped_formatted']}")
 
     if stats["skipped_unborn"] > 0:
         summary.append(f"Skipped repositories with no commits: {stats['skipped_unborn']}")
@@ -931,15 +943,19 @@ def main():
     batch_size = int(os.environ["AI_BATCH_SIZE"])
     char_budget = int(os.environ["AI_MAX_CHARS_PER_COMMIT"])
     timeout_seconds = int(os.environ["AI_TIMEOUT_SECONDS"])
+    skip_conventional = os.environ["AI_SKIP_CONVENTIONAL"] == "true"
 
     print(f"{CYAN}Scanning repositories and preparing redacted commit context...{RESET}")
-    items, stats = collect_items(repos_file, char_budget)
+    items, stats = collect_items(repos_file, char_budget, skip_conventional)
 
     if not items:
         with open(manifest_file, "w", encoding="utf-8"):
             pass
         with open(summary_file, "w", encoding="utf-8") as f:
-            f.write("No commits require AI rewriting. Existing Conventional Commit messages were skipped.\n")
+            if skip_conventional:
+                f.write("No commits require AI rewriting. Existing Conventional Commit messages were skipped.\n")
+            else:
+                f.write("No commits with usable file context were found for AI rewriting.\n")
         return
 
     batches = (len(items) + batch_size - 1) // batch_size
@@ -948,7 +964,10 @@ def main():
     print(f"Endpoint: {base_url}")
     print(f"Model: {model}")
     print(f"Repositories scanned: {stats['repo_count']}")
-    print(f"Commits to send: {len(items)}")
+    print(f"Total commits found: {stats['total_commits']}")
+    print(f"Commits to process: {len(items)}")
+    if skip_conventional:
+        print(f"Skipped already Conventional Commits: {stats['skipped_formatted']}")
     print(f"API batches: {batches}")
     print(f"Per-commit context budget: {char_budget} characters")
     print("The command will send file paths, stats, and redacted diff snippets.")
@@ -996,6 +1015,7 @@ if ! AI_BASE_URL="$base_url" \
     AI_BATCH_SIZE="$batch_size" \
     AI_MAX_CHARS_PER_COMMIT="$max_chars_per_commit" \
     AI_TIMEOUT_SECONDS="$timeout_seconds" \
+    AI_SKIP_CONVENTIONAL="$skip_conventional" \
     "$python_cmd" "$generator_script"; then
     exit 1
 fi
