@@ -3,22 +3,48 @@ package run
 import (
 	"context"
 	"errors"
-	"sync"
+	"io"
+	"os/exec"
 	"testing"
 )
 
-func TestSetCommandFuncAndRouting(t *testing.T) {
-	called := false
-	restore := SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-		called = true
-		if name == "test-cmd" && len(args) == 1 && args[0] == "arg1" {
+type fakeRunner struct {
+	run      CommandFunc
+	lookPath func(string) (string, error)
+	pipe     func(context.Context, string, []string, Command, Command, func(io.Reader) error) error
+}
+
+func (f fakeRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+	if f.run == nil {
+		return "", "", errors.New("unexpected command")
+	}
+	return f.run(ctx, dir, env, name, args...)
+}
+
+func (f fakeRunner) LookPath(name string) (string, error) {
+	if f.lookPath == nil {
+		return "", exec.ErrNotFound
+	}
+	return f.lookPath(name)
+}
+
+func (f fakeRunner) Pipe(ctx context.Context, dir string, env []string, left Command, right Command, consume func(io.Reader) error) error {
+	if f.pipe == nil {
+		return errors.New("unexpected pipe")
+	}
+	return f.pipe(ctx, dir, env, left, right, consume)
+}
+
+func TestRunnerInjectionAndRouting(t *testing.T) {
+	t.Parallel()
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		if dir == "dir1" && name == "test-cmd" && len(args) == 1 && args[0] == "arg1" {
 			return "out1", "err1", nil
 		}
 		return "", "", errors.New("unexpected name/args")
-	})
-	defer restore()
+	}}
 
-	stdout, err := Stdout(context.Background(), "dir1", nil, "test-cmd", "arg1")
+	stdout, err := Stdout(context.Background(), runner, "dir1", nil, "test-cmd", "arg1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,20 +52,17 @@ func TestSetCommandFuncAndRouting(t *testing.T) {
 		t.Errorf("expected stdout 'out1', got %q", stdout)
 	}
 
-	output, err := Capture(context.Background(), "dir1", nil, "test-cmd", "arg1")
+	output, err := Capture(context.Background(), runner, "dir1", nil, "test-cmd", "arg1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if output != "out1err1" {
 		t.Errorf("expected capture output 'out1err1', got %q", output)
 	}
-
-	if !called {
-		t.Error("expected custom commandFunc to be called")
-	}
 }
 
 func TestWithStdinAndGetStdin(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	if input := GetStdin(ctx); input != "" {
 		t.Errorf("expected empty stdin, got %q", input)
@@ -51,18 +74,17 @@ func TestWithStdinAndGetStdin(t *testing.T) {
 	}
 }
 
-func TestSetCommandFuncConcurrentUse(t *testing.T) {
-	var wg sync.WaitGroup
+func TestInjectedRunnersAreParallelSafe(t *testing.T) {
+	t.Parallel()
 	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			restore := SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		t.Run("runner", func(t *testing.T) {
+			t.Parallel()
+			runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 				return "ok", "", nil
-			})
-			defer restore()
-			_, _ = Capture(context.Background(), "", nil, "cmd")
-		}()
+			}}
+			if out, err := Capture(context.Background(), runner, "", nil, "cmd"); err != nil || out != "ok" {
+				t.Fatalf("Capture = %q, %v", out, err)
+			}
+		})
 	}
-	wg.Wait()
 }

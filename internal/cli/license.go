@@ -10,20 +10,15 @@ import (
 
 func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	repoName, _ := cmd.Flags().GetString("repo")
-	holder, _ := cmd.Flags().GetString("name")
+	holder, ok := requiredStringFlag(a, cmd, "name", "Copyright holder name: ")
 	overwrite, _ := cmd.Flags().GetBool("overwrite")
-	if holder == "" {
-		a.error("Copyright holder name is required. Use --name <NAME>.")
+	if !ok {
 		return 1
 	}
 	if !requireGit(a, "license") {
 		return 1
 	}
-	root := "."
-	if repoName != "" {
-		root = repoName
-	}
-	repos, err := findGitRepositories(root)
+	repos, err := resolveRepositoryTargets(repoName)
 	if err != nil {
 		a.error(err.Error())
 		return 1

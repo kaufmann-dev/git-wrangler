@@ -48,6 +48,7 @@ type Config struct {
 	Timeout           time.Duration
 	SkipConventional  bool
 	WorkDir           string
+	Git               git.Client
 }
 
 type Plan struct {
@@ -113,9 +114,12 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	if cfg.WorkDir == "" {
 		return nil, errors.New("missing work directory")
 	}
+	if cfg.Git.IsZero() {
+		cfg.Git = git.New(nil)
+	}
 
 	fmt.Fprintln(out, "Scanning repositories and preparing redacted commit context...")
-	items, stats := collectItems(ctx, repos, cfg.MaxCharsPerCommit, cfg.SkipConventional)
+	items, stats := collectItems(ctx, repos, cfg.Git, cfg.MaxCharsPerCommit, cfg.SkipConventional)
 	if len(items) == 0 {
 		if cfg.SkipConventional {
 			return &Plan{Summary: "No commits require AI rewriting. Existing Conventional Commit messages were skipped.\n"}, nil
@@ -152,25 +156,25 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	return buildPlan(items, results, stats, cfg.WorkDir)
 }
 
-func collectItems(ctx context.Context, repositories []Repository, charBudget int, skipConventional bool) ([]item, Stats) {
+func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats) {
 	var items []item
 	stats := Stats{}
 	for repoIndex, repo := range repositories {
 		stats.RepoCount++
-		if _, err := git.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
+		if _, err := gitClient.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
 			stats.SkippedUnborn++
 			continue
 		}
-		commitsOut, _ := git.Stdout(ctx, repo.Dir, nil, "rev-list", "--reverse", "--all")
+		commitsOut, _ := gitClient.Stdout(ctx, repo.Dir, nil, "rev-list", "--reverse", "--all")
 		commits := splitLines(commitsOut)
 		stats.TotalCommits += len(commits)
 		for _, commitHash := range commits {
-			oldMessage, _ := git.Stdout(ctx, repo.Dir, nil, "log", "-1", "--format=%B", commitHash)
+			oldMessage, _ := gitClient.Stdout(ctx, repo.Dir, nil, "log", "-1", "--format=%B", commitHash)
 			if skipConventional && IsConventional(oldMessage) {
 				stats.SkippedFormatted++
 				continue
 			}
-			contextText := buildContext(ctx, repo.Dir, repo.Name, commitHash, charBudget)
+			contextText := buildContext(ctx, gitClient, repo.Dir, repo.Name, commitHash, charBudget)
 			if strings.TrimSpace(contextText) == "" {
 				stats.SkippedEmpty++
 				continue
@@ -189,13 +193,13 @@ func collectItems(ctx context.Context, repositories []Repository, charBudget int
 	return items, stats
 }
 
-func buildContext(ctx context.Context, repoDir, repoName, commitHash string, charBudget int) string {
-	nameStatus, _ := git.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commitHash)
-	numstat, _ := git.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--numstat", "-r", commitHash)
+func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, commitHash string, charBudget int) string {
+	nameStatus, _ := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commitHash)
+	numstat, _ := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--numstat", "-r", commitHash)
 	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
 		return ""
 	}
-	diffText, _ := git.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
+	diffText, _ := gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
 	contextText := strings.Join([]string{
 		"Repository: " + repoName,
 		"Commit: " + shortHash(commitHash, 12),
