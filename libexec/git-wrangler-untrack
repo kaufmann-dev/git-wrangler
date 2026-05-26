@@ -18,6 +18,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 # Parse command-line arguments
@@ -30,14 +32,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for untrack. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "untrack"
 
 # Find target repositories
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."
@@ -48,22 +46,17 @@ fi
 while IFS= read -r git_dir; do
     (
         # Get repository directory and name
-        repo_dir=$(dirname "$git_dir")
-
-        if [ "$repo_dir" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_dir")
-        fi
+        repo_dir=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name_display=$(gw_repo_display_name "$repo_dir")
 
         cd "$repo_dir" || exit
 
         # Stop tracking files that match .gitignore patterns
         if [ -f ".gitignore" ]; then
             # Identify tracked files matching ignore patterns
-            if git ls-files --ignored --cached --exclude-standard | grep -q .; then
+            if [ -n "$(git ls-files --ignored --cached --exclude-standard)" ]; then
                 # Untrack and commit ignored files
-                if error_message=$(git ls-files --ignored --cached --exclude-standard -z | xargs -0 -r git rm --cached -q -- 2>&1); then
+                if error_message=$(git ls-files --ignored --cached --exclude-standard -z | xargs -0 git rm --cached -q -- 2>&1); then
                     if commit_output=$(git commit -q -m "Stop tracking files defined in .gitignore" 2>&1); then
                         printf "${GW_GREEN}Stopped tracking and committed ignored files for %s${GW_RESET}\n" "$repo_name_display"
                     else

@@ -136,11 +136,11 @@ fi
 
 # Clone repositories based on visibility
 if [[ "$visibility" == "public" || "$visibility" == "private" ]]; then
-    while read -r repo _; do
+    while IFS= read -r repo _; do
         clone_repository "$repo"
     done < <(gh repo list "$user" --visibility "$visibility" --limit "$limit")
 else
-    while read -r repo _; do
+    while IFS= read -r repo _; do
         clone_repository "$repo"
     done < <(gh repo list "$user" --limit "$limit")
 fi

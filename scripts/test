@@ -1,0 +1,282 @@
+#!/bin/bash
+
+set -u
+
+ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+GW="$ROOT/git-wrangler"
+TMPDIR_ROOT=$(mktemp -d)
+TEST_OUTPUT="$TMPDIR_ROOT/output"
+export NO_COLOR=1
+export TERM=dumb
+
+trap 'rm -rf "$TMPDIR_ROOT"' EXIT
+
+failures=0
+
+run_test() {
+    local name="$1"
+    shift
+
+    printf "test: %s\n" "$name"
+    if "$@"; then
+        printf "ok: %s\n" "$name"
+    else
+        printf "not ok: %s\n" "$name" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+assert_contains() {
+    local haystack="$1"
+    local needle="$2"
+
+    case "$haystack" in
+        *"$needle"*) return 0 ;;
+        *) printf "expected output to contain: %s\n" "$needle" >&2; return 1 ;;
+    esac
+}
+
+assert_file_contains() {
+    local file="$1"
+    local needle="$2"
+
+    if ! grep -qxF "$needle" "$file"; then
+        printf "expected %s to contain line: %s\n" "$file" "$needle" >&2
+        return 1
+    fi
+}
+
+git_config() {
+    git -C "$1" config user.email "test@example.com"
+    git -C "$1" config user.name "Test User"
+}
+
+init_repo() {
+    local repo="$1"
+
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git_config "$repo"
+    printf "initial\n" > "$repo/file.txt"
+    git -C "$repo" add file.txt
+    git -C "$repo" commit -q -m "initial"
+}
+
+test_dispatcher_help() {
+    local output
+
+    output=$("$GW" help)
+    assert_contains "$output" "Available subcommands" || return 1
+
+    if "$GW" does-not-exist >"$TEST_OUTPUT" 2>&1; then
+        printf "unknown subcommand unexpectedly succeeded\n" >&2
+        return 1
+    fi
+}
+
+test_option_parsing() {
+    local work="$TMPDIR_ROOT/options"
+
+    mkdir -p "$work"
+    (
+        cd "$work" || exit 1
+        "$GW" commit --message >"$TEST_OUTPUT" 2>&1
+    ) && return 1
+    grep -q -- "--message requires a value" "$TEST_OUTPUT" || return 1
+
+    (
+        cd "$work" || exit 1
+        "$GW" info --repo >"$TEST_OUTPUT" 2>&1
+    ) && return 1
+    grep -q -- "--repo requires a value" "$TEST_OUTPUT"
+}
+
+test_repo_discovery_paths_and_status() {
+    local work="$TMPDIR_ROOT/paths"
+    local repo="$work/  repo%\\one"
+    local output
+
+    init_repo "$repo"
+    printf "dirty\n" > "$repo/dirty.txt"
+
+    output=$(cd "$work" && "$GW" status 2>&1)
+    assert_contains "$output" "repo%\\one" || return 1
+    assert_contains "$output" "dirty" || return 1
+    assert_contains "$output" "Summary:"
+}
+
+test_commit_percent_message() {
+    local work="$TMPDIR_ROOT/commit"
+    local repo="$work/repo"
+    local message="feat: keep 100% coverage"
+
+    init_repo "$repo"
+    printf "change\n" > "$repo/changed.txt"
+
+    (cd "$work" && "$GW" commit --message "$message") >"$TEST_OUTPUT" 2>&1 || return 1
+    [ "$(git -C "$repo" log -1 --format=%s)" = "$message" ]
+}
+
+test_fix_gitignore() {
+    local work="$TMPDIR_ROOT/fix-gitignore"
+    local repo="$work/repo"
+
+    init_repo "$repo"
+    mkdir -p "$repo/node_modules"
+    printf "x\n" > "$repo/node_modules/cache.txt"
+
+    (cd "$work" && "$GW" fix-gitignore) >"$TEST_OUTPUT" 2>&1 || return 1
+    assert_file_contains "$repo/.gitignore" "node_modules/"
+}
+
+test_untrack() {
+    local work="$TMPDIR_ROOT/untrack"
+    local repo="$work/repo"
+
+    init_repo "$repo"
+    mkdir -p "$repo/build"
+    printf "artifact\n" > "$repo/build/out.txt"
+    printf "build/\n" > "$repo/.gitignore"
+    git -C "$repo" add -f build/out.txt .gitignore
+    git -C "$repo" commit -q -m "track ignored artifact"
+
+    (cd "$work" && "$GW" untrack) >"$TEST_OUTPUT" 2>&1 || return 1
+    [ -z "$(git -C "$repo" ls-files build/out.txt)" ] || return 1
+    [ -f "$repo/build/out.txt" ]
+}
+
+test_pull() {
+    local work="$TMPDIR_ROOT/pull"
+    local origin="$work/origin.git"
+    local upstream="$work/upstream"
+    local repo="$work/repo"
+
+    mkdir -p "$work"
+    git init --bare -q "$origin"
+    git clone -q "$origin" "$upstream"
+    git_config "$upstream"
+    printf "initial\n" > "$upstream/file.txt"
+    git -C "$upstream" add file.txt
+    git -C "$upstream" commit -q -m "initial"
+    git -C "$upstream" push -q origin HEAD
+    git clone -q "$origin" "$repo"
+    git_config "$repo"
+
+    printf "remote\n" > "$upstream/remote.txt"
+    git -C "$upstream" add remote.txt
+    git -C "$upstream" commit -q -m "remote"
+    git -C "$upstream" push -q origin HEAD
+
+    (cd "$work" && "$GW" pull) >"$TEST_OUTPUT" 2>&1 || return 1
+    [ -f "$repo/remote.txt" ]
+}
+
+test_push_force_uses_lease() {
+    local work="$TMPDIR_ROOT/push-force"
+    local fakebin="$work/bin"
+    local repo="$work/repo"
+    local log="$work/git.log"
+
+    mkdir -p "$repo/.git" "$fakebin"
+    cat > "$fakebin/git" <<'FAKEGIT'
+#!/bin/bash
+printf "%s\n" "$*" >> "$GIT_WRANGLER_FAKE_GIT_LOG"
+case "$1" in
+    push)
+        printf "Everything up-to-date\n"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+FAKEGIT
+    chmod +x "$fakebin/git"
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_GIT_LOG="$log"
+        cd "$work" || exit 1
+        "$GW" push --force
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    grep -q -- "push --force-with-lease origin HEAD" "$log"
+}
+
+test_reset() {
+    local work="$TMPDIR_ROOT/reset"
+    local origin="$work/origin.git"
+    local upstream="$work/upstream"
+    local repo="$work/repo"
+
+    mkdir -p "$work"
+    git init --bare -q "$origin"
+    git clone -q "$origin" "$upstream"
+    git_config "$upstream"
+    printf "initial\n" > "$upstream/file.txt"
+    git -C "$upstream" add file.txt
+    git -C "$upstream" commit -q -m "initial"
+    git -C "$upstream" push -q origin HEAD
+    git clone -q "$origin" "$repo"
+    git_config "$repo"
+
+    printf "local\n" > "$repo/file.txt"
+    git -C "$repo" commit -q -am "local"
+
+    (cd "$work" && "$GW" reset --confirm) >"$TEST_OUTPUT" 2>&1 || return 1
+    [ "$(git -C "$repo" log -1 --format=%s)" = "initial" ] || return 1
+    grep -q "initial" "$repo/file.txt"
+}
+
+test_remove_secrets_confirm() {
+    local work="$TMPDIR_ROOT/remove-secrets"
+    local repo="$work/repo"
+    local fakebin="$work/bin"
+    local log="$work/filter.log"
+
+    init_repo "$repo"
+    printf "TOKEN=x\n" > "$repo/.env"
+    git -C "$repo" add .env
+    git -C "$repo" commit -q -m "add secret"
+
+    mkdir -p "$fakebin"
+    cat > "$fakebin/git-filter-repo" <<'FAKEFILTER'
+#!/bin/bash
+printf "%s\n" "$*" >> "$GIT_WRANGLER_FAKE_FILTER_LOG"
+FAKEFILTER
+    chmod +x "$fakebin/git-filter-repo"
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_FILTER_LOG="$log"
+        cd "$work" || exit 1
+        "$GW" remove-secrets
+    ) >"$TEST_OUTPUT" 2>&1 && return 1
+    [ ! -f "$log" ] || return 1
+
+    (
+        export PATH="$fakebin:$PATH"
+        export GIT_WRANGLER_FAKE_FILTER_LOG="$log"
+        cd "$work" || exit 1
+        "$GW" remove-secrets --confirm
+    ) >"$TEST_OUTPUT" 2>&1 || return 1
+
+    grep -q -- "--invert-paths" "$log"
+}
+
+run_test "dispatcher and help" test_dispatcher_help
+run_test "option parsing" test_option_parsing
+run_test "repo discovery paths and status" test_repo_discovery_paths_and_status
+run_test "commit percent message" test_commit_percent_message
+run_test "fix-gitignore" test_fix_gitignore
+run_test "untrack" test_untrack
+run_test "pull" test_pull
+run_test "push force uses lease" test_push_force_uses_lease
+run_test "reset" test_reset
+run_test "remove-secrets confirm" test_remove_secrets_confirm
+
+if [ "$failures" -gt 0 ]; then
+    printf "%d test(s) failed\n" "$failures" >&2
+    exit 1
+fi
+
+printf "all tests passed\n"

@@ -3,7 +3,7 @@ title: "push"
 description: "Pushes local commits to remote for all tracked repositories."
 category: "Remote Operations"
 order: 3
-usage: "git-wrangler push [--force]"
+usage: "git-wrangler push [--force] [--force-unsafe]"
 ---
 
 # push
@@ -13,18 +13,19 @@ Pushes local commits to remote for all tracked repositories.
 ## Usage
 
 ```bash
-git-wrangler push [--force]
+git-wrangler push [--force] [--force-unsafe]
 ```
 
 ## What it does
 
-Iterates through Git repositories found in the current directory and its immediate subdirectories, checks if there are changes to push, and performs a `git push origin HEAD`. Repositories that are already up to date are reported and skipped.
+Iterates through Git repositories found in the current directory and its immediate subdirectories, checks if there are changes to push, and performs a `git push origin HEAD`. `--force` uses `--force-with-lease`; `--force-unsafe` performs a raw force push only after confirmation. Repositories that are already up to date are reported and skipped.
 
 ## Options
 
-| Flag | Required | Description |
-|---|---|---|
-| `--force` | Optional | Forcefully push changes, overwriting remote branches if necessary. |
+| Flag             | Required | Description                                         |
+| ---------------- | -------- | --------------------------------------------------- |
+| `--force`        | Optional | Forcefully push changes using `--force-with-lease`. |
+| `--force-unsafe` | Optional | Perform a raw `--force` push after confirmation.    |
 
 ## Examples
 
@@ -32,10 +33,13 @@ Iterates through Git repositories found in the current directory and its immedia
 # Standard push
 git-wrangler push
 
-# Force push (use with caution — rewrites remote history)
+# Lease-safe force push
 git-wrangler push --force
+
+# Raw force push after explicit confirmation
+git-wrangler push --force-unsafe
 ```
 
 ## Notes
 
-> **Warning:** `--force` rewrites remote branch history. Only use this after a deliberate history-rewriting operation (e.g. `git-wrangler rewrite-authors`).
+> **Warning:** `--force-unsafe` rewrites remote branch history without the lease protection used by `--force`. Only use it after a deliberate history-rewriting operation and when you are certain no remote work will be overwritten.
