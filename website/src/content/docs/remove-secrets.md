@@ -3,7 +3,7 @@ title: "remove-secrets"
 description: "Permanently purges sensitive files from the entire Git history."
 category: "History Rewriting"
 order: 5
-usage: "git-wrangler remove-secrets --confirm"
+usage: "git-wrangler remove-secrets [--yes]"
 ---
 
 # remove-secrets
@@ -13,10 +13,10 @@ Permanently purges sensitive files from the entire Git history.
 ## Usage
 
 ```bash
-git-wrangler remove-secrets --confirm
+git-wrangler remove-secrets [--yes]
 ```
 
-`--confirm` is required before any destructive history rewrite is performed.
+The command prompts before any destructive history rewrite is performed. Use `--yes` to proceed noninteractively.
 
 ## What it does
 
@@ -41,21 +41,21 @@ The following patterns are scanned and removed if found in history:
 
 ## Options
 
-| Flag        | Required     | Description                               |
-| ----------- | ------------ | ----------------------------------------- |
-| `--confirm` | **Required** | Confirm noninteractive history rewriting. |
+| Flag    | Required | Description                |
+| ------- | -------- | -------------------------- |
+| `--yes` | Optional | Skip confirmation prompts. |
 
 ## Example
 
 ```bash
-git-wrangler remove-secrets --confirm
+git-wrangler remove-secrets --yes
 ```
 
 ## Notes
 
 > **Warning:** This permanently rewrites Git history. You will need to force-push to update remotes, and all collaborators must re-clone.
 
-- The command scans history first and reports found files before requiring `--confirm` to remove them
+- The command scans history first and reports found files before prompting to remove them
 - Generic `config.json` files are not removed unless they match a credential-specific path such as `.docker/config.json`
 - Repositories with no matching patterns are skipped cleanly
 - Remote `origin` is preserved and restored after the rewrite

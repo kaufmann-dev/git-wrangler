@@ -26,6 +26,7 @@ git-wrangler rewrite-commits-ai --base-url <url> --model <model> [options]
 - `--max-chars-per-commit <number>` defaults to `3000`.
 - `--timeout <seconds>` defaults to `90`.
 - `--skip-conventional` skips messages that already use Conventional Commits.
+- `--yes` skips the data-send and rewrite confirmation prompts.
 
 ## Privacy controls
 
@@ -41,7 +42,7 @@ Before any API call, Git Wrangler prints a data-send notice and asks for confirm
 
 After valid messages are generated, Git Wrangler prints a summary and sample messages, then asks before rewriting history.
 
-Noninteractive runs fail if a required confirmation cannot be collected.
+Use `--yes` for noninteractive runs after providing all required values as flags or environment variables.
 
 ## Example
 

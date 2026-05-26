@@ -1,26 +1,26 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/kaufmann-dev/git-wrangler/internal/githubcli"
 	"github.com/spf13/cobra"
 )
 
 func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
-	oldBranch, _ := cmd.Flags().GetString("oldbranch")
-	newBranch, _ := cmd.Flags().GetString("newbranch")
-	if oldBranch == "" || newBranch == "" {
-		a.error("Both --oldbranch and --newbranch options must be provided.")
+	oldBranch, ok := requiredStringFlag(a, cmd, "oldbranch", "Existing branch name: ")
+	if !ok {
+		return 1
+	}
+	newBranch, ok := requiredStringFlag(a, cmd, "newbranch", "New branch name: ")
+	if !ok {
 		return 1
 	}
 	if !requireGit(a, "rename-branch") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -35,20 +35,20 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		if out, err := runCapture(r.dir, nil, "git", "rev-parse", "--is-inside-work-tree"); err != nil {
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Not a valid git repository for %s:\n%s%s\n", a.ui.Red, r.display, out, a.ui.Reset)
 			status = 1
 			continue
 		}
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+oldBranch); err != nil {
+		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+oldBranch) {
 			fmt.Fprintf(a.stdout, "%sOld branch '%s' does not exist in %s. Skipping...%s\n", a.ui.Yellow, oldBranch, r.display, a.ui.Reset)
 			continue
 		}
-		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+newBranch); err == nil {
+		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+newBranch) {
 			fmt.Fprintf(a.stdout, "%sNew branch '%s' already exists in %s. Skipping...%s\n", a.ui.Yellow, newBranch, r.display, a.ui.Reset)
 			continue
 		}
-		if out, err := runCapture(r.dir, nil, "git", "branch", "-m", oldBranch, newBranch); err == nil {
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", oldBranch, newBranch); err == nil {
 			fmt.Fprintf(a.stdout, "%sBranch renamed from '%s' to '%s' for %s%s\n", a.ui.Green, oldBranch, newBranch, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Failed to rename branch in %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
@@ -63,7 +63,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "rename-repo") || !requireCommand(a, "gh", "rename-repo") {
 		return 1
 	}
-	repos, err := findGitRepositories(".")
+	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -74,7 +74,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		oldName, err := githubcli.Stdout(context.Background(), r.dir, "repo", "view", "--json", "name", "-q", ".name")
+		oldName, err := a.gh.Stdout(a.ctx, r.dir, "repo", "view", "--json", "name", "-q", ".name")
 		if err != nil {
 			fmt.Fprintf(a.stdout, "%sSkipping %s: No remote or not a GitHub repository.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
@@ -84,7 +84,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		newName, _ := promptRead(a, "Enter new name (leave blank to skip): ")
 		newDesc := ""
 		if editDescription {
-			oldDesc, _ := githubcli.Stdout(context.Background(), r.dir, "repo", "view", "--json", "description", "-q", ".description")
+			oldDesc, _ := a.gh.Stdout(a.ctx, r.dir, "repo", "view", "--json", "description", "-q", ".description")
 			oldDesc = strings.TrimSpace(oldDesc)
 			if oldDesc == "" {
 				fmt.Fprintln(a.stdout, "Current description: <None>")
@@ -94,7 +94,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			newDesc, _ = promptRead(a, "Enter new description (leave blank to skip): ")
 		}
 		if editDescription && newDesc != "" {
-			if out, err := githubcli.Capture(context.Background(), r.dir, "repo", "edit", "--description", newDesc); err == nil {
+			if out, err := a.gh.Capture(a.ctx, r.dir, "repo", "edit", "--description", newDesc); err == nil {
 				fmt.Fprintf(a.stdout, "%sSuccessfully updated description for %s%s\n", a.ui.Green, oldName, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "%sError: Failed to update description for %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
@@ -102,7 +102,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			}
 		}
 		if newName != "" {
-			if out, err := githubcli.Capture(context.Background(), r.dir, "repo", "rename", newName, "--yes"); err == nil {
+			if out, err := a.gh.Capture(a.ctx, r.dir, "repo", "rename", newName, "--yes"); err == nil {
 				fmt.Fprintf(a.stdout, "%sSuccessfully renamed %s to %s%s\n", a.ui.Green, oldName, newName, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "%sError: Failed to rename %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
