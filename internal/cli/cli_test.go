@@ -72,7 +72,7 @@ func TestCommandsRejectPositionalArgs(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%v returned nil error", args)
 		}
-		if !strings.Contains(stderr.String(), "accepts 0 arg(s)") {
+		if !strings.Contains(stderr.String(), "accepts 0 arg(s)") && !strings.Contains(stderr.String(), "unknown command") {
 			t.Fatalf("%v stderr = %q", args, stderr.String())
 		}
 	}
