@@ -91,7 +91,6 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		remoteURL := originURL(a, r.dir)
 		tzOffset, err := dominantTimezoneOffset(a, r.dir)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: could not read time zones for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
@@ -121,16 +120,19 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		out, err := runFilterRepo(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
 		_ = os.Remove(callback)
 		if err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully rewrote commit dates for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if err := restoreOrigin(a, r.dir, remoteURL); err != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 				status = 1
 			}
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: rewrite failed for %s:\n%s%s\n", a.ui.Red, r.display, out, a.ui.Reset)
+			if restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+			}
 			status = 1
 		}
 	}

@@ -119,7 +119,10 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	}
 
 	fmt.Fprintln(out, "Scanning repositories and preparing redacted commit context...")
-	items, stats := collectItems(ctx, repos, cfg.Git, cfg.MaxCharsPerCommit, cfg.SkipConventional)
+	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.MaxCharsPerCommit, cfg.SkipConventional)
+	if err != nil {
+		return nil, err
+	}
 	if len(items) == 0 {
 		if cfg.SkipConventional {
 			return &Plan{Summary: "No commits require AI rewriting. Existing Conventional Commit messages were skipped.\n"}, nil
@@ -156,7 +159,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	return buildPlan(items, results, stats, cfg.WorkDir)
 }
 
-func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats) {
+func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats, error) {
 	var items []item
 	stats := Stats{}
 	for repoIndex, repo := range repositories {
@@ -165,16 +168,25 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			stats.SkippedUnborn++
 			continue
 		}
-		commitsOut, _ := gitClient.Stdout(ctx, repo.Dir, nil, "rev-list", "--reverse", "--all")
+		commitsOut, err := gitClient.Stdout(ctx, repo.Dir, nil, "rev-list", "--reverse", "--all")
+		if err != nil {
+			return nil, stats, fmt.Errorf("%s: list commits: %w", repo.Name, err)
+		}
 		commits := splitLines(commitsOut)
 		stats.TotalCommits += len(commits)
 		for _, commitHash := range commits {
-			oldMessage, _ := gitClient.Stdout(ctx, repo.Dir, nil, "log", "-1", "--format=%B", commitHash)
+			oldMessage, err := gitClient.Stdout(ctx, repo.Dir, nil, "log", "-1", "--format=%B", commitHash)
+			if err != nil {
+				return nil, stats, fmt.Errorf("%s %s: read commit message: %w", repo.Name, shortHash(commitHash, 8), err)
+			}
 			if skipConventional && IsConventional(oldMessage) {
 				stats.SkippedFormatted++
 				continue
 			}
-			contextText := buildContext(ctx, gitClient, repo.Dir, repo.Name, commitHash, charBudget)
+			contextText, err := buildContext(ctx, gitClient, repo.Dir, repo.Name, commitHash, charBudget)
+			if err != nil {
+				return nil, stats, fmt.Errorf("%s %s: build commit context: %w", repo.Name, shortHash(commitHash, 8), err)
+			}
 			if strings.TrimSpace(contextText) == "" {
 				stats.SkippedEmpty++
 				continue
@@ -190,16 +202,25 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			})
 		}
 	}
-	return items, stats
+	return items, stats, nil
 }
 
-func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, commitHash string, charBudget int) string {
-	nameStatus, _ := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commitHash)
-	numstat, _ := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--numstat", "-r", commitHash)
-	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
-		return ""
+func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, commitHash string, charBudget int) (string, error) {
+	nameStatus, err := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commitHash)
+	if err != nil {
+		return "", fmt.Errorf("read changed files: %w", err)
 	}
-	diffText, _ := gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
+	numstat, err := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--numstat", "-r", commitHash)
+	if err != nil {
+		return "", fmt.Errorf("read change stats: %w", err)
+	}
+	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
+		return "", nil
+	}
+	diffText, err := gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
+	if err != nil {
+		return "", fmt.Errorf("read diff: %w", err)
+	}
 	contextText := strings.Join([]string{
 		"Repository: " + repoName,
 		"Commit: " + shortHash(commitHash, 12),
@@ -213,7 +234,7 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 		"Redacted diff snippet:",
 		RedactDiff(diffText),
 	}, "\n")
-	return truncateText(contextText, charBudget)
+	return truncateText(contextText, charBudget), nil
 }
 
 func IsConventional(message string) bool {
@@ -327,7 +348,9 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		pending = nextPending
 		if len(pending) > 0 && attempt < 3 {
 			fmt.Fprintf(out, "Retrying %d commit(s) after failed batch attempt %d.\n", len(pending), attempt)
-			time.Sleep(time.Duration(attempt) * 250 * time.Millisecond)
+			if !sleepContext(ctx, time.Duration(attempt)*250*time.Millisecond) {
+				break
+			}
 		}
 	}
 	failures := make([]failure, 0, len(pending))
@@ -335,6 +358,17 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
 	}
 	return accepted, failures
+}
+
+func sleepContext(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func requestBatch(ctx context.Context, batch []item, cfg Config) (map[string]string, error) {

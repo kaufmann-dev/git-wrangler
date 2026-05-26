@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"context"
+	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -114,5 +117,47 @@ func TestWriteCommitCallbackUsesBytesLiterals(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("callback missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	remoteGetCalls := 0
+	restored := false
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		if dir != "repo" {
+			return "", "", errors.New("unexpected dir")
+		}
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git remote get-url origin":
+			remoteGetCalls++
+			if remoteGetCalls == 1 {
+				return "https://example.test/repo.git\n", "", nil
+			}
+			return "", "", errors.New("origin removed")
+		case "git-filter-repo --force":
+			return "partial rewrite output", "", errors.New("filter failed")
+		case "git remote add origin https://example.test/repo.git":
+			restored = true
+			return "", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+
+	out, runErr, restoreErr := runFilterRepoRestoringOrigin(a, "repo", []string{"git-filter-repo"}, []string{"--force"}, nil)
+	if runErr == nil {
+		t.Fatal("expected filter failure")
+	}
+	if restoreErr != nil {
+		t.Fatalf("unexpected restore error: %v", restoreErr)
+	}
+	if out != "partial rewrite output" {
+		t.Fatalf("output = %q", out)
+	}
+	if !restored {
+		t.Fatal("expected origin restore after filter failure")
 	}
 }
