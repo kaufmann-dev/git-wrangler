@@ -3,11 +3,11 @@
 const command = "brew install --cask kaufmann-dev/tap/git-wrangler";
 ---
 
-<div class="install-pill-container" id="install-pill">
+<div class="install-pill-container" data-install-pill>
   <div class="install-pill">
     <span class="prefix">$</span>
     <code class="command">{command}</code>
-    <button class="copy-button" aria-label="Copy to clipboard" id="copy-btn">
+    <button class="copy-button" aria-label="Copy to clipboard" data-copy-button>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-copy">
         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -17,33 +17,71 @@ const command = "brew install --cask kaufmann-dev/tap/git-wrangler";
       </svg>
     </button>
   </div>
-  <span id="copy-announcement" class="sr-only" aria-live="polite"></span>
+  <span class="sr-only" aria-live="polite" data-copy-announcement></span>
 </div>
 
 <script is:inline define:vars={{ command }}>
-  const copyBtn = document.getElementById('copy-btn');
-  const iconCopy = copyBtn.querySelector('.icon-copy');
-  const iconCheck = copyBtn.querySelector('.icon-check');
-  const announcement = document.getElementById('copy-announcement');
+  const win = window;
 
-  copyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      
-      // Feedback
-      iconCopy.style.display = 'none';
-      iconCheck.style.display = 'block';
-      copyBtn.classList.add('success');
-      announcement.textContent = 'Copied to clipboard';
-      
-      setTimeout(() => {
+  function setupInstallPills() {
+    win.__installPillCleanup?.();
+
+    const cleanups = [];
+
+    document.querySelectorAll('[data-install-pill]').forEach((pill) => {
+      const copyBtn = pill.querySelector('[data-copy-button]');
+      const iconCopy = copyBtn?.querySelector('.icon-copy');
+      const iconCheck = copyBtn?.querySelector('.icon-check');
+      const announcement = pill.querySelector('[data-copy-announcement]');
+      let timeout;
+
+      if (!copyBtn || !iconCopy || !iconCheck || !announcement) return;
+
+      const reset = () => {
         iconCopy.style.display = 'block';
         iconCheck.style.display = 'none';
         copyBtn.classList.remove('success');
         announcement.textContent = '';
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to copy: ', err);
+      };
+
+      const handleClick = async () => {
+        try {
+          await navigator.clipboard.writeText(command);
+          window.clearTimeout(timeout);
+          iconCopy.style.display = 'none';
+          iconCheck.style.display = 'block';
+          copyBtn.classList.add('success');
+          announcement.textContent = 'Copied to clipboard';
+          timeout = window.setTimeout(reset, 2000);
+        } catch (err) {
+          console.error('Failed to copy: ', err);
+        }
+      };
+
+      copyBtn.addEventListener('click', handleClick);
+      cleanups.push(() => {
+        window.clearTimeout(timeout);
+        copyBtn.removeEventListener('click', handleClick);
+        reset();
+      });
+    });
+
+    win.__installPillCleanup = () => {
+      cleanups.forEach((cleanup) => cleanup());
+      win.__installPillCleanup = undefined;
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupInstallPills, { once: true });
+  } else {
+    setupInstallPills();
+  }
+
+  document.addEventListener('astro:page-load', setupInstallPills);
+  document.addEventListener('astro:before-swap', () => {
+    if (win.__installPillCleanup) {
+      win.__installPillCleanup();
     }
   });
 </script>

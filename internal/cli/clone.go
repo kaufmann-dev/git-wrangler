@@ -36,7 +36,11 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	if visibility == "private" || visibility == "all" {
-		out, _ := githubcli.Capture(context.Background(), "", "auth", "status")
+		out, err := githubcli.Capture(context.Background(), "", "auth", "status")
+		if err != nil {
+			a.errorf("Could not verify GitHub authentication for '%s'. Set --visibility to 'public' or use 'gh auth login'.", user)
+			return 1
+		}
 		if !regexp.MustCompile(`Logged in to .* account ` + regexp.QuoteMeta(user) + ` `).MatchString(out) {
 			a.errorf("You are not logged in as the specified user: %s. Set --visibility to 'public' or use 'gh auth login'.", user)
 			return 1
@@ -44,7 +48,11 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	}
 
 	listArgs := githubcli.RepoListArgs(user, visibility, "1")
-	out, _ := githubcli.Stdout(context.Background(), "", listArgs...)
+	out, err := githubcli.Stdout(context.Background(), "", listArgs...)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
+		return 1
+	}
 	if lineCount(out) == 0 {
 		if visibility == "public" || visibility == "private" {
 			a.errorf("No %s repositories found for '%s'.", visibility, user)
@@ -72,17 +80,20 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
 		return 1
 	}
+	status := 0
 	for _, line := range splitLines(reposOut) {
 		fields := strings.Split(line, "\t")
 		if len(fields) == 0 || fields[0] == "" {
 			continue
 		}
-		cloneRepository(a, fields[0], into)
+		if !cloneRepository(a, fields[0], into) {
+			status = 1
+		}
 	}
-	return 0
+	return status
 }
 
-func cloneRepository(a *app, fullName, into string) {
+func cloneRepository(a *app, fullName, into string) bool {
 	repoName := fullName
 	if idx := strings.LastIndex(fullName, "/"); idx >= 0 {
 		repoName = fullName[idx+1:]
@@ -91,12 +102,14 @@ func cloneRepository(a *app, fullName, into string) {
 	if isDir(target) {
 		abs, _ := filepath.Abs(into)
 		fmt.Fprintf(a.stdout, "%s%s already exists in %s. Skipping...%s\n", a.ui.Yellow, repoName, abs, a.ui.Reset)
-		return
+		return true
 	}
 	if out, err := githubcli.Capture(context.Background(), "", "repo", "clone", fullName, target); err == nil {
 		abs, _ := filepath.Abs(target)
 		fmt.Fprintf(a.stdout, "%sCloned %s into %s%s\n", a.ui.Green, repoName, abs, a.ui.Reset)
+		return true
 	} else {
 		fmt.Fprintf(a.stderr, "%sError: Failed to clone %s:\n%s%s\n\n", a.ui.Red, repoName, out, a.ui.Reset)
+		return false
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
@@ -125,17 +124,13 @@ func positiveInt(s string) bool {
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	hadError := false
 	for _, repoPlan := range plan.Repos {
-		remoteURL := strings.TrimSpace(mustStdout(repoPlan.Dir, "git", "remote", "get-url", "origin"))
+		remoteURL := originURL(repoPlan.Dir)
 		out, err := runFilterRepo(repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 		if err == nil {
-			if remoteURL != "" {
-				if _, err := runCapture(repoPlan.Dir, nil, "git", "remote", "get-url", "origin"); err != nil {
-					if restore, err := runCapture(repoPlan.Dir, nil, "git", "remote", "add", "origin", remoteURL); err != nil {
-						fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, restore, a.ui.Reset)
-						hadError = true
-						continue
-					}
-				}
+			if err := restoreOrigin(repoPlan.Dir, remoteURL); err != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, err.Error(), a.ui.Reset)
+				hadError = true
+				continue
 			}
 			fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) for %s%s\n", a.ui.Green, repoPlan.ChangedCount, repoPlan.Name, a.ui.Reset)
 		} else {

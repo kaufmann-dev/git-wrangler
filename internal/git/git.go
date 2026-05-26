@@ -23,14 +23,13 @@ func FilterRepoCommand(ctx context.Context) ([]string, bool) {
 	if path, err := run.LookPath("git-filter-repo"); err == nil {
 		return []string{path}, true
 	}
-	if out, err := Capture(ctx, "", nil, "filter-repo", "--version"); err == nil || out != "" {
+	if _, err := Capture(ctx, "", nil, "filter-repo", "--version"); err == nil {
 		return []string{"git", "filter-repo"}, true
 	}
 	return nil, false
 }
 
-func CatFileBatchCheck(ctx context.Context, dir, input string) string {
+func CatFileBatchCheck(ctx context.Context, dir, input string) (string, error) {
 	ctx = run.WithStdin(ctx, input)
-	out, _ := Capture(ctx, dir, nil, "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
-	return out
+	return Capture(ctx, dir, nil, "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
 }

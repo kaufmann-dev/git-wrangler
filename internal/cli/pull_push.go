@@ -21,6 +21,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		pullArgs := []string{"pull"}
 		if rebase {
@@ -39,9 +40,10 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		} else {
 			a.error(r.display, "Git pull failed:")
 			fmt.Fprintf(a.stderr, "%s\n\n", out)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }
 
 func runPush(a *app, cmd *cobra.Command, args []string) int {
@@ -62,6 +64,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		pushArgs := []string{"push", "origin", "HEAD"}
 		if force {
@@ -83,7 +86,8 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		} else {
 			a.error(r.display, "Git push failed:")
 			fmt.Fprintf(a.stderr, "%s\n\n", out)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }

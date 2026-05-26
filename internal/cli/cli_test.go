@@ -60,6 +60,24 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+func TestCommandsRejectPositionalArgs(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, args := range [][]string{
+		{"version", "extra"},
+		{"status", "extra"},
+		{"commit", "extra", "--message", "test"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		if err == nil {
+			t.Fatalf("%v returned nil error", args)
+		}
+		if !strings.Contains(stderr.String(), "accepts 0 arg(s)") {
+			t.Fatalf("%v stderr = %q", args, stderr.String())
+		}
+	}
+}
+
 func TestCompletionCommandIsPresent(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
