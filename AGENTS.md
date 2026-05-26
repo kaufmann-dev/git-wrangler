@@ -115,20 +115,28 @@ fi
 Always use `$repo_name_display` in user-facing output.
 
 ## 10. Output Formatting and Colors
-Scripts must use colored `printf` statements to provide clear visual feedback to the user:
-- **Red (`\e[31m`)**: Errors, failures, and missing prerequisites. **Must be redirected to stderr using `>&2`.**
-- **Green (`\e[32m`)**: Success and completed operations.
-- **Yellow (`\e[33m`)**: Warnings, skipped operations, and "no changes needed" states.
-- **Reset (`\e[0m`)**: Always reset the color at the end of the string.
-Example: `printf "\e[31mError: Commit failed for %s\e[0m\n" "$repo_name_display" >&2``
+Subcommands MUST source the shared UI helper immediately after the header block:
+```bash
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+```
+
+Use the helper vocabulary instead of hardcoded ANSI escapes:
+- `gw_ok`, `gw_warn`, `gw_error`, `gw_info`, `gw_step`, `gw_skip`
+- `gw_header`, `gw_repo`, `gw_prompt`
+- `$GW_RED`, `$GW_GREEN`, `$GW_YELLOW`, `$GW_CYAN`, `$GW_MUTED`, `$GW_BOLD`, `$GW_RESET` only when formatting inline tabular output
+
+Colors and styling MUST respect `NO_COLOR`, `CLICOLOR=0`, `CLICOLOR_FORCE`, `TERM=dumb`, and non-TTY output as implemented by `libexec/git-wrangler-ui`. Fatal errors and prerequisite failures MUST still be written to stderr.
 
 ## 11. Command Output Capture and Error Handling
 When running a command that might fail, capture its output (both stdout and stderr) and only display it if an error occurs. Never let command output bleed directly into the terminal unless intended.
 ```bash
 if command_output=$(git commit -m "Message" 2>&1); then
-    printf "\e[32mCommit successful for %s\e[0m\n" "$repo_name_display"
+    gw_ok "$repo_name_display" "Commit successful"
 else
-    printf "\e[31mError: Commit failed for %s:\n%s\e[0m\n\n" "$repo_name_display" "$command_output" >&2
+    gw_error "$repo_name_display" "Commit failed:"
+    printf "%s\n\n" "$command_output" >&2
 fi
 ```
 

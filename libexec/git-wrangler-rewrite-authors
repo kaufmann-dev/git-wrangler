@@ -20,6 +20,11 @@
 #     git-wrangler rewrite-authors --name "New Name" --email "new@email.com" --force
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 force=false
 repo=""
 NEW_NAME=""
@@ -45,7 +50,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -53,13 +58,13 @@ done
 
 # Validate required arguments
 if [[ -z "$NEW_NAME" || -z "$NEW_EMAIL" ]]; then
-    printf "\e[31mError: Both --name and --email options must be provided.\e[0m\n" >&2
+    printf "${GW_RED}Error: Both --name and --email options must be provided.${GW_RESET}\n" >&2
     exit 1
 fi
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -69,7 +74,7 @@ if command -v git-filter-repo &> /dev/null; then
 elif git filter-repo --version &> /dev/null; then
     filter_repo_cmd=(git filter-repo)
 else
-    printf "\e[31mError: 'git-filter-repo' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git-filter-repo' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -81,7 +86,7 @@ else
 fi
 
 if [ -z "$repos" ]; then
-    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    gw_warn "No Git repositories found in the specified directory."
     exit 0
 fi
 
@@ -107,25 +112,25 @@ while IFS= read -r repo; do
             if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" "${filter_repo_cmd[@]}" --partial --force --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
                 if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                     if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
-                        printf "\e[31mWarning: Author rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output" >&2
+                        printf "${GW_RED}Warning: Author rewrite completed for %s, but origin could not be restored:\n%s${GW_RESET}\n\n" "$repo_name_display" "$restore_output" >&2
                         exit 1
                     fi
                 fi
-                printf "\e[32mAuthor and commiter information updated for %s\e[0m\n" "$repo_name_display"
+                printf "${GW_GREEN}Author and commiter information updated for %s${GW_RESET}\n" "$repo_name_display"
             else
-                printf "\e[31mError: Could not update git author and commiter information for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message" >&2
+                printf "${GW_RED}Error: Could not update git author and commiter information for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$error_message" >&2
             fi
         else
             if error_message=$(NEW_EMAIL_ENV="$NEW_EMAIL" NEW_NAME_ENV="$NEW_NAME" "${filter_repo_cmd[@]}" --partial --email-callback 'import os; return os.environ["NEW_EMAIL_ENV"].encode("utf-8")' --name-callback 'import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")' 2>&1 >/dev/null); then
                 if [ -n "$remote_url" ] && ! git remote get-url origin >/dev/null 2>&1; then
                     if ! restore_output=$(git remote add origin "$remote_url" 2>&1); then
-                        printf "\e[31mWarning: Author rewrite completed for %s, but origin could not be restored:\n%s\e[0m\n\n" "$repo_name_display" "$restore_output" >&2
+                        printf "${GW_RED}Warning: Author rewrite completed for %s, but origin could not be restored:\n%s${GW_RESET}\n\n" "$repo_name_display" "$restore_output" >&2
                         exit 1
                     fi
                 fi
-                printf "\e[32mAuthor and commiter information updated for %s\e[0m\n" "$repo_name_display"
+                printf "${GW_GREEN}Author and commiter information updated for %s${GW_RESET}\n" "$repo_name_display"
             else
-                printf "\e[31mError: Could not update git author and commiter information for %s:\n%s\e[0m\n\n" "$repo_name_display" "$error_message" >&2
+                printf "${GW_RED}Error: Could not update git author and commiter information for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$error_message" >&2
             fi
         fi
     )

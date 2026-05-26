@@ -13,6 +13,11 @@
 #     git-wrangler doctor
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 summary_only=false
 
 while [[ $# -gt 0 ]]; do
@@ -22,7 +27,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -42,9 +47,9 @@ print_dependency() {
     local command_path
 
     if command_path=$(command -v "$command_name" 2>/dev/null); then
-        printf "  \e[32mfound\e[0m   %-16s %s\n" "$command_name" "$command_path"
+        printf "  ${GW_GREEN}found${GW_RESET}   %-16s %s\n" "$command_name" "$command_path"
     else
-        printf "  \e[31mmissing\e[0m %-16s required for %s\n" "$command_name" "$required_for"
+        printf "  ${GW_RED}missing${GW_RESET} %-16s required for %s\n" "$command_name" "$required_for"
     fi
 }
 
@@ -52,11 +57,11 @@ print_git_filter_repo_dependency() {
     local command_path
 
     if command_path=$(command -v git-filter-repo 2>/dev/null); then
-        printf "  \e[32mfound\e[0m   %-16s %s\n" "git-filter-repo" "$command_path"
+        printf "  ${GW_GREEN}found${GW_RESET}   %-16s %s\n" "git-filter-repo" "$command_path"
     elif git filter-repo --version &> /dev/null; then
-        printf "  \e[32mfound\e[0m   %-16s %s\n" "git-filter-repo" "git filter-repo"
+        printf "  ${GW_GREEN}found${GW_RESET}   %-16s %s\n" "git-filter-repo" "git filter-repo"
     else
-        printf "  \e[31mmissing\e[0m %-16s required for %s\n" "git-filter-repo" "rewrite-authors, rewrite-commits, rewrite-commits-ai, rewrite-dates, remove-secrets"
+        printf "  ${GW_RED}missing${GW_RESET} %-16s required for %s\n" "git-filter-repo" "rewrite-authors, rewrite-commits, rewrite-commits-ai, rewrite-dates, remove-secrets"
     fi
 }
 
@@ -78,7 +83,7 @@ missing_dependency_count() {
 }
 
 print_dependency_summary() {
-    printf "\n\e[1mDependencies\e[0m\n\n"
+    printf "\n${GW_BOLD}Dependencies${GW_RESET}\n\n"
     print_dependency "git" "all commands"
     print_dependency "gh" "clone, rename-repo"
     print_git_filter_repo_dependency
@@ -181,14 +186,14 @@ print_install_instructions() {
 
     missing_count=$(missing_dependency_count)
     if [ "$missing_count" -eq 0 ]; then
-        printf "\n\e[32mAll command dependencies are installed.\e[0m\n"
+        printf "\n${GW_GREEN}All command dependencies are installed.${GW_RESET}\n"
         return
     fi
 
     os_name=$(detect_os)
     package_manager=$(detect_package_manager)
 
-    printf "\n\e[1mInstall Instructions\e[0m\n\n"
+    printf "\n${GW_BOLD}Install Instructions${GW_RESET}\n\n"
     printf "  Detected: %s" "$os_name"
     if [ "$package_manager" != "unknown" ]; then
         printf " with %s" "$package_manager"
@@ -340,23 +345,23 @@ check_update_status() {
     local local_sha
     local remote_sha
 
-    printf "\n\e[1mGit Wrangler Version\e[0m\n\n"
+    printf "\n${GW_BOLD}Git Wrangler Version${GW_RESET}\n\n"
 
     if ! is_installed git; then
-        printf "  \e[33mCannot check for updates because git is missing.\e[0m\n"
+        printf "  ${GW_YELLOW}Cannot check for updates because git is missing.${GW_RESET}\n"
         return
     fi
 
     install_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
     if [ ! -d "$install_dir/.git" ]; then
-        printf "  \e[33mCannot check for updates because %s is not a git repository.\e[0m\n" "$install_dir"
+        printf "  ${GW_YELLOW}Cannot check for updates because %s is not a git repository.${GW_RESET}\n" "$install_dir"
         return
     fi
 
     branch=$(git -C "$install_dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
     if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
-        printf "  \e[33mCannot check for updates because the current branch could not be determined.\e[0m\n"
+        printf "  ${GW_YELLOW}Cannot check for updates because the current branch could not be determined.${GW_RESET}\n"
         return
     fi
 
@@ -364,17 +369,17 @@ check_update_status() {
     remote_sha=$(git -C "$install_dir" ls-remote origin "refs/heads/$branch" 2>/dev/null | cut -f1)
 
     if [ -z "$remote_sha" ]; then
-        printf "  \e[33mCould not reach the remote repository. Check your network connection.\e[0m\n"
+        printf "  ${GW_YELLOW}Could not reach the remote repository. Check your network connection.${GW_RESET}\n"
         return
     fi
 
     if [ "$local_sha" = "$remote_sha" ]; then
-        printf "  \e[32mGit Wrangler is up to date on %s.\e[0m\n" "$branch"
+        printf "  ${GW_GREEN}Git Wrangler is up to date on %s.${GW_RESET}\n" "$branch"
     else
-        printf "  \e[33mA newer version of Git Wrangler is available.\e[0m\n"
+        printf "  ${GW_YELLOW}A newer version of Git Wrangler is available.${GW_RESET}\n"
         printf "  Local:  %s\n" "${local_sha:0:12}"
         printf "  Remote: %s\n" "${remote_sha:0:12}"
-        printf "  Run \e[1mgit-wrangler update\e[0m to update.\n"
+        printf "  Run ${GW_BOLD}git-wrangler update${GW_RESET} to update.\n"
     fi
 }
 

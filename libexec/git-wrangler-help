@@ -16,6 +16,11 @@
 #     git-wrangler help rewrite-authors
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # If a subcommand argument is provided, show its documentation
@@ -23,8 +28,8 @@ if [ -n "$1" ]; then
     subcommand="$1"
     target="$DIR/git-wrangler-$subcommand"
 
-    if [ ! -f "$target" ]; then
-        printf "\e[31mError: Unknown subcommand '%s'. Run 'git-wrangler help' for a list of available commands.\e[0m\n" "$subcommand" >&2
+    if [ ! -f "$target" ] || ! awk '/^# Category:/{found=1} END{exit found ? 0 : 1}' "$target"; then
+        printf "${GW_RED}Error: Unknown subcommand '%s'. Run 'git-wrangler help' for a list of available commands.${GW_RESET}\n" "$subcommand" >&2
         exit 1
     fi
 
@@ -37,28 +42,28 @@ if [ -n "$1" ]; then
     while IFS= read -r line; do
         case "$line" in
             "Usage: "*)
-                printf "  \e[1mUsage:\e[0m %s\n" "${line#Usage: }"
+                printf "  ${GW_BOLD}Usage:${GW_RESET} %s\n" "${line#Usage: }"
                 ;;
             "Description: "*)
-                printf "  \e[1mDescription:\e[0m %s\n" "${line#Description: }"
+                printf "  ${GW_BOLD}Description:${GW_RESET} %s\n" "${line#Description: }"
                 ;;
             "Category: "*)
-                printf "  \e[1mCategory:\e[0m %s\n" "${line#Category: }"
+                printf "  ${GW_BOLD}Category:${GW_RESET} %s\n" "${line#Category: }"
                 ;;
             "Options:")
-                printf "\n  \e[1mOptions:\e[0m\n"
+                printf "\n  ${GW_BOLD}Options:${GW_RESET}\n"
                 ;;
             "Example:")
-                printf "\n  \e[1mExample:\e[0m\n"
+                printf "\n  ${GW_BOLD}Example:${GW_RESET}\n"
                 ;;
             "Examples:")
-                printf "\n  \e[1mExamples:\e[0m\n"
+                printf "\n  ${GW_BOLD}Examples:${GW_RESET}\n"
                 ;;
             "  --"*)
                 # Option line: bold the flag name, dim the description
                 flag=$(printf '%s' "$line" | sed 's/^\(  --[^ ]*\).*/\1/')
                 rest="${line#$flag}"
-                printf "    \e[33m%s\e[0m%s\n" "$flag" "$rest"
+                printf "    ${GW_YELLOW}%s${GW_RESET}%s\n" "$flag" "$rest"
                 ;;
             "    "*)
                 # Indented continuation line (option description or example)
@@ -78,7 +83,7 @@ if [ -n "$1" ]; then
 fi
 
 # Top-level help: dynamically discover and display all subcommands grouped by category
-printf "\e[1mUsage:\e[0m git-wrangler <subcommand> [options]\n\n"
+printf "${GW_BOLD}Usage:${GW_RESET} git-wrangler <subcommand> [options]\n\n"
 printf "Available subcommands:\n\n"
 
 # Collect unique categories
@@ -94,7 +99,7 @@ categories=$(printf '%s' "$categories" | sort -u | sed '/^$/d')
 
 # Print subcommands grouped by category
 while IFS= read -r cat; do
-    printf "  \e[1;34m%s\e[0m\n" "$cat"
+    printf "  ${GW_REPO_COLOR}%s${GW_RESET}\n" "$cat"
     for file in "$DIR"/git-wrangler-*; do
         [ -f "$file" ] || continue
         file_category=$(awk '/^# Category:/{sub(/^# Category: */, ""); print; exit}' "$file")

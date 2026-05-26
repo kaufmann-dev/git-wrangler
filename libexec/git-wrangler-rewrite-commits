@@ -17,6 +17,11 @@
 #     git-wrangler rewrite-commits
 # ====
 
+UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=libexec/git-wrangler-ui
+source "$UI_DIR/git-wrangler-ui"
+
+
 # Function to determine conventional commit components based on file diffs
 # This function reads 'git diff-tree --name-status' output from stdin and
 # determines the conventional commit components based on file paths and statuses.
@@ -110,7 +115,7 @@ categorize_commit() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         *)
-            printf "\e[31mUnknown option: %s\e[0m\n" "$1" >&2
+            gw_error "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -118,7 +123,7 @@ done
 
 # Check prerequisites
 if ! command -v git &> /dev/null; then
-    printf "\e[31mError: 'git' is required for rewrite-commits. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git' is required for rewrite-commits. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -128,7 +133,7 @@ if command -v git-filter-repo &> /dev/null; then
 elif git filter-repo --version &> /dev/null; then
     filter_repo_cmd=(git filter-repo)
 else
-    printf "\e[31mError: 'git-filter-repo' is required for rewrite-commits. Run 'git-wrangler doctor' for more information.\e[0m\n" >&2
+    printf "${GW_RED}Error: 'git-filter-repo' is required for rewrite-commits. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
     exit 1
 fi
 
@@ -136,7 +141,7 @@ fi
 git_repositories=$(find . -maxdepth 2 -type d -name '.git')
 
 if [ -z "$git_repositories" ]; then
-    printf "\e[33mNo Git repositories found in the specified directory.\e[0m\n"
+    gw_warn "No Git repositories found in the specified directory."
     exit 0
 fi
 
@@ -156,7 +161,7 @@ while IFS= read -r git_dir; do
 
         # Check if repository actually has any commits
         if ! git rev-parse HEAD &> /dev/null; then
-            printf "\e[33mRepository has no commits in %s. Skipping...\e[0m\n" "$repo_name_display"
+            printf "${GW_YELLOW}Repository has no commits in %s. Skipping...${GW_RESET}\n" "$repo_name_display"
             continue
         fi
 
@@ -193,7 +198,7 @@ while IFS= read -r git_dir; do
         done < <(git rev-list --all)
 
         if [ "$needs_rewrite" = false ]; then
-            printf "\e[33mNo commits require rewriting in %s (already format compliant). Skipping...\e[0m\n" "$repo_name_display"
+            printf "${GW_YELLOW}No commits require rewriting in %s (already format compliant). Skipping...${GW_RESET}\n" "$repo_name_display"
             rm -f "$map_file"
             continue
         fi
@@ -224,14 +229,14 @@ EOF
 
         # Execute historical rewrite using git-filter-repo
         if filter_output=$("${filter_repo_cmd[@]}" --partial --commit-callback "$callback_file" --force 2>&1); then
-            printf "\e[32mRewrote commit messages for %s\e[0m\n" "$repo_name_display"
+            printf "${GW_GREEN}Rewrote commit messages for %s${GW_RESET}\n" "$repo_name_display"
             
             # Restore original remote origin if applicable
             if [ -n "$remote_url" ]; then
                 git remote add origin "$remote_url" 2>/dev/null
             fi
         else
-            printf "\e[31mError: Could not update commit messages for %s:\n%s\e[0m\n\n" "$repo_name_display" "$filter_output" >&2
+            printf "${GW_RED}Error: Could not update commit messages for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$filter_output" >&2
         fi
 
         rm -f "$map_file" "$callback_file"

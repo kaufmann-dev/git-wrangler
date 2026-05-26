@@ -7,6 +7,7 @@ Git Wrangler is a command-line orchestrator that broadcasts Git operations from 
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Terminal Output](#terminal-output)
 - [Command Reference](#command-reference)
 - [Architecture](#architecture)
 
@@ -66,6 +67,19 @@ git-wrangler commit --message "chore: update dependencies"
 
 *For more detailed help, run `git-wrangler help` or `git-wrangler help <command>`.*
 
+## Terminal Output
+
+Git Wrangler uses one terminal vocabulary across the dispatcher, installer, and subcommands. Interactive terminals get colored status output and Unicode symbols; plain output uses ASCII labels and no ANSI styling.
+
+The following environment variables control presentation:
+
+- `NO_COLOR=1` disables color and styling.
+- `CLICOLOR=0` disables color and styling.
+- `CLICOLOR_FORCE=1` forces color unless `NO_COLOR`, `CLICOLOR=0`, or `TERM=dumb` is set.
+- `TERM=dumb` disables color and Unicode symbols.
+
+Color is also disabled automatically when output is not a TTY, so piped commands stay machine-readable.
+
 ## Command Reference
 
 ### Remote Operations
@@ -112,4 +126,5 @@ Git Wrangler is built on a modular, decentralized bash architecture designed for
 
 - **Thin Dispatcher:** The root `git-wrangler` script acts purely as a router, delegating `git-wrangler <command>` invocations to standalone executable scripts in the `libexec/` directory.
 - **Dynamic Help System:** There is no central registry for commands. The help menu is generated dynamically by parsing structured metadata headers embedded at the top of each script.
+- **Shared Terminal UI:** Subcommands source `libexec/git-wrangler-ui` for consistent colors, symbols, prompts, and plain-output behavior.
 - **State Isolation:** When iterating over multiple repositories, operations are heavily sandboxed within subshells to guarantee that directory changes and variables never leak between iterations.
