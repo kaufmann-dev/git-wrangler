@@ -24,6 +24,7 @@ Before installing or using Git Wrangler, ensure you have the following dependenc
 - **[`git`](https://git-scm.com/)**: Required for all core operations.
 - **[`gh`](https://cli.github.com/)**: Required for `clone` and `rename-repo`.
 - **[`git-filter-repo`](https://github.com/newren/git-filter-repo)**: Required for history rewriting (`rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `remove-secrets`) as either the `git-filter-repo` executable or the `git filter-repo` Git subcommand.
+- **Go**: Required to build and run the Go CLI from a source checkout.
 - **Python 3**: Required for AI-assisted commit rewrites and date redistribution.
 - **OpenAI-compatible API access**: Required for `rewrite-commits-ai` (`--base-url`, `--model`, and an API key).
 
@@ -129,20 +130,20 @@ Color is also disabled automatically when output is not a TTY, so piped commands
 
 ## Architecture
 
-Git Wrangler is built on a modular, decentralized bash architecture designed for extensibility and safety:
+Git Wrangler is implemented as a Go CLI with the original Bash command files retained as reference documentation and help metadata:
 
-- **Thin Dispatcher:** The root `git-wrangler` script acts purely as a router, delegating `git-wrangler <command>` invocations to standalone executable scripts in the `libexec/` directory.
-- **Dynamic Help System:** There is no central registry for commands. The help menu is generated dynamically by parsing structured metadata headers embedded at the top of each script.
-- **Shared Terminal UI:** Subcommands source `libexec/git-wrangler-ui` for consistent colors, symbols, prompts, and plain-output behavior.
-- **Shared Bash Core:** Subcommands use `libexec/git-wrangler-core` for common repo discovery, display names, option value validation, prerequisites, and destructive confirmations.
-- **State Isolation:** When iterating over multiple repositories, operations are heavily sandboxed within subshells to guarantee that directory changes and variables never leak between iterations.
+- **Thin Launcher:** The root `git-wrangler` script resolves the install directory, builds a cached Go binary when needed, and executes it.
+- **Go Command Registry:** Public subcommands are implemented in `cmd/git-wrangler`.
+- **Dynamic Help Metadata:** The help menu still parses structured headers from `libexec/git-wrangler-*`, so the Bash files remain the help/reference oracle.
+- **Shared Go Helpers:** Terminal UI, parser validation, repo discovery, display names, confirmations, command capture, and destructive safeguards are centralized in Go.
+- **Sequential Repository Processing:** Mutating and destructive commands process repositories one at a time and use temporary repositories in tests.
 
 ## Contributor Commands
 
-| Command         | Description                                                                  |
-| --------------- | ---------------------------------------------------------------------------- |
-| `scripts/check` | Runs Bash syntax checks, optional ShellCheck/shfmt, and website build checks |
-| `scripts/test`  | Runs temp-directory integration tests for core Git Wrangler behavior         |
-| `scripts/bench` | Creates temporary repositories and times read-only status checks             |
+| Command         | Description                                                                            |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `scripts/check` | Runs Bash syntax checks, Go tests, optional ShellCheck/shfmt, and website build checks |
+| `scripts/test`  | Runs temp-directory integration tests for core Git Wrangler behavior                   |
+| `scripts/bench` | Creates temporary repositories and times read-only status checks                       |
 
-The Bash-to-Go compatibility contract is documented in `GO_REWRITE_CONTRACT.md`. Keep it passing with `scripts/test` before replacing Bash command behavior.
+The Bash-to-Go compatibility contract is documented in `GO_REWRITE_CONTRACT.md`. Keep it passing with `scripts/test` when changing Go command behavior or Bash reference metadata.
