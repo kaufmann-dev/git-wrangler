@@ -23,6 +23,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 force=false
@@ -34,10 +36,12 @@ NEW_EMAIL=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --name)
+            gw_require_option_value "$1" "$#" "${2-}"
             NEW_NAME="$2"
             shift 2
             ;;
         --email)
+            gw_require_option_value "$1" "$#" "${2-}"
             NEW_EMAIL="$2"
             shift 2
             ;;
@@ -46,6 +50,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --repo)
+            gw_require_option_value "$1" "$#" "${2-}"
             repo="$2"
             shift 2
             ;;
@@ -62,27 +67,15 @@ if [[ -z "$NEW_NAME" || -z "$NEW_EMAIL" ]]; then
     exit 1
 fi
 
-# Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
-
-filter_repo_cmd=()
-if command -v git-filter-repo &> /dev/null; then
-    filter_repo_cmd=(git-filter-repo)
-elif git filter-repo --version &> /dev/null; then
-    filter_repo_cmd=(git filter-repo)
-else
-    printf "${GW_RED}Error: 'git-filter-repo' is required for rewrite-authors. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "rewrite-authors"
+gw_require_filter_repo "rewrite-authors"
+filter_repo_cmd=("${gw_filter_repo_cmd[@]}")
 
 # Find target repositories
 if [ -n "$repo" ]; then
-    repos=$(find "$repo" -maxdepth 2 -type d -name '.git')
+    repos=$(gw_find_git_repositories "$repo")
 else
-    repos=$(find . -maxdepth 2 -type d -name '.git')
+    repos=$(gw_find_git_repositories)
 fi
 
 if [ -z "$repos" ]; then
@@ -94,13 +87,8 @@ fi
 while IFS= read -r repo; do
     (
         # Get repository directory and name
-        repo_dir=$(dirname "$repo")
-
-        if [ "$repo_dir" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_dir")
-        fi
+        repo_dir=$(gw_repo_dir_from_git_dir "$repo")
+        repo_name_display=$(gw_repo_display_name "$repo_dir")
 
         cd "$repo_dir" || exit
 

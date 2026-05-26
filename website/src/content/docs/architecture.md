@@ -43,11 +43,12 @@ Every script in `libexec/` follows this structure:
 #     git-wrangler <subcommand> --flag value
 # ====
 
-# 1. Default variables + argument parsing
-# 2. Shared UI helper source
-# 3. Prerequisite checks (git, gh, git-filter-repo, python3 as needed)
-# 4. Repository discovery via find
-# 5. Execution loop with subshell isolation
+# 1. Shared UI helper source
+# 2. Optional shared core helper source
+# 3. Default variables + argument parsing
+# 4. Prerequisite checks (git, gh, git-filter-repo, python3 as needed)
+# 5. Repository discovery via find or git-wrangler-core
+# 6. Execution loop with subshell isolation
 ```
 
 ## Terminal UI helper
@@ -61,12 +62,16 @@ The helper follows common CLI conventions:
 - `CLICOLOR_FORCE=1` forces color unless one of the disabling controls is set.
 - Unicode symbols are used only for capable interactive terminals; plain output uses ASCII labels.
 
+## Bash core helper
+
+Commands with common shell plumbing also source `libexec/git-wrangler-core`. It centralizes repository discovery, repository display names, missing option value checks, prerequisite checks, `git-filter-repo` detection, destructive confirmations, and CPU-count detection.
+
 ## Repository discovery
 
 All multi-repo commands locate `.git` directories using `find`:
 
 ```bash
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 ```
 
 This searches the current directory and one level of subdirectories — matching the natural layout of a "mono-workspace" where multiple repos sit side by side.
@@ -78,7 +83,7 @@ This is the key safety feature. Every repository operation runs inside a subshel
 ```bash
 while IFS= read -r git_dir; do
     (
-        repo_dir=$(dirname "$git_dir")
+        repo_dir=$(gw_repo_dir_from_git_dir "$git_dir")
         cd "$repo_dir" || exit
         # ... operations ...
     )
@@ -101,6 +106,7 @@ All errors are written to **stderr** (`>&2`) so that piped commands still receiv
 ## Adding a new command
 
 1. Create `libexec/git-wrangler-mycommand` with the standard header block
-2. Source `libexec/git-wrangler-ui`
+2. Source `libexec/git-wrangler-ui` and `libexec/git-wrangler-core` if the command needs shared shell helpers
 3. Make it executable: `chmod +x libexec/git-wrangler-mycommand`
-4. That's it — `git-wrangler help` discovers it immediately
+4. Run `scripts/check` and `scripts/test`
+5. That's it — `git-wrangler help` discovers it immediately

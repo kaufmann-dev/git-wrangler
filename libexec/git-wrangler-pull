@@ -22,6 +22,8 @@
 UI_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck source=libexec/git-wrangler-ui
 source "$UI_DIR/git-wrangler-ui"
+# shellcheck source=libexec/git-wrangler-core
+source "$UI_DIR/git-wrangler-core"
 
 
 rebase=false
@@ -45,14 +47,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Check prerequisites
-if ! command -v git &> /dev/null; then
-    printf "${GW_RED}Error: 'git' is required for pull. Run 'git-wrangler doctor' for more information.${GW_RESET}\n" >&2
-    exit 1
-fi
+gw_require_git "pull"
 
 # Find target repositories
-git_repositories=$(find . -maxdepth 2 -type d -name '.git')
+git_repositories=$(gw_find_git_repositories)
 
 if [ -z "$git_repositories" ]; then
     gw_warn "No Git repositories found in the specified directory."
@@ -63,34 +61,33 @@ fi
 while IFS= read -r git_dir; do
     (
         # Get repository path and display name
-        repo_path=$(dirname "$git_dir")
-
-        if [ "$repo_path" = "." ]; then
-            repo_name_display="${PWD##*/}"
-        else
-            repo_name_display=$(basename "$repo_path")
-        fi
+        repo_path=$(gw_repo_dir_from_git_dir "$git_dir")
+        repo_name_display=$(gw_repo_display_name "$repo_path")
 
         cd "$repo_path" || exit
 
         # Build pull arguments
-        pull_args=""
+        pull_args=(pull)
         if [ "$rebase" = true ]; then
-            pull_args="$pull_args --rebase"
+            pull_args+=(--rebase)
         fi
         if [ "$force" = true ]; then
-            pull_args="$pull_args --force"
+            pull_args+=(--force)
         fi
 
         # Perform Git pull
-        if pull_output=$(git pull$pull_args 2>&1); then
-            if ! printf "%s" "$pull_output" | grep -q "Already up to date"; then
-                printf "${GW_GREEN}Git pull completed for %s${GW_RESET}\n" "$repo_name_display"
-            else
-                printf "${GW_YELLOW}Already up to date for %s. Skipping...${GW_RESET}\n" "$repo_name_display"
-            fi
+        if pull_output=$(git "${pull_args[@]}" 2>&1); then
+            case "$pull_output" in
+                *"Already up to date"*)
+                    gw_skip "$repo_name_display" "Already up to date. Skipping..."
+                    ;;
+                *)
+                    gw_ok "$repo_name_display" "Git pull completed"
+                    ;;
+            esac
         else
-            printf "${GW_RED}Error: Git pull failed for %s:\n%s${GW_RESET}\n\n" "$repo_name_display" "$pull_output" >&2
+            gw_error "$repo_name_display" "Git pull failed:"
+            printf "%s\n\n" "$pull_output" >&2
         fi
     )
 done <<< "$git_repositories"
