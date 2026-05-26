@@ -18,7 +18,7 @@ git-wrangler rewrite-commits-ai --base-url <url> --model <model> [options]
 
 ## What it does
 
-Scans all managed repositories, skips commits that already use Conventional Commits, sends compact redacted commit context to an OpenAI-compatible chat completions endpoint, previews a single global summary, and asks once before rewriting history with `git-filter-repo`.
+Scans all managed repositories, sends compact redacted commit context to an OpenAI-compatible chat completions endpoint, previews a single global summary, and asks once before rewriting history with `git-filter-repo`. By default, commits that already use Conventional Commits are processed too; use `--skip-conventional` to process only commits that do not already match the convention.
 
 The command always processes all eligible commits. It does not have a dry-run mode; if you do not want to apply the generated messages, deny the final confirmation. The generated messages are temporary and are discarded when you decline.
 
@@ -33,6 +33,7 @@ The command always processes all eligible commits. It does not have a dry-run mo
 | `--batch-size <number>`           | Optional | Commits per API request. Defaults to `10`.                                  |
 | `--max-chars-per-commit <number>` | Optional | Per-commit context budget. Defaults to `3000`.                              |
 | `--timeout <seconds>`             | Optional | API request timeout. Defaults to `90`.                                      |
+| `--skip-conventional`             | Optional | Only process commits that do not already use Conventional Commits.          |
 
 ## API setup
 
@@ -61,9 +62,9 @@ If required values are missing, the command prompts in the terminal. You can sav
 - Sends file paths, file stats, and redacted diff snippets only
 - Does not send old commit messages as model context
 - Batches commits to reduce request overhead
-- Skips existing Conventional Commit messages before making API calls
+- Processes existing Conventional Commit messages unless `--skip-conventional` is provided
 - Redacts common secrets and hides sensitive file contents before sending data
-- Shows endpoint, model, repository count, commit count, batch count, and context budget before the first API request
+- Shows endpoint, model, repository count, total and selected commit counts, batch count, and context budget before the first API request
 
 ## Prerequisites
 
