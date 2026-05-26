@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -40,14 +41,25 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "HEAD"); err != nil {
 			fmt.Fprintf(a.stdout, "%s%s has no commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%sProcessing %s...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-		countOut := strings.TrimSpace(mustStdout(r.dir, "git", "rev-list", "--all", "--count"))
-		count, _ := strconv.Atoi(countOut)
+		countOut, err := runStdout(r.dir, nil, "git", "rev-list", "--all", "--count")
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not count commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
+		count, err := strconv.Atoi(strings.TrimSpace(countOut))
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: malformed commit count for %s: %q%s\n", a.ui.Red, r.display, strings.TrimSpace(countOut), a.ui.Reset)
+			status = 1
+			continue
+		}
 		if count < 2 {
 			fmt.Fprintf(a.stdout, "%s%s has fewer than 2 commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
@@ -57,20 +69,41 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		if startDate != "" {
 			startEpoch = parseLocalDate(startDate)
 		} else {
-			startEpoch, _ = strconv.ParseInt(strings.TrimSpace(firstLine(mustStdout(r.dir, "git", "log", "--all", "--reverse", "--format=%at"))), 10, 64)
+			startEpoch, err = firstCommitEpoch(r.dir, "--reverse")
+			if err != nil {
+				fmt.Fprintf(a.stderr, "%sError: could not read start timestamp for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
+				continue
+			}
 		}
 		if endDate != "" {
 			endEpoch = parseLocalDate(endDate)
 		} else {
-			endEpoch, _ = strconv.ParseInt(strings.TrimSpace(firstLine(mustStdout(r.dir, "git", "log", "--all", "--format=%at", "-1"))), 10, 64)
+			endEpoch, err = firstCommitEpoch(r.dir)
+			if err != nil {
+				fmt.Fprintf(a.stderr, "%sError: could not read end timestamp for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
+				continue
+			}
 		}
 		if startEpoch >= endEpoch {
 			fmt.Fprintf(a.stderr, "%sError: start date must be before end date in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
+			status = 1
 			continue
 		}
-		remoteURL := strings.TrimSpace(mustStdout(r.dir, "git", "remote", "get-url", "origin"))
-		tzOffset := dominantTimezoneOffset(r.dir)
-		commits := readCommitTimes(r.dir)
+		remoteURL := originURL(r.dir)
+		tzOffset, err := dominantTimezoneOffset(r.dir)
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: could not read time zones for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
+		commits, err := readCommitTimes(r.dir)
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%sError: could not read commit timestamps for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
 		mapping := distributeCommitTimes(commits, startEpoch, endEpoch)
 		fmt.Fprintln(a.stdout, "Commit summary (old -> new):")
 		fmt.Fprintln(a.stdout, strings.Repeat("-", 70))
@@ -85,20 +118,23 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		callback, err := writeDateCallback(mapping, tzOffset)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: timestamp generation failed for %s:\n%s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
 			continue
 		}
 		out, err := runFilterRepo(r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
 		_ = os.Remove(callback)
 		if err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully rewrote commit dates for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if remoteURL != "" {
-				_, _ = runCapture(r.dir, nil, "git", "remote", "add", "origin", remoteURL)
+			if err := restoreOrigin(r.dir, remoteURL); err != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
 			}
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: rewrite failed for %s:\n%s%s\n", a.ui.Red, r.display, out, a.ui.Reset)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }
 
 func validDate(s string) bool {
@@ -116,22 +152,61 @@ type commitTime struct {
 	epoch int64
 }
 
-func readCommitTimes(dir string) []commitTime {
-	out, _ := runStdout(dir, nil, "git", "log", "--all", "--reverse", "--format=%H %at")
+func firstCommitEpoch(dir string, flags ...string) (int64, error) {
+	args := append([]string{"log", "--all"}, flags...)
+	args = append(args, "--format=%at")
+	if !stringSliceContains(flags, "--reverse") {
+		args = append(args, "-1")
+	}
+	out, err := runStdout(dir, nil, "git", args...)
+	if err != nil {
+		return 0, err
+	}
+	value := strings.TrimSpace(firstLine(out))
+	if value == "" {
+		return 0, fmt.Errorf("empty timestamp")
+	}
+	epoch, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("malformed timestamp %q", value)
+	}
+	return epoch, nil
+}
+
+func stringSliceContains(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func readCommitTimes(dir string) ([]commitTime, error) {
+	out, err := runStdout(dir, nil, "git", "log", "--all", "--reverse", "--format=%H %at")
+	if err != nil {
+		return nil, err
+	}
 	var commits []commitTime
 	for _, line := range splitLines(out) {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
-			continue
+			return nil, fmt.Errorf("malformed commit timestamp line %q", line)
 		}
-		epoch, _ := strconv.ParseInt(fields[1], 10, 64)
+		epoch, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("malformed timestamp %q for %s", fields[1], fields[0])
+		}
 		commits = append(commits, commitTime{hash: fields[0], epoch: epoch})
 	}
-	return commits
+	return commits, nil
 }
 
-func dominantTimezoneOffset(dir string) string {
-	out, _ := runStdout(dir, nil, "git", "log", "--all", "--format=%ai")
+func dominantTimezoneOffset(dir string) (string, error) {
+	out, err := runStdout(dir, nil, "git", "log", "--all", "--format=%ai")
+	if err != nil {
+		return "", err
+	}
 	counts := map[string]int{}
 	for _, line := range splitLines(out) {
 		if len(line) >= 5 {
@@ -150,9 +225,9 @@ func dominantTimezoneOffset(dir string) string {
 		}
 	}
 	if best != "" {
-		return best
+		return best, nil
 	}
-	return time.Now().Format("-0700")
+	return time.Now().Format("-0700"), nil
 }
 
 func distributeCommitTimes(commits []commitTime, startEpoch, endEpoch int64) map[string]int64 {
@@ -268,7 +343,7 @@ func writeDateCallback(mapping map[string]int64, tzOffset string) (string, error
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		fmt.Fprintf(f, "mapping[b%q] = b%q\n", key, fmt.Sprintf("%d %s", mapping[key], tzOffset))
+		fmt.Fprintf(f, "mapping[%s] = %s\n", git.PythonBytesLiteral(key), git.PythonBytesLiteral(fmt.Sprintf("%d %s", mapping[key], tzOffset)))
 	}
 	fmt.Fprintln(f, "if commit.original_id in mapping:")
 	fmt.Fprintln(f, "    commit.author_date = mapping[commit.original_id]")

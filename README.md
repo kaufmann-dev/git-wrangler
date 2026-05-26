@@ -28,6 +28,8 @@ Homebrew installs shell completions automatically. Linux and Windows users can d
 
 `rewrite-commits-ai` also needs an OpenAI-compatible chat completions endpoint, a model name, and an API key.
 
+Manual binary installs do not install runtime dependencies. Install `git`, `gh`, and `git-filter-repo` yourself as needed for the commands you run.
+
 ## Quick Start
 
 ```bash
@@ -38,6 +40,8 @@ git-wrangler commit --message "chore: update dependencies"
 ```
 
 Run `git-wrangler --help` for the full command list and `git-wrangler <command> --help` for command-specific flags.
+
+Repository discovery supports regular `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. Bulk commands process discovered repositories in deterministic order. If any repository operation fails, the command exits nonzero after processing the remaining repositories; clean no-op skips still exit successfully.
 
 ## Commands
 
@@ -73,6 +77,12 @@ Utility:
 - `status`
 - `version`
 
+## Safety
+
+Destructive history rewrite commands require confirmation before mutation. `remove-secrets`, `rewrite-authors`, and `rewrite-commits` require `--confirm`; `rewrite-dates` prompts unless `--confirm` is supplied. `rewrite-commits-ai` asks before sending redacted context to the configured API and asks again before applying generated messages.
+
+Non-history commands that create commits or discard state also require explicit intent: `fix-gitignore --confirm`, `untrack --confirm`, and `reset --confirm` skip the interactive prompts.
+
 ## Architecture
 
 The public command implementation lives in Go under `cmd/git-wrangler` and `internal/`.
@@ -103,9 +113,14 @@ goreleaser release --snapshot --clean
 Contributor checks:
 
 ```bash
+git diff --check
 go test ./...
 go test -race ./...
 go vet ./...
+govulncheck ./...
 goreleaser check
-git diff --check
+goreleaser release --snapshot --clean
+cd website && pnpm run check
+cd website && pnpm run build
+cd website && pnpm audit --audit-level moderate
 ```

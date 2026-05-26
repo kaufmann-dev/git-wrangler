@@ -1,7 +1,12 @@
 package cli
 
 import (
+	"context"
+	"os"
+	"strings"
 	"testing"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
 func TestWeekdayAndWeekend(t *testing.T) {
@@ -35,6 +40,35 @@ func TestWeekdayAndWeekend(t *testing.T) {
 	}
 	if isWeekend(345600) {
 		t.Error("expected epoch 345600 (Monday) to not be a weekend")
+	}
+}
+
+func TestWriteDateCallbackUsesBytesLiterals(t *testing.T) {
+	path, err := writeDateCallback(map[string]int64{"abc123": 1600000000}, "+0200")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `mapping[b'abc123'] = b'1600000000 +0200'`) {
+		t.Fatalf("unexpected callback:\n%s", text)
+	}
+}
+
+func TestFirstCommitEpochChecksMalformedOutput(t *testing.T) {
+	restore := run.SetCommandFunc(func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		if name == "git" && len(args) >= 1 && args[0] == "log" {
+			return "not-a-timestamp\n", "", nil
+		}
+		return "", "", nil
+	})
+	defer restore()
+	if _, err := firstCommitEpoch("repo", "--reverse"); err == nil {
+		t.Fatal("expected malformed timestamp error")
 	}
 }
 

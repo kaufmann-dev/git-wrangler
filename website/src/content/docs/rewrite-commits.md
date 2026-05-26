@@ -3,7 +3,7 @@ title: "rewrite-commits"
 description: "Rewrites commit messages to adhere to the Conventional Commits standard."
 category: "History Rewriting"
 order: 2
-usage: "git-wrangler rewrite-commits"
+usage: "git-wrangler rewrite-commits --confirm"
 ---
 
 # rewrite-commits
@@ -13,10 +13,10 @@ Rewrites commit messages to adhere to the Conventional Commits standard.
 ## Usage
 
 ```bash
-git-wrangler rewrite-commits
+git-wrangler rewrite-commits --confirm
 ```
 
-This command takes no arguments.
+`--confirm` is required before any destructive history rewrite is performed.
 
 ## What it does
 
@@ -37,10 +37,16 @@ Rewrites the commit messages of Git repositories to adhere to the [Conventional 
 
 - `git-filter-repo` must be installed
 
+## Options
+
+| Flag        | Required     | Description                               |
+| ----------- | ------------ | ----------------------------------------- |
+| `--confirm` | **Required** | Confirm noninteractive history rewriting. |
+
 ## Example
 
 ```bash
-git-wrangler rewrite-commits
+git-wrangler rewrite-commits --confirm
 ```
 
 ## Notes

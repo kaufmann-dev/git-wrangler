@@ -28,13 +28,16 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	status := 0
 	for _, r := range repos {
 		if _, err := os.Stat(r.dir); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Directory is inaccessible: %s%s\n", a.ui.Red, r.display, a.ui.Reset)
+			status = 1
 			continue
 		}
 		if out, err := runCapture(r.dir, nil, "git", "rev-parse", "--is-inside-work-tree"); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Not a valid git repository for %s:\n%s%s\n", a.ui.Red, r.display, out, a.ui.Reset)
+			status = 1
 			continue
 		}
 		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+oldBranch); err != nil {
@@ -49,9 +52,10 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%sBranch renamed from '%s' to '%s' for %s%s\n", a.ui.Green, oldBranch, newBranch, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Failed to rename branch in %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			status = 1
 		}
 	}
-	return 0
+	return status
 }
 
 func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
@@ -68,6 +72,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		a.warn("No Git repositories found under the current directory.")
 		return 0
 	}
+	status := 0
 	for _, r := range repos {
 		oldName, err := githubcli.Stdout(context.Background(), r.dir, "repo", "view", "--json", "name", "-q", ".name")
 		if err != nil {
@@ -93,6 +98,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 				fmt.Fprintf(a.stdout, "%sSuccessfully updated description for %s%s\n", a.ui.Green, oldName, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "%sError: Failed to update description for %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
+				status = 1
 			}
 		}
 		if newName != "" {
@@ -100,8 +106,9 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 				fmt.Fprintf(a.stdout, "%sSuccessfully renamed %s to %s%s\n", a.ui.Green, oldName, newName, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "%sError: Failed to rename %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
+				status = 1
 			}
 		}
 	}
-	return 0
+	return status
 }
