@@ -33,6 +33,10 @@ brew upgrade git-wrangler
 
 Homebrew installs shell completions automatically.
 
+> [!TIP]
+> **Autocompletion on Linux:** Make sure you have `brew install bash-completion` installed and configured in your shell profile.
+
+
 | Platform         | Recommended install                                                                                        | Notes                                           |
 | ---------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | macOS            | `brew install kaufmann-dev/tap/git-wrangler`                                                               | Best default if you use Homebrew.               |
