@@ -114,16 +114,21 @@ const isActive = (path: string) =>
     const toggle = document.getElementById('navbar-toggle');
     const menu = document.getElementById('navbar-mobile-menu');
     const navbar = document.getElementById('navbar');
+    const main = document.querySelector('main');
 
     if (!toggle || !menu || !navbar) return;
 
+    const focusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const mobileLinks = menu.querySelectorAll('a');
 
-    const closeMenu = () => {
+    const closeMenu = (restoreFocus = false) => {
+      const wasOpen = !menu.hidden;
       menu.hidden = true;
       toggle.setAttribute('aria-expanded', 'false');
       toggle.classList.remove('is-open');
       document.body.style.overflow = '';
+      if (main instanceof HTMLElement) main.inert = false;
+      if (restoreFocus && wasOpen) toggle.focus();
     };
 
     const openMenu = () => {
@@ -131,6 +136,9 @@ const isActive = (path: string) =>
       toggle.setAttribute('aria-expanded', 'true');
       toggle.classList.add('is-open');
       document.body.style.overflow = 'hidden';
+      if (main instanceof HTMLElement) main.inert = true;
+      const firstFocusable = menu.querySelector<HTMLElement>(focusableSelector);
+      firstFocusable?.focus();
     };
 
     const handleToggleClick = (e: MouseEvent) => {
@@ -143,6 +151,8 @@ const isActive = (path: string) =>
       }
     };
 
+    const handleMobileLinkClick = () => closeMenu();
+
     const handleDocumentClick = (e: MouseEvent) => {
       if (!toggle.contains(e.target as Node) && !menu.contains(e.target as Node)) {
         closeMenu();
@@ -150,7 +160,27 @@ const isActive = (path: string) =>
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeMenu();
+      if (menu.hidden) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMenu(true);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(menu.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
 
     const handleResize = () => {
@@ -167,7 +197,7 @@ const isActive = (path: string) =>
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', onScroll, { passive: true });
     mobileLinks.forEach((link) => {
-      link.addEventListener('click', closeMenu);
+      link.addEventListener('click', handleMobileLinkClick);
     });
 
     onScroll();
@@ -180,7 +210,7 @@ const isActive = (path: string) =>
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', onScroll);
       mobileLinks.forEach((link) => {
-        link.removeEventListener('click', closeMenu);
+        link.removeEventListener('click', handleMobileLinkClick);
       });
     };
   }

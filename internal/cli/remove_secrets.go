@@ -25,7 +25,15 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	patterns := []string{".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa", "id_rsa.pub", "id_ed25519", "id_ed25519.pub", "config.json", "secrets.json", "credentials.json", "*.secret"}
+	patterns := []string{
+		".env", ".env.*", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
+		"*.pem", "*.key", "*.p12", "*.pfx", "*.asc", "*.gpg", "*.crt", "*.cer", "*.cert",
+		"id_rsa", "id_rsa.pub", "id_ed25519", "id_ed25519.pub", "*_rsa", "*_ed25519",
+		"secrets.json", "credentials.json", "*secret*.json", "*credential*.json", "*.secret",
+		"config/credentials.yml.enc", ".docker/config.json", ".kube/config", "kubeconfig",
+		".aws/credentials", ".aws/config", ".config/gcloud/*", "application_default_credentials.json",
+		"azureProfile.json", "accessTokens.json",
+	}
 	status := 0
 	for _, r := range repos {
 		if _, err := runCapture(r.dir, nil, "git", "rev-parse", "--is-inside-work-tree"); err != nil {
@@ -35,14 +43,30 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		}
 		matchedPatterns := []string{}
 		matchedFiles := []string{}
+		scanFailed := false
 		for _, pattern := range patterns {
-			out, _ := runStdout(r.dir, nil, "git", "log", "--all", "--oneline", "--", pattern)
+			out, err := runStdout(r.dir, nil, "git", "log", "--all", "--oneline", "--", pattern)
+			if err != nil {
+				fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
+				scanFailed = true
+				continue
+			}
 			if strings.TrimSpace(out) == "" {
 				continue
 			}
 			matchedPatterns = append(matchedPatterns, pattern)
-			files, _ := runStdout(r.dir, nil, "git", "log", "--all", "--format=", "--name-only", "--", pattern)
+			files, err := runStdout(r.dir, nil, "git", "log", "--all", "--format=", "--name-only", "--", pattern)
+			if err != nil {
+				fmt.Fprintf(a.stderr, "%sError: Could not list matched files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+				status = 1
+				scanFailed = true
+				continue
+			}
 			matchedFiles = append(matchedFiles, splitLines(files)...)
+		}
+		if scanFailed {
+			continue
 		}
 		matchedFiles = sortedUnique(matchedFiles)
 		if len(matchedPatterns) == 0 {
@@ -59,12 +83,13 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
+		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
 		filterArgs := []string{}
 		for _, pattern := range matchedPatterns {
 			filterArgs = append(filterArgs, "--path-glob", pattern)
 		}
-		filterArgs = append(filterArgs, "--invert-paths", "--use-base-name", "--partial", "--force")
-		remoteURL := strings.TrimSpace(mustStdout(r.dir, "git", "remote", "get-url", "origin"))
+		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
+		remoteURL := originURL(r.dir)
 		if out, err := runFilterRepo(r.dir, filterCmd, filterArgs, nil); err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully purged %d sensitive file(s) from %s%s\n", a.ui.Green, len(matchedFiles), r.display, a.ui.Reset)
 		} else {
@@ -72,8 +97,9 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		if remoteURL != "" {
-			_, _ = runCapture(r.dir, nil, "git", "remote", "add", "origin", remoteURL)
+		if err := restoreOrigin(r.dir, remoteURL); err != nil {
+			fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
 		}
 	}
 	return status

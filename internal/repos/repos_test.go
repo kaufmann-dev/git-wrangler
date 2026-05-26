@@ -46,6 +46,34 @@ func TestDisplayNameForCurrentDirectory(t *testing.T) {
 	}
 }
 
+func TestDiscoverFindsLinkedWorktreeGitFile(t *testing.T) {
+	root := t.TempDir()
+	commonGitDir := filepath.Join(root, ".git", "worktrees", "linked")
+	worktree := filepath.Join(root, "linked")
+	if err := os.MkdirAll(commonGitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(worktree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: ../.git/worktrees/linked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repositories, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repositories) != 1 {
+		t.Fatalf("got %d repos", len(repositories))
+	}
+	if repositories[0].Dir != worktree {
+		t.Fatalf("dir = %q, want %q", repositories[0].Dir, worktree)
+	}
+	if repositories[0].GitDir != filepath.Join(worktree, ".git") {
+		t.Fatalf("gitDir = %q", repositories[0].GitDir)
+	}
+}
+
 func TestReposPackageHasNoSubprocessDependency(t *testing.T) {
 	data, err := os.ReadFile("repos.go")
 	if err != nil {
