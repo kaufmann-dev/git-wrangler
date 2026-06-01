@@ -4,7 +4,7 @@ This is the documentation hub and landing page for the Git Wrangler CLI, built w
 
 ## Overview
 
-The site documents the current Go/Cobra CLI, Homebrew and Scoop installation, GitHub Release binaries, command usage, and release architecture.
+The site documents the current Go/Cobra CLI, package-manager installation, GitHub Release binaries, command usage, and release architecture.
 
 ## Commands
 

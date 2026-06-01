@@ -19,7 +19,7 @@ history rewrites without jumping from repo to repo by hand.
 
 ## Install
 
-Homebrew is the recommended install path on macOS and Linux:
+macOS and Linux:
 
 ```bash
 brew install kaufmann-dev/tap/git-wrangler
@@ -37,19 +37,12 @@ Homebrew installs shell completions automatically.
 > **Bash autocompletion on Linux:** Install and enable `bash-completion` first.
 > If you use Homebrew, run `brew install bash-completion`.
 
-Scoop is the recommended native Windows install path:
+Windows:
 
 ```powershell
 scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
 scoop install kaufmann-dev/git-wrangler
 ```
-
-| Platform         | Recommended install                          | Notes                                           |
-| ---------------- | -------------------------------------------- | ----------------------------------------------- |
-| macOS            | `brew install kaufmann-dev/tap/git-wrangler` | Best default if you use Homebrew.               |
-| Linux            | `brew install kaufmann-dev/tap/git-wrangler` | GitHub Release binaries are also available.     |
-| Windows with WSL | Use the Linux/Homebrew path inside WSL.      | Best fit if your Git work already lives in WSL. |
-| Windows native   | `scoop install kaufmann-dev/git-wrangler`    | Add the `kaufmann-dev` Scoop bucket first.      |
 
 Scoop and Homebrew install the CLI tool dependencies: `git`, `gh`, and
 `git-filter-repo`. Manual binary installs do not, so install the tools listed in
@@ -234,14 +227,14 @@ GitHub CLI commands, terminal output, AI commit rewriting, and version metadata.
 
 At a high level:
 
-| Technology        | Role                                                                  |
-| ----------------- | --------------------------------------------------------------------- |
-| Go                | Native binary.                                                        |
-| Cobra             | Commands, flags, help, and shell completion generation.               |
-| `git`             | Repository operations.                                                |
-| `gh`              | GitHub authentication and GitHub repository workflows.                |
-| `git-filter-repo` | History rewrites.                                                     |
-| GoReleaser        | Release archives, checksums, completions, and Homebrew/Scoop updates. |
+| Technology        | Role                                                                   |
+| ----------------- | ---------------------------------------------------------------------- |
+| Go                | Native binary.                                                         |
+| Cobra             | Commands, flags, help, and shell completion generation.                |
+| `git`             | Repository operations.                                                 |
+| `gh`              | GitHub authentication and GitHub repository workflows.                 |
+| `git-filter-repo` | History rewrites.                                                      |
+| GoReleaser        | Release archives, checksums, completions, and package-manager updates. |
 
 The detailed contributor-facing architecture lives in [AGENTS.md](AGENTS.md).
 
