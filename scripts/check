@@ -47,7 +47,7 @@ if command -v goreleaser >/dev/null 2>&1; then
     goreleaser_minor_patch="${goreleaser_version#*.}"
     goreleaser_minor="${goreleaser_minor_patch%%.*}"
     if [ "${goreleaser_major:-0}" -lt 2 ] || { [ "${goreleaser_major:-0}" -eq 2 ] && [ "${goreleaser_minor:-0}" -lt 10 ]; }; then
-        printf "goreleaser v2.10 or newer is required for homebrew_casks\n"
+        printf "goreleaser v2.10 or newer is required for release packaging\n"
         status=1
     elif ! goreleaser check; then
         status=1
