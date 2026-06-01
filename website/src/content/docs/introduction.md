@@ -27,7 +27,7 @@ Bulk commands keep going after a per-repository failure, then exit nonzero if an
 
 Git Wrangler keeps repetitive multi-repository work in one focused CLI:
 
-1. Install through Homebrew, Scoop, or GitHub Release binaries.
+1. Install through a package manager or GitHub Release binary.
 2. Use `gh` for GitHub operations so authentication stays familiar.
 3. Use `git-filter-repo` for history rewrite commands.
 4. Use Cobra-native help, version output, and shell completions.
