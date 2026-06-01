@@ -37,16 +37,23 @@ Homebrew installs shell completions automatically.
 > **Bash autocompletion on Linux:** Install and enable `bash-completion` first.
 > If you use Homebrew, run `brew install bash-completion`.
 
+Scoop is the recommended native Windows install path:
 
-| Platform         | Recommended install                                                                                        | Notes                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| macOS            | `brew install kaufmann-dev/tap/git-wrangler`                                                               | Best default if you use Homebrew.               |
-| Linux            | `brew install kaufmann-dev/tap/git-wrangler`                                                               | GitHub Release binaries are also available.     |
-| Windows with WSL | Use the Linux/Homebrew path inside WSL.                                                                    | Best fit if your Git work already lives in WSL. |
-| Windows native   | Download the Windows binary from [GitHub Releases](https://github.com/kaufmann-dev/git-wrangler/releases). | Put the binary somewhere on `PATH`.             |
+```powershell
+scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
+scoop install kaufmann-dev/git-wrangler
+```
 
-Manual binary installs do not install runtime dependencies, so install the tools
-listed in [Requirements](#requirements) yourself as needed.
+| Platform         | Recommended install                          | Notes                                           |
+| ---------------- | -------------------------------------------- | ----------------------------------------------- |
+| macOS            | `brew install kaufmann-dev/tap/git-wrangler` | Best default if you use Homebrew.               |
+| Linux            | `brew install kaufmann-dev/tap/git-wrangler` | GitHub Release binaries are also available.     |
+| Windows with WSL | Use the Linux/Homebrew path inside WSL.      | Best fit if your Git work already lives in WSL. |
+| Windows native   | `scoop install kaufmann-dev/git-wrangler`    | Add the `kaufmann-dev` Scoop bucket first.      |
+
+Scoop and Homebrew install the CLI tool dependencies: `git`, `gh`, and
+`git-filter-repo`. Manual binary installs do not, so install the tools listed in
+[Requirements](#requirements) yourself as needed.
 
 ## Quick start
 
@@ -227,14 +234,14 @@ GitHub CLI commands, terminal output, AI commit rewriting, and version metadata.
 
 At a high level:
 
-| Technology        | Role                                                                         |
-| ----------------- | ---------------------------------------------------------------------------- |
-| Go                | Native binary.                                                               |
-| Cobra             | Commands, flags, help, and shell completion generation.                      |
-| `git`             | Repository operations.                                                       |
-| `gh`              | GitHub authentication and GitHub repository workflows.                       |
-| `git-filter-repo` | History rewrites.                                                            |
-| GoReleaser        | Release archives, checksums, completions, and Homebrew distribution updates. |
+| Technology        | Role                                                                  |
+| ----------------- | --------------------------------------------------------------------- |
+| Go                | Native binary.                                                        |
+| Cobra             | Commands, flags, help, and shell completion generation.               |
+| `git`             | Repository operations.                                                |
+| `gh`              | GitHub authentication and GitHub repository workflows.                |
+| `git-filter-repo` | History rewrites.                                                     |
+| GoReleaser        | Release archives, checksums, completions, and Homebrew/Scoop updates. |
 
 The detailed contributor-facing architecture lives in [AGENTS.md](AGENTS.md).
 

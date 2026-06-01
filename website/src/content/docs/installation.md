@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-description: "Install Git Wrangler with Homebrew or GitHub Release binaries."
+description: "Install Git Wrangler with Homebrew, Scoop, or GitHub Release binaries."
 category: "General"
 order: 2
 ---
@@ -9,7 +9,7 @@ order: 2
 
 ## Homebrew
 
-Homebrew is the primary install path on macOS and Linux:
+Homebrew is the recommended install path on macOS and Linux:
 
 ```bash
 brew install kaufmann-dev/tap/git-wrangler
@@ -23,9 +23,20 @@ brew upgrade git-wrangler
 
 Homebrew installs bash, zsh, and fish completions automatically.
 
+## Scoop
+
+Scoop is the recommended native Windows install path:
+
+```powershell
+scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
+scoop install kaufmann-dev/git-wrangler
+```
+
+Scoop installs `git`, `gh`, and `git-filter-repo`.
+
 ## GitHub Releases
 
-Windows users can either run Git Wrangler inside WSL using the Linux/Homebrew path or download the matching Windows archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
+Windows users can also run Git Wrangler inside WSL using the Linux/Homebrew path or download the matching Windows archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
 
 Manual binary installs do not install runtime dependencies. Install the dependencies below yourself as needed for the commands you run.
 
@@ -53,6 +64,12 @@ If installed with Homebrew:
 
 ```bash
 brew uninstall git-wrangler
+```
+
+If installed with Scoop:
+
+```powershell
+scoop uninstall git-wrangler
 ```
 
 If installed manually, remove the binary from wherever you placed it on `PATH`.
