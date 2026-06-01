@@ -7,9 +7,9 @@ order: 2
 
 # Installation
 
-## Homebrew
+## Package managers
 
-Homebrew is the recommended install path on macOS and Linux:
+macOS and Linux:
 
 ```bash
 brew install kaufmann-dev/tap/git-wrangler
@@ -23,16 +23,14 @@ brew upgrade git-wrangler
 
 Homebrew installs bash, zsh, and fish completions automatically.
 
-## Scoop
-
-Scoop is the recommended native Windows install path:
+Windows:
 
 ```powershell
 scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
 scoop install kaufmann-dev/git-wrangler
 ```
 
-Scoop installs `git`, `gh`, and `git-filter-repo`.
+Homebrew and Scoop install `git`, `gh`, and `git-filter-repo`.
 
 ## GitHub Releases
 
@@ -60,13 +58,13 @@ gh auth login
 
 ## Uninstall
 
-If installed with Homebrew:
+Homebrew:
 
 ```bash
 brew uninstall git-wrangler
 ```
 
-If installed with Scoop:
+Scoop:
 
 ```powershell
 scoop uninstall git-wrangler
