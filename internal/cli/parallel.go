@@ -35,8 +35,16 @@ func parallelRepos[T any](repos []repo, inspect func(repo) T) []T {
 	return parallelReposWithWorkers(repos, readOnlyWorkerCount(len(repos)), inspect)
 }
 
+func parallelReposProgress[T any](repos []repo, progress *progress, inspect func(repo) T) []T {
+	return parallelReposWithWorkersProgress(repos, readOnlyWorkerCount(len(repos)), progress, inspect)
+}
+
 func parallelGitMutations[T any](repos []repo, mutate func(repo) T) []T {
 	return parallelReposWithWorkers(repos, gitMutationWorkerCount(len(repos)), mutate)
+}
+
+func parallelGitMutationsProgress[T any](repos []repo, progress *progress, mutate func(repo) T) []T {
+	return parallelReposWithWorkersProgress(repos, gitMutationWorkerCount(len(repos)), progress, mutate)
 }
 
 func parallelHistoryRewrites[T any](repos []repo, rewrite func(repo) T) []T {
@@ -44,9 +52,14 @@ func parallelHistoryRewrites[T any](repos []repo, rewrite func(repo) T) []T {
 }
 
 func parallelReposWithWorkers[T any](repos []repo, workers int, inspect func(repo) T) []T {
+	return parallelReposWithWorkersProgress(repos, workers, nil, inspect)
+}
+
+func parallelReposWithWorkersProgress[T any](repos []repo, workers int, progress *progress, inspect func(repo) T) []T {
 	results := make([]T, len(repos))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
+	defer progress.done()
 	if workers < 1 {
 		workers = 1
 	}
@@ -59,6 +72,7 @@ func parallelReposWithWorkers[T any](repos []repo, workers int, inspect func(rep
 			defer wg.Done()
 			for index := range jobs {
 				results[index] = inspect(repos[index])
+				progress.advance(repos[index].display)
 			}
 		}()
 	}

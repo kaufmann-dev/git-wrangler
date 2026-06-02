@@ -36,7 +36,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		hasHead   bool
 		noChanges bool
 	}
-	scans := parallelRepos(repos, func(r repo) rewriteCommitScan {
+	scans := parallelReposProgress(repos, newProgress(a, "Scanning commits", len(repos)), func(r repo) rewriteCommitScan {
 		if !a.git.HasHead(a.ctx, r.dir) {
 			return rewriteCommitScan{repo: r}
 		}
@@ -47,30 +47,36 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return rewriteCommitScan{repo: r, mapping: mapping, hasHead: true, noChanges: len(mapping) == 0}
 	})
 	status := 0
+	rewriteProgress := newProgress(a, "Rewriting commit messages", len(scans))
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasHead {
 			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.noChanges {
 			fmt.Fprintf(a.stdout, "%sNo commits require rewriting in %s (already format compliant). Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		if !yes && !confirm(a, "Rewrite commit messages for "+r.display+"?") {
 			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		callback, err := writeCommitCallback(scan.mapping)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not prepare commit callback for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
@@ -89,7 +95,9 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			}
 			status = 1
 		}
+		rewriteProgress.advance(r.display)
 	}
+	rewriteProgress.done()
 	return status
 }
 
@@ -102,20 +110,17 @@ var (
 )
 
 func buildCommitMessageMapping(a *app, dir string) (map[string]string, error) {
-	out, err := a.git.Stdout(a.ctx, dir, nil, "rev-list", "--all")
+	commits, err := readCommitMessages(a, dir)
 	if err != nil {
 		return nil, err
 	}
 	mapping := map[string]string{}
-	for _, commit := range splitLines(out) {
-		msg, err := a.git.Stdout(a.ctx, dir, nil, "log", "-1", "--format=%B", commit)
-		if err != nil {
-			return nil, err
-		}
+	for _, commit := range commits {
+		msg := commit.message
 		if conventionalRe.MatchString(firstLine(msg)) {
 			continue
 		}
-		diff, err := a.git.Stdout(a.ctx, dir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit)
+		diff, err := a.git.Stdout(a.ctx, dir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit.hash)
 		if err != nil {
 			return nil, err
 		}
@@ -124,10 +129,35 @@ func buildCommitMessageMapping(a *app, dir string) (map[string]string, error) {
 		}
 		newMsg := categorizeCommit(diff)
 		if newMsg != "" && newMsg != strings.TrimRight(msg, "\n") {
-			mapping[commit] = newMsg
+			mapping[commit.hash] = newMsg
 		}
 	}
 	return mapping, nil
+}
+
+type cliCommitMessage struct {
+	hash    string
+	message string
+}
+
+func readCommitMessages(a *app, dir string) ([]cliCommitMessage, error) {
+	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--reverse", "--all", "--format=%H%x1f%B%x1e")
+	if err != nil {
+		return nil, err
+	}
+	commits := []cliCommitMessage{}
+	for _, record := range strings.Split(out, "\x1e") {
+		record = strings.Trim(record, "\n")
+		if record == "" {
+			continue
+		}
+		hash, message, ok := strings.Cut(record, "\x1f")
+		if !ok || strings.TrimSpace(hash) == "" {
+			return nil, fmt.Errorf("malformed commit log record")
+		}
+		commits = append(commits, cliCommitMessage{hash: strings.TrimSpace(hash), message: message})
+	}
+	return commits, nil
 }
 
 func categorizeCommit(diff string) string {
