@@ -24,18 +24,24 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	type reviewResult struct {
+		repo              repo
+		err               error
+		errMessage        string
+		added             []string
+		modified          []string
+		deletedFolders    []string
+		individualDeleted []string
+	}
 	status := 0
-	for _, r := range repos {
+	results := parallelRepos(repos, func(r repo) reviewResult {
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not list unpushed commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			status = 1
-			continue
+			return reviewResult{repo: r, err: err, errMessage: "Could not list unpushed commits"}
 		}
 		commits := splitLines(unpushed)
 		if len(commits) == 0 {
-			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+			return reviewResult{repo: r}
 		}
 		oldest := commits[len(commits)-1]
 		base, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-parse", "--verify", oldest+"^")
@@ -45,27 +51,36 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		}
 		diff, err := a.git.Stdout(a.ctx, r.dir, nil, "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect unpushed diff for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			status = 1
-			continue
+			return reviewResult{repo: r, err: err, errMessage: "Could not inspect unpushed diff"}
 		}
 		added, modified, deleted := parseNameStatusZ(diff)
 		if len(added) == 0 && len(modified) == 0 && len(deleted) == 0 {
-			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+			return reviewResult{repo: r}
 		}
 		deletedFolders, individualDeleted := groupDeletedFiles(a, r.dir, deleted)
-		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
-		for _, f := range added {
+		return reviewResult{repo: r, added: added, modified: modified, deletedFolders: deletedFolders, individualDeleted: individualDeleted}
+	})
+	for _, result := range results {
+		if result.err != nil {
+			fmt.Fprintf(a.stderr, "%sError: %s for %s:\n%s%s\n\n", a.ui.Red, result.errMessage, result.repo.display, result.err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
+		if len(result.added) == 0 && len(result.modified) == 0 && len(result.deletedFolders) == 0 && len(result.individualDeleted) == 0 {
+			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, result.repo.display, a.ui.Reset)
+			continue
+		}
+		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, result.repo.display, a.ui.Reset)
+		for _, f := range result.added {
 			fmt.Fprintf(a.stdout, "  %sAdded:%s    %s\n", a.ui.Green, a.ui.Reset, f)
 		}
-		for _, f := range modified {
+		for _, f := range result.modified {
 			fmt.Fprintf(a.stdout, "  %sEdited:%s   %s\n", a.ui.Yellow, a.ui.Reset, f)
 		}
-		for _, f := range deletedFolders {
+		for _, f := range result.deletedFolders {
 			fmt.Fprintf(a.stderr, "  %sRemoved:%s  %s/ (entire folder)\n", a.ui.Red, a.ui.Reset, f)
 		}
-		for _, f := range individualDeleted {
+		for _, f := range result.individualDeleted {
 			fmt.Fprintf(a.stderr, "  %sRemoved:%s  %s\n", a.ui.Red, a.ui.Reset, f)
 		}
 		fmt.Fprintln(a.stdout)
