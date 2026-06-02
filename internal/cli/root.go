@@ -183,6 +183,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
 			stringFlag("repo", "", "Repository directory to target."),
 		}),
+		command(a, "doctor", "Check Git Wrangler runtime dependencies.", "utility", runDoctor, nil),
 		command(a, "status", "Show clean, dirty, and tracking state.", "utility", runStatus, nil),
 		versionCommand(a),
 	)
