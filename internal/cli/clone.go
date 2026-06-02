@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/config"
+	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 	"github.com/kaufmann-dev/git-wrangler/internal/githubcli"
 	"github.com/spf13/cobra"
 )
@@ -34,20 +35,21 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		a.error("Invalid visibility option. Use 'all', 'public', or 'private'.")
 		return 1
 	}
+	ghEnv, authSource, ok, err := githubAuthEnv(a)
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
+	if !ok && (visibility == "private" || visibility == "all") {
+		a.errorf("Git Wrangler GitHub auth is required for %s repository cloning. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.", visibility)
+		return 1
+	}
 	if visibility == "private" || visibility == "all" {
-		out, err := a.gh.Capture(a.ctx, "", "auth", "status")
-		if err != nil {
-			a.errorf("Could not verify GitHub authentication for '%s'. Set --visibility to 'public' or use 'gh auth login'.", user)
-			return 1
-		}
-		if !regexp.MustCompile(`Logged in to .* account ` + regexp.QuoteMeta(user) + ` `).MatchString(out) {
-			a.errorf("You are not logged in as the specified user: %s. Set --visibility to 'public' or use 'gh auth login'.", user)
-			return 1
-		}
+		a.info("Using GitHub auth from " + string(authSource))
 	}
 
 	listArgs := githubcli.RepoListArgs(user, visibility, "1")
-	out, err := a.gh.Stdout(a.ctx, "", listArgs...)
+	out, err := a.gh.StdoutEnv(a.ctx, "", ghEnv, listArgs...)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
 		return 1
@@ -74,7 +76,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	}
 
 	listArgs = githubcli.RepoListArgs(user, visibility, strconv.Itoa(limitInt))
-	reposOut, err := a.gh.Stdout(a.ctx, "", listArgs...)
+	reposOut, err := a.gh.StdoutEnv(a.ctx, "", ghEnv, listArgs...)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
 		return 1
@@ -85,14 +87,14 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		if len(fields) == 0 || fields[0] == "" {
 			continue
 		}
-		if !cloneRepository(a, fields[0], into) {
+		if !cloneRepository(a, ghEnv, fields[0], into) {
 			status = 1
 		}
 	}
 	return status
 }
 
-func cloneRepository(a *app, fullName, into string) bool {
+func cloneRepository(a *app, ghEnv []string, fullName, into string) bool {
 	repoName := fullName
 	if idx := strings.LastIndex(fullName, "/"); idx >= 0 {
 		repoName = fullName[idx+1:]
@@ -103,7 +105,7 @@ func cloneRepository(a *app, fullName, into string) bool {
 		fmt.Fprintf(a.stdout, "%s%s already exists in %s. Skipping...%s\n", a.ui.Yellow, repoName, abs, a.ui.Reset)
 		return true
 	}
-	if out, err := a.gh.Capture(a.ctx, "", "repo", "clone", fullName, target); err == nil {
+	if out, err := a.gh.CaptureEnv(a.ctx, "", ghEnv, "repo", "clone", fullName, target); err == nil {
 		abs, _ := filepath.Abs(target)
 		fmt.Fprintf(a.stdout, "%sCloned %s into %s%s\n", a.ui.Green, repoName, abs, a.ui.Reset)
 		return true
@@ -111,4 +113,19 @@ func cloneRepository(a *app, fullName, into string) bool {
 		fmt.Fprintf(a.stderr, "%sError: Failed to clone %s:\n%s%s\n\n", a.ui.Red, repoName, out, a.ui.Reset)
 		return false
 	}
+}
+
+func githubAuthEnv(a *app) ([]string, credentials.Source, bool, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, credentials.SourceMissing, false, err
+	}
+	resolved := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
+	if resolved.Err != nil {
+		return nil, resolved.Source, false, resolved.Err
+	}
+	if resolved.Value == "" {
+		return nil, resolved.Source, false, nil
+	}
+	return githubcli.Env(resolved.Value, cfg.GitHub.Host), resolved.Source, true, nil
 }

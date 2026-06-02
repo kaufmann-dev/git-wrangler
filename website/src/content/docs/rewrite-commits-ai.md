@@ -3,7 +3,7 @@ title: "rewrite-commits-ai"
 description: "Rewrites commit messages with an OpenAI-compatible AI endpoint."
 category: "History Rewriting"
 order: 3
-usage: "git-wrangler rewrite-commits-ai --base-url <url> --model <model> [options]"
+usage: "git-wrangler rewrite-commits-ai [options]"
 ---
 
 # rewrite-commits-ai
@@ -13,20 +13,18 @@ Generates Conventional Commit messages with an OpenAI-compatible chat completion
 ## Usage
 
 ```bash
-git-wrangler rewrite-commits-ai --base-url <url> --model <model> [options]
+git-wrangler rewrite-commits-ai [options]
 ```
 
 ## Options
 
-- `--base-url <url>` is required. If it does not end in `/chat/completions`, Git Wrangler appends that path.
-- `--model <model>` is required.
-- `--api-key <key>` provides an API key for this run.
-- `--api-key-env <name>` reads the API key from an environment variable. Defaults to `OPENAI_API_KEY`.
 - `--batch-size <number>` defaults to `10` and must be between `1` and `50`.
 - `--max-chars-per-commit <number>` defaults to `3000`.
 - `--timeout <seconds>` defaults to `90`.
 - `--skip-conventional` skips messages that already use Conventional Commits.
 - `--yes` skips the data-send and rewrite confirmation prompts.
+
+AI provider, base URL, model, and API key come from `git-wrangler init`, `git-wrangler config`, or supported environment variables.
 
 ## Privacy controls
 
@@ -42,15 +40,14 @@ Before any API call, Git Wrangler prints a data-send notice and asks for confirm
 
 After valid messages are generated, Git Wrangler prints a summary and sample messages, then asks before rewriting history.
 
-Use `--yes` for noninteractive runs after providing all required values as flags or environment variables.
+Use `--yes` for noninteractive runs after configuring all required values or setting environment variables.
 
 ## Example
 
 ```bash
-git-wrangler rewrite-commits-ai \
-  --base-url https://api.openai.com/v1 \
-  --model gpt-4.1-mini \
-  --api-key-env OPENAI_API_KEY
+git-wrangler config set ai.model gpt-4.1-mini
+git-wrangler config set ai.api-key
+git-wrangler rewrite-commits-ai
 ```
 
 > **Warning:** This rewrites Git history. You will need to force-push to update remotes.
