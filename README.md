@@ -84,6 +84,12 @@ Check your local runtime dependencies:
 git-wrangler doctor
 ```
 
+Set up GitHub and AI credentials when you need private GitHub workflows or AI-assisted commit rewrites:
+
+```bash
+git-wrangler init
+```
+
 ## Useful workflows
 
 ### Keep a workspace fresh
@@ -174,10 +180,12 @@ Utility:
 
 | Command      | What it does                           |
 | ------------ | -------------------------------------- |
+| `config`     | Show and edit Git Wrangler setup.      |
 | `completion` | Generate shell completion scripts.     |
 | `doctor`     | Check runtime dependencies.            |
 | `help`       | Show help.                             |
 | `info`       | Show detailed repository information.  |
+| `init`       | Set up GitHub and AI credentials.      |
 | `status`     | Show clean, dirty, and tracking state. |
 | `version`    | Print version metadata.                |
 
@@ -210,7 +218,7 @@ Repository discovery supports regular `.git` directories and linked worktree
 Run this before private or all-repository GitHub workflows:
 
 ```bash
-gh auth login
+git-wrangler init
 ```
 
 History rewrite commands that require `git-filter-repo`:
@@ -222,7 +230,8 @@ History rewrite commands that require `git-filter-repo`:
 - `rewrite-dates`
 
 `rewrite-commits-ai` also needs an OpenAI-compatible chat completions endpoint,
-a model name, and an API key for the run.
+a model name, and an API key configured with `git-wrangler init` or
+`git-wrangler config`.
 
 Run `git-wrangler doctor` to check local runtime dependencies. Missing `git`
 is reported as an error because most commands need it. Missing `gh` or
@@ -244,7 +253,8 @@ At a high level:
 | Go                | Native binary.                                                               |
 | Cobra             | Commands, flags, help, and shell completion generation.                      |
 | `git`             | Repository operations.                                                       |
-| `gh`              | GitHub authentication and GitHub repository workflows.                       |
+| `go-keyring`      | GitHub and AI credential storage.                                            |
+| `gh`              | GitHub repository transport for clone and rename workflows.                  |
 | `git-filter-repo` | History rewrites.                                                            |
 | GoReleaser        | Release archives, checksums, completions, and Homebrew distribution updates. |
 
