@@ -48,7 +48,7 @@ type Config struct {
 	APIKey            string
 	BatchSize         int
 	MaxCharsPerCommit int
-	RequestsPerMinute int
+	RPM               int
 	Timeout           time.Duration
 	SkipConventional  bool
 	Body              bool
@@ -143,8 +143,8 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	if cfg.MaxCharsPerCommit <= 0 {
 		cfg.MaxCharsPerCommit = 3000
 	}
-	if cfg.RequestsPerMinute <= 0 {
-		cfg.RequestsPerMinute = 60
+	if cfg.RPM <= 0 {
+		cfg.RPM = 300
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 90 * time.Second
@@ -210,8 +210,8 @@ func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config
 	if cfg.MaxCharsPerCommit <= 0 {
 		cfg.MaxCharsPerCommit = 3000
 	}
-	if cfg.RequestsPerMinute <= 0 {
-		cfg.RequestsPerMinute = 60
+	if cfg.RPM <= 0 {
+		cfg.RPM = 300
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 90 * time.Second
@@ -615,7 +615,7 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	var completedMu sync.Mutex
 	output := &lockedWriter{writer: out}
 	progress := progressFunc(cfg, output)
-	interval := requestInterval(cfg.RequestsPerMinute)
+	interval := requestInterval(cfg.RPM)
 	for batchIndex, start := 0, 0; start < len(items); batchIndex, start = batchIndex+1, start+cfg.BatchSize {
 		end := start + cfg.BatchSize
 		if end > len(items) {
@@ -633,7 +633,12 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		wg.Add(1)
 		go func(task batchTask) {
 			defer wg.Done()
-			accepted, batchFailures := processBatch(ctx, task.items, cfg, output)
+			reportRetry := func(message string) {
+				completedMu.Lock()
+				progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: message})
+				completedMu.Unlock()
+			}
+			accepted, batchFailures := processBatchWithProgress(ctx, task.items, cfg, output, reportRetry)
 			batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
 			completedMu.Lock()
 			completedBatches++
@@ -659,7 +664,7 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 
 func requestInterval(requestsPerMinute int) time.Duration {
 	if requestsPerMinute <= 0 {
-		requestsPerMinute = 60
+		requestsPerMinute = 300
 	}
 	return time.Minute / time.Duration(requestsPerMinute)
 }
@@ -676,6 +681,10 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 }
 
 func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
+	return processBatchWithProgress(ctx, batch, cfg, out, nil)
+}
+
+func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out io.Writer, reportRetry func(string)) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	pending := append([]item(nil), batch...)
 	errorsByID := map[string]string{}
@@ -703,7 +712,7 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 			if ctx.Err() != nil {
 				break
 			}
-			fmt.Fprintf(out, "Retrying %d commit(s) after failed batch attempt %d: %s.\n", len(pending), attempt, retryReason(pending, errorsByID))
+			reportRetryMessage(out, reportRetry, retryBatchMessage(len(pending), attempt, retryReason(pending, errorsByID)))
 			if !sleepContext(ctx, time.Duration(attempt)*250*time.Millisecond) {
 				break
 			}
@@ -713,8 +722,8 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		if ctx.Err() != nil {
 			return accepted, failuresForPending(pending, errorsByID)
 		}
-		fmt.Fprintf(out, "Retrying %d commit(s) individually after failed batch generation.\n", len(pending))
-		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out)
+		reportRetryMessage(out, reportRetry, fmt.Sprintf("Retrying %d commit(s) individually after failed batch generation.", len(pending)))
+		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out, reportRetry)
 		for id, message := range recovered {
 			accepted[id] = message
 		}
@@ -725,6 +734,18 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
 	}
 	return accepted, failures
+}
+
+func reportRetryMessage(out io.Writer, reportRetry func(string), message string) {
+	if reportRetry != nil {
+		reportRetry(message)
+		return
+	}
+	fmt.Fprintln(out, message)
+}
+
+func retryBatchMessage(count, attempt int, reason string) string {
+	return fmt.Sprintf("Retrying %d commit(s) after failed batch attempt %d: %s.", count, attempt, reason)
 }
 
 func failuresForPending(pending []item, errorsByID map[string]string) []failure {
@@ -779,11 +800,11 @@ func retryReason(pending []item, errorsByID map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
-func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
+func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer, reportRetry func(string)) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	var failures []failure
 	for _, pendingItem := range pending {
-		itemAccepted, itemFailures := processBatch(ctx, []item{pendingItem}, cfg, out)
+		itemAccepted, itemFailures := processBatchWithProgress(ctx, []item{pendingItem}, cfg, out, reportRetry)
 		for id, message := range itemAccepted {
 			accepted[id] = message
 		}
@@ -871,17 +892,17 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (m
 }
 
 func messageTokenLimit(batchSize int, includeBody bool, attempt int) int {
-	perMessage := 160
+	perMessage := 500
 	if includeBody {
-		perMessage = 320
+		perMessage = 900
 	}
-	limit := max(400, batchSize*perMessage)
+	limit := max(1000, batchSize*perMessage)
 	if attempt > 1 {
 		limit *= attempt
 	}
-	cap := 6000
+	cap := 20000
 	if includeBody {
-		cap = 12000
+		cap = 40000
 	}
 	return min(limit, cap)
 }
