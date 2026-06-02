@@ -5,11 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
@@ -57,6 +55,8 @@ func TestInfoRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	var mu sync.Mutex
 	activeStatus := 0
 	maxActiveStatus := 0
+	release := make(chan struct{})
+	var releaseOnce sync.Once
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
@@ -66,18 +66,8 @@ func TestInfoRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 			joined := strings.Join(args, " ")
 			switch joined {
 			case "status --porcelain":
-				mu.Lock()
-				activeStatus++
-				if activeStatus > maxActiveStatus {
-					maxActiveStatus = activeStatus
-				}
-				mu.Unlock()
-				if filepath.Base(dir) == "a-slow" {
-					time.Sleep(50 * time.Millisecond)
-				}
-				mu.Lock()
-				activeStatus--
-				mu.Unlock()
+				done := trackConcurrentStart(&mu, &activeStatus, &maxActiveStatus, release, &releaseOnce)
+				defer done()
 				return "", "", nil
 			case "rev-parse --abbrev-ref HEAD":
 				return "main\n", "", nil
