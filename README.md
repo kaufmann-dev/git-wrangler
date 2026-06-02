@@ -43,38 +43,35 @@ directory and runs operations across all of them in one pass:
   the same deterministic order, even when running in parallel.
 - **Single binary** — compiled Go with zero runtime dependencies beyond `git`.
 
-## Install
+## Installation
 
-### macOS & Linux
+### Package Managers
 
-```bash
-brew install kaufmann-dev/tap/git-wrangler
 ```
+# macOS & Linux
+brew install kaufmann-dev/tap/git-wrangler
 
-Homebrew also installs `git`, `gh`, and `git-filter-repo` as dependencies, plus
-shell completions for bash, zsh, and fish.
-
-### Windows
-
-```powershell
+# Windows
 scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
 scoop install kaufmann-dev/git-wrangler
 ```
 
-### Manual install
+### Standalone Binary
 
 Download a release archive from
 [GitHub Releases](https://github.com/kaufmann-dev/git-wrangler/releases), extract
 the `git-wrangler` binary, and place it on your `PATH`. You'll need to install
 `git`, `gh`, and `git-filter-repo` yourself for the commands that require them.
 
-### Upgrade
+### Updating
 
-```bash
+```
 # Homebrew
+brew update
 brew upgrade git-wrangler
 
 # Scoop
+scoop update
 scoop update git-wrangler
 ```
 
@@ -214,7 +211,3 @@ git-wrangler completion fish > ~/.config/fish/completions/git-wrangler.fish
 # PowerShell
 git-wrangler completion powershell > git-wrangler.ps1
 ```
-
-## License
-
-MIT. See [LICENSE](LICENSE).
