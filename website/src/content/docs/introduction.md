@@ -39,7 +39,9 @@ Remote operations cover cloning, pulling, pushing, and GitHub repository renames
 
 Local operations cover status-adjacent repository maintenance such as commits, reviews, license files, branch renames, resets, and ignore cleanup.
 
-History rewriting covers author, date, message, AI-assisted message, and secret-removal rewrites.
+AI commands cover generated Conventional Commit creation and AI-assisted message rewrites.
+
+History rewriting covers author, date, message, and secret-removal rewrites.
 
 Utility commands cover setup, configuration, repository information, version metadata, and completions.
 
