@@ -107,7 +107,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 					apiProgress = newProgress(a, event.Phase, event.Total)
 				}
 				if event.Detail != "" {
-					apiProgress.message(event.Detail)
+					apiProgress.log(event.Detail)
 					return
 				}
 				if event.Current == 0 {
