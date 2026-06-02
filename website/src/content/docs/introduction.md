@@ -28,9 +28,10 @@ Bulk commands keep going after a per-repository failure, then exit nonzero if an
 Git Wrangler keeps repetitive multi-repository work in one focused CLI:
 
 1. Install through Homebrew or GitHub Release binaries.
-2. Use `gh` for GitHub operations so authentication stays familiar.
-3. Use `git-filter-repo` for history rewrite commands.
-4. Use Cobra-native help, version output, and shell completions.
+2. Use `git-wrangler init` for GitHub and AI credential setup.
+3. Keep `gh` as the GitHub repository transport.
+4. Use `git-filter-repo` for history rewrite commands.
+5. Use Cobra-native help, version output, and shell completions.
 
 ## Command categories
 
@@ -40,7 +41,7 @@ Local operations cover status-adjacent repository maintenance such as commits, r
 
 History rewriting covers author, date, message, AI-assisted message, and secret-removal rewrites.
 
-Utility commands cover repository information, version metadata, and completions.
+Utility commands cover setup, configuration, repository information, version metadata, and completions.
 
 ## Next steps
 

@@ -28,7 +28,8 @@ Iterates through Git repositories found under the current directory. For each re
 
 ## Prerequisites
 
-- `gh` (GitHub CLI) must be installed and authenticated
+- `gh` (GitHub CLI) must be installed
+- Git Wrangler GitHub auth must be configured with `git-wrangler init` or `git-wrangler config set github.auth`
 - Each local repository must have a GitHub remote set as `origin`
 
 ## Examples

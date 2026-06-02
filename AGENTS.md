@@ -12,7 +12,13 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `internal/git` owns Git subprocess behavior, including `git-filter-repo` detection and history rewrite helper execution. Support both `git-filter-repo` and `git filter-repo`, preferring the standalone executable.
 
-`internal/githubcli` owns `gh` subprocess behavior. `clone` and `rename-repo` must keep using `gh`; do not reimplement GitHub authentication or API flows.
+`internal/config` owns non-secret JSON config at the user config path.
+
+`internal/credentials` owns secret storage and resolution through `go-keyring`, with environment variable overrides and fallbacks.
+
+`internal/auth` owns GitHub device OAuth and username lookup for `git-wrangler init`.
+
+`internal/githubcli` owns `gh` subprocess behavior. `clone` and `rename-repo` must keep using `gh` as the GitHub transport and pass Git Wrangler-owned tokens through `GH_TOKEN`/`GH_HOST`; do not reimplement repository listing, clone, rename, or edit flows.
 
 `internal/run` owns command execution wrappers, default subprocess timeouts, and concurrency-safe fake-command support for tests.
 
@@ -26,7 +32,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`clone`, `commit`, `doctor`, `fix-gitignore`, `info`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`clone`, `commit`, `config`, `doctor`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew or manual replacement of release binaries.
 
@@ -45,6 +51,8 @@ Do not add Python, Node, npm, pnpm, Go, or shell-script runtimes as normal CLI d
 Use GoReleaser for release builds, GitHub Release archives, checksums, completions, and Homebrew tap cask updates. CI uses the latest GoReleaser v2 release.
 
 The Homebrew cask is generated for `kaufmann-dev/homebrew-tap` with dependencies on `git`, `gh`, and `git-filter-repo`. It must install bash, zsh, and fish completions from release archives.
+
+GitHub OAuth setup uses the public client ID embedded in `internal/auth.GitHubOAuthClientID`.
 
 Local release dry run:
 

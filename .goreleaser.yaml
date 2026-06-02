@@ -64,7 +64,7 @@ homebrew_casks:
       - formula: gh
       - formula: git-filter-repo
     caveats: |
-      Run `gh auth login` before private or all GitHub repository operations.
+      Run `git-wrangler init` before private or all GitHub repository operations.
       History rewrite commands use git-filter-repo and rewrite Git history.
     completions:
       bash: completions/git-wrangler.bash
