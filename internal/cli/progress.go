@@ -40,6 +40,20 @@ func (p *progress) advance(detail string) {
 		return
 	}
 	p.current++
+	if p.shouldWrite() {
+		p.write(detail)
+	}
+}
+
+func (p *progress) message(detail string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
 	p.write(detail)
 }
 
@@ -60,7 +74,7 @@ func (p *progress) done() {
 
 func (p *progress) write(detail string) {
 	if p.interactive {
-		fmt.Fprintf(p.writer, "\r%s: %d/%d %s", p.label, p.current, p.total, detail)
+		fmt.Fprintf(p.writer, "\r%s: [%s] %d/%d %s", p.label, p.bar(20), p.current, p.total, detail)
 		return
 	}
 	if detail == "" {
@@ -68,4 +82,21 @@ func (p *progress) write(detail string) {
 	} else {
 		fmt.Fprintf(p.writer, "%s: %d/%d %s\n", p.label, p.current, p.total, detail)
 	}
+}
+
+func (p *progress) shouldWrite() bool {
+	return p.interactive || p.current == 1 || p.current == p.total || p.current%10 == 0
+}
+
+func (p *progress) bar(width int) string {
+	filled := p.current * width / p.total
+	bar := make([]byte, width)
+	for i := range bar {
+		if i < filled {
+			bar[i] = '#'
+		} else {
+			bar[i] = '-'
+		}
+	}
+	return string(bar)
 }
