@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
-	"github.com/kaufmann-dev/git-wrangler/internal/config"
-	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +15,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
+	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
 
 	if batch <= 0 {
@@ -36,26 +35,8 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	cfg, err := config.Load()
-	if err != nil {
-		a.plainErrorf("%s", err.Error())
-		return 1
-	}
-	if cfg.AI.BaseURL == "" {
-		a.plainErrorf("AI base URL is required. Run 'git-wrangler config set ai.base-url <url>'.")
-		return 1
-	}
-	if cfg.AI.Model == "" {
-		a.plainErrorf("AI model is required. Run 'git-wrangler config set ai.model <model>'.")
-		return 1
-	}
-	apiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
-	if apiKey.Err != nil {
-		a.plainErrorf("AI API key could not be read: %s", apiKey.Err.Error())
-		return 1
-	}
-	if apiKey.Value == "" {
-		a.plainErrorf("AI API key is required. Run 'git-wrangler config set ai.api-key' or set GIT_WRANGLER_AI_API_KEY.")
+	settings, ok := loadAISettings(a)
+	if !ok {
 		return 1
 	}
 
@@ -87,13 +68,14 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
 	}
 	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
-		BaseURL:           cfg.AI.BaseURL,
-		Model:             cfg.AI.Model,
-		APIKey:            apiKey.Value,
+		BaseURL:           settings.Config.AI.BaseURL,
+		Model:             settings.Config.AI.Model,
+		APIKey:            settings.APIKey,
 		BatchSize:         batch,
 		MaxCharsPerCommit: maxCharsInt,
 		Timeout:           time.Duration(timeoutInt) * time.Second,
 		SkipConventional:  skipConventional,
+		Body:              body,
 		WorkDir:           workDir,
 		Git:               a.git,
 	}, a.stderr, func(question string) bool {

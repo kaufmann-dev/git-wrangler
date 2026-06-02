@@ -45,8 +45,11 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 	for _, want := range []string{
 		"Remote Operations:",
 		"Local Operations:",
+		"AI Commands:",
 		"History Rewriting:",
 		"Utility:",
+		"commit-ai",
+		"rewrite-commits-ai",
 		"completion",
 		"doctor",
 		"version",
@@ -57,6 +60,9 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 	}
 	if strings.Contains(out, "update") || strings.Contains(out, "uninstall") {
 		t.Fatalf("removed commands appeared in help:\n%s", out)
+	}
+	if strings.Index(out, "AI Commands:") < strings.Index(out, "Local Operations:") || strings.Index(out, "AI Commands:") > strings.Index(out, "History Rewriting:") {
+		t.Fatalf("AI Commands group is not in the expected order:\n%s", out)
 	}
 }
 
@@ -137,6 +143,26 @@ func TestRewriteCommitsAIFlagValidation(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "--batch-size must be 50 or less") {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	}
+}
+
+func TestCommitAIFlagValidation(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"commit-ai", "--max-chars-per-commit", "0"}, "--max-chars-per-commit must be a positive integer"},
+		{[]string{"commit-ai", "--timeout", "0"}, "--timeout must be a positive integer"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		if err == nil {
+			t.Fatalf("%v returned nil error", tc.args)
+		}
+		if !strings.Contains(stderr.String(), tc.want) {
+			t.Fatalf("%v stderr:\n%s", tc.args, stderr.String())
+		}
 	}
 }
 

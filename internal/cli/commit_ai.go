@@ -1,0 +1,165 @@
+package cli
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/ai"
+	"github.com/spf13/cobra"
+)
+
+type commitAIChange struct {
+	repo  repo
+	input ai.GenerationInput
+}
+
+func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
+	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
+	timeoutInt, _ := cmd.Flags().GetInt("timeout")
+	body, _ := cmd.Flags().GetBool("body")
+	yes := yesFlag(cmd)
+
+	if maxCharsInt <= 0 {
+		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
+		return 1
+	}
+	if timeoutInt <= 0 {
+		a.plainErrorf("--timeout must be a positive integer.")
+		return 1
+	}
+
+	settings, ok := loadAISettings(a)
+	if !ok {
+		return 1
+	}
+	if !requireGit(a, "commit-ai") {
+		return 1
+	}
+	repos, err := resolveRepositoryTargets("")
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
+	if len(repos) == 0 {
+		return noRepos(a)
+	}
+
+	changes, skipped, failed := collectCommitAIChanges(a, repos, maxCharsInt)
+	if failed > 0 {
+		fmt.Fprintf(a.stdout, "Summary: 0 committed, %d skipped, %d failed\n", skipped, failed)
+		return 1
+	}
+	if len(changes) == 0 {
+		fmt.Fprintf(a.stdout, "Summary: 0 committed, %d skipped, 0 failed\n", skipped)
+		return 0
+	}
+
+	fmt.Fprintln(a.stderr)
+	fmt.Fprintln(a.stderr, "Data send notice")
+	fmt.Fprintf(a.stderr, "Endpoint: %s\n", settings.Config.AI.BaseURL)
+	fmt.Fprintf(a.stderr, "Model: %s\n", settings.Config.AI.Model)
+	fmt.Fprintf(a.stderr, "Repositories with staged changes: %d\n", len(changes))
+	fmt.Fprintf(a.stderr, "Per-commit context budget: %d characters\n", maxCharsInt)
+	if body {
+		fmt.Fprintln(a.stderr, "Generated messages will include a subject and body.")
+	}
+	fmt.Fprintln(a.stderr, "The command will send file paths, stats, and redacted staged diff snippets.")
+	fmt.Fprintln(a.stderr, "API keys are not sent in commit context.")
+	if !yes && !confirm(a, "Send this data to the configured API endpoint?") {
+		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
+		return 1
+	}
+
+	inputs := make([]ai.GenerationInput, 0, len(changes))
+	for _, change := range changes {
+		inputs = append(inputs, change.input)
+	}
+	messages, generationFailures := ai.GenerateMessages(a.ctx, inputs, ai.Config{
+		BaseURL:           settings.Config.AI.BaseURL,
+		Model:             settings.Config.AI.Model,
+		APIKey:            settings.APIKey,
+		BatchSize:         4,
+		MaxCharsPerCommit: maxCharsInt,
+		Timeout:           time.Duration(timeoutInt) * time.Second,
+		Body:              body,
+		Git:               a.git,
+	}, a.stderr)
+	if len(generationFailures) > 0 {
+		for _, failure := range generationFailures {
+			fmt.Fprintf(a.stderr, "Failed %s: %s\n", failure.RepoName, failure.Reason)
+		}
+		fmt.Fprintf(a.stdout, "Summary: 0 committed, %d skipped, %d failed\n", skipped, len(generationFailures))
+		return 1
+	}
+
+	committed := 0
+	for _, change := range changes {
+		message := messages[change.input.ID]
+		if body {
+			if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject, "-m", message.Body); err == nil {
+				a.ok(change.repo.display, "Commit created")
+				committed++
+			} else {
+				a.error(change.repo.display, "Could not commit changes:")
+				fmt.Fprintf(a.stderr, "%s\n\n", out)
+				failed++
+			}
+			continue
+		}
+		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject); err == nil {
+			a.ok(change.repo.display, "Commit created")
+			committed++
+		} else {
+			a.error(change.repo.display, "Could not commit changes:")
+			fmt.Fprintf(a.stderr, "%s\n\n", out)
+			failed++
+		}
+	}
+	fmt.Fprintf(a.stdout, "Summary: %d committed, %d skipped, %d failed\n", committed, skipped, failed)
+	if failed > 0 {
+		return 1
+	}
+	return 0
+}
+
+func collectCommitAIChanges(a *app, repos []repo, maxChars int) ([]commitAIChange, int, int) {
+	changes := []commitAIChange{}
+	skipped := 0
+	failed := 0
+	for _, r := range repos {
+		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
+			a.error(r.display, "Could not stage changes")
+			failed++
+			continue
+		}
+		if _, err := a.git.Capture(a.ctx, r.dir, nil, "diff", "--cached", "--quiet"); err == nil {
+			a.skip(r.display, "No changes to commit. Skipping...")
+			skipped++
+			continue
+		}
+		contextText, err := ai.BuildStagedContext(a.ctx, a.git, r.dir, r.display, maxChars)
+		if err != nil {
+			a.error(r.display, "Could not prepare commit context:")
+			fmt.Fprintf(a.stderr, "%s\n\n", err.Error())
+			failed++
+			continue
+		}
+		if contextText == "" {
+			a.skip(r.display, "No changes to commit. Skipping...")
+			skipped++
+			continue
+		}
+		id := fmt.Sprintf("c%06d", len(changes)+1)
+		changes = append(changes, commitAIChange{
+			repo: r,
+			input: ai.GenerationInput{
+				ID:       id,
+				RepoDir:  r.dir,
+				RepoName: r.display,
+				Ref:      "staged",
+				Context:  contextText,
+			},
+		})
+	}
+	return changes, skipped, failed
+}
