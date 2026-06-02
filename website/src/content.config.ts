@@ -12,6 +12,7 @@ const docs = defineCollection({
       'Utility',
       'Local Operations',
       'Remote Operations',
+      'AI Commands',
       'History Rewriting',
     ]).default('General'),
     order: z.number().optional(),
