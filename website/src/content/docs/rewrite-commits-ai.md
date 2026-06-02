@@ -22,7 +22,7 @@ git-wrangler rewrite-commits-ai [options]
 
 - `--batch-size <number>` defaults to `10` and must be between `1` and `50`.
 - `--max-chars-per-commit <number>` defaults to `3000`.
-- `--requests-per-minute <number>` defaults to `60` and controls how quickly API requests are started.
+- `--rpm <number>` defaults to `300` and controls how quickly API requests are started.
 - `--timeout <seconds>` defaults to `90`.
 - `--skip-conventional` skips messages that already use Conventional Commits.
 - `--body` generates a subject and body instead of subject only.
