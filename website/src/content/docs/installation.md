@@ -31,14 +31,16 @@ Official packaged installs include runtime dependencies. Source installs do not,
 
 Run `git-wrangler doctor` after installation to check the local tools Git Wrangler can use.
 
+Run `git-wrangler init` when you need private GitHub workflows or AI-assisted commit rewrites.
+
 ## Runtime dependencies
 
 `git` is required for normal repository operations.
 
-`gh` is required for GitHub repository operations such as `clone` and `rename-repo`. Run this before private or all-repository workflows:
+`gh` is required for GitHub repository operations such as `clone` and `rename-repo`. Git Wrangler owns the token and passes it to `gh` for those workflows. Run this before private or all-repository workflows:
 
 ```bash
-gh auth login
+git-wrangler init
 ```
 
 `git-filter-repo` is required for history rewrite commands:
