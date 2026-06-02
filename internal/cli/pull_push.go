@@ -22,6 +22,9 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	status := 0
+	updated := 0
+	skipped := 0
+	failed := 0
 	for _, r := range repos {
 		pullArgs := []string{"pull"}
 		if rebase {
@@ -34,15 +37,19 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		if err == nil {
 			if strings.Contains(out, "Already up to date") {
 				a.skip(r.display, "Already up to date. Skipping...")
+				skipped++
 			} else {
 				a.ok(r.display, "Git pull completed")
+				updated++
 			}
 		} else {
 			a.error(r.display, "Git pull failed:")
 			fmt.Fprintf(a.stderr, "%s\n\n", out)
 			status = 1
+			failed++
 		}
 	}
+	fmt.Fprintf(a.stdout, "Summary: %d updated, %d skipped, %d failed\n", updated, skipped, failed)
 	return status
 }
 
@@ -65,6 +72,9 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	status := 0
+	pushed := 0
+	skipped := 0
+	failed := 0
 	for _, r := range repos {
 		pushArgs := []string{"push", "origin", "HEAD"}
 		if force {
@@ -72,6 +82,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		} else if forceUnsafe {
 			if !yesFlag(cmd) && !confirm(a, "Raw force push "+r.display+" with --force?") {
 				a.skip(r.display, "Skipping unsafe force push.")
+				skipped++
 				continue
 			}
 			pushArgs = []string{"push", "--force", "origin", "HEAD"}
@@ -80,14 +91,18 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		if err == nil {
 			if strings.Contains(out, "Everything up-to-date") {
 				a.skip(r.display, "No changes to push. Skipping...")
+				skipped++
 			} else {
 				a.ok(r.display, "Git push completed")
+				pushed++
 			}
 		} else {
 			a.error(r.display, "Git push failed:")
 			fmt.Fprintf(a.stderr, "%s\n\n", out)
 			status = 1
+			failed++
 		}
 	}
+	fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
 	return status
 }

@@ -75,8 +75,8 @@ Review unpushed work before you publish it:
 git-wrangler review
 ```
 
-Run `git-wrangler help` for the full command list, or
-`git-wrangler help <command>` for one command.
+Run `git-wrangler` for a compact command overview. Run `git-wrangler help`
+for the full command list, or `git-wrangler help <command>` for one command.
 
 Check your local runtime dependencies:
 
