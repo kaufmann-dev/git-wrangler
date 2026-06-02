@@ -59,6 +59,28 @@ func (p *progress) message(detail string) {
 	p.write(detail)
 }
 
+func (p *progress) log(message string) {
+	if p == nil || message == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
+	if p.interactive {
+		if p.lastWidth > 0 {
+			fmt.Fprintf(p.writer, "\r%s\r", strings.Repeat(" ", p.lastWidth))
+		}
+		fmt.Fprintln(p.writer, message)
+		if p.current > 0 {
+			p.write("")
+		}
+		return
+	}
+	fmt.Fprintln(p.writer, message)
+}
+
 func (p *progress) done() {
 	if p == nil {
 		return
