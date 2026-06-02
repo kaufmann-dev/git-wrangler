@@ -286,9 +286,9 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 		case "git diff-tree --root --no-commit-id --numstat -r a2",
 			"git diff-tree --root --no-commit-id --numstat -r b1":
 			return "1\t0\tmain.go\n", "", nil
-		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 a2":
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 a2 -- main.go":
 			return "diff --git a/main.go b/main.go\n+repo a\n", "", nil
-		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 b1":
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 b1 -- main.go":
 			return "diff --git a/main.go b/main.go\n+repo b\n", "", nil
 		default:
 			return "", "", errors.New("unexpected command: " + joined)
@@ -440,8 +440,6 @@ func TestBuildContextSkipsShowForSensitiveOnlyCommit(t *testing.T) {
 			return "M\t.env\n", "", nil
 		case "git diff-tree --root --no-commit-id --numstat -r abc123":
 			return "1\t0\t.env\n", "", nil
-		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123":
-			return "", "", errors.New("git show should not run")
 		default:
 			return "", "", errors.New("unexpected command: " + joined)
 		}
@@ -464,8 +462,6 @@ func TestBuildContextSkipsShowForExcludedOnlyCommit(t *testing.T) {
 			return "M\tnode_modules/pkg/index.js\n", "", nil
 		case "git diff-tree --root --no-commit-id --numstat -r abc123":
 			return "1\t0\tnode_modules/pkg/index.js\n", "", nil
-		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123":
-			return "", "", errors.New("git show should not run")
 		default:
 			return "", "", errors.New("unexpected command: " + joined)
 		}
@@ -483,6 +479,57 @@ func TestBuildContextSkipsShowForExcludedOnlyCommit(t *testing.T) {
 	}
 }
 
+func TestBuildContextShowsOnlyVisiblePathsForMixedStaticCommit(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return "M\tindex.html\nM\tassets/js/pixi.min.js\nA\tassets/img/photo.webp\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return "1\t0\tindex.html\n5000\t0\tassets/js/pixi.min.js\n-\t-\tassets/img/photo.webp\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123 -- index.html":
+			return "diff --git a/index.html b/index.html\n+visible content\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "assets/js/pixi.min.js") || !strings.Contains(contextText, "assets/img/photo.webp") {
+		t.Fatalf("missing static path context:\n%s", contextText)
+	}
+	if !strings.Contains(contextText, "visible content") {
+		t.Fatalf("missing visible diff content:\n%s", contextText)
+	}
+}
+
+func TestBuildContextPreservesVisiblePathWithSpaces(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return "M\tpages/about me.html\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return "1\t0\tpages/about me.html\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123 -- pages/about me.html":
+			return "diff --git a/pages/about me.html b/pages/about me.html\n+visible content\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "visible content") {
+		t.Fatalf("missing visible diff content:\n%s", contextText)
+	}
+}
+
 func TestBuildStagedContextSkipsDiffForExcludedOnlyChanges(t *testing.T) {
 	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 		joined := name + " " + strings.Join(args, " ")
@@ -491,8 +538,6 @@ func TestBuildStagedContextSkipsDiffForExcludedOnlyChanges(t *testing.T) {
 			return "M\tvendor/pkg/file.go\n", "", nil
 		case "git diff --cached --numstat":
 			return "1\t0\tvendor/pkg/file.go\n", "", nil
-		case "git diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3":
-			return "", "", errors.New("git diff should not run")
 		default:
 			return "", "", errors.New("unexpected command: " + joined)
 		}
@@ -649,6 +694,9 @@ func TestProcessItemsReportsProgressWithoutBatchSpam(t *testing.T) {
 		if event.Phase != "Sending API requests" || event.Current != i+1 || event.Total != 2 {
 			t.Fatalf("event[%d] = %#v", i, event)
 		}
+		if event.Detail == "" || event.Error {
+			t.Fatalf("event[%d] detail/error = %q/%v", i, event.Detail, event.Error)
+		}
 	}
 }
 
@@ -666,7 +714,7 @@ func TestProcessItemsReportsRetryDetailThroughProgress(t *testing.T) {
 	defer server.Close()
 
 	var out bytes.Buffer
-	var details []string
+	var retryDetails []string
 	results, failures, err := processItems(context.Background(), []item{
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 	}, Config{
@@ -677,8 +725,8 @@ func TestProcessItemsReportsRetryDetailThroughProgress(t *testing.T) {
 		RPM:       60000,
 		Timeout:   time.Second,
 		Progress: func(event ProgressEvent) {
-			if event.Detail != "" {
-				details = append(details, event.Detail)
+			if event.Error {
+				retryDetails = append(retryDetails, event.Detail)
 			}
 		},
 	}, &out)
@@ -691,8 +739,8 @@ func TestProcessItemsReportsRetryDetailThroughProgress(t *testing.T) {
 	if strings.Contains(out.String(), "Retrying") {
 		t.Fatalf("retry output should use progress detail:\n%s", out.String())
 	}
-	if len(details) != 1 || !strings.Contains(details[0], "Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.") {
-		t.Fatalf("details = %#v", details)
+	if len(retryDetails) != 1 || !strings.Contains(retryDetails[0], "Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.") {
+		t.Fatalf("retry details = %#v", retryDetails)
 	}
 }
 
