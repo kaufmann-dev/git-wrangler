@@ -94,15 +94,15 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 			switch event.Phase {
 			case "Scanning repositories":
 				if event.Current == 0 {
-					scanProgress.message(event.RepoName)
+					scanProgress.start(event.RepoName)
 					return
 				}
-				scanProgress.advance(event.RepoName)
+				scanProgress.finish(event.RepoName, event.RepoName)
 			case "Scanning commits":
 				if event.Current == 0 {
 					return
 				}
-				scanProgress.message(fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
+				scanProgress.update(event.RepoName, fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
 			case "Sending API requests":
 				updateAIRequestProgress(a, &apiProgress, event)
 			default:
@@ -167,10 +167,14 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 			defer wg.Done()
 			for index := range jobs {
 				repoPlan := plan.Repos[index]
-				progress.message(repoPlan.Name)
+				if progress != nil {
+					progress.start(repoPlan.Name)
+				}
 				out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 				results[index] = aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
-				progress.advance(aiApplyProgressDetail(results[index]))
+				if progress != nil {
+					progress.finish(repoPlan.Name, aiApplyProgressDetail(results[index]))
+				}
 			}
 		}()
 	}
