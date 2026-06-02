@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ui"
+	"golang.org/x/term"
 )
 
 type progress struct {
@@ -19,6 +21,8 @@ type progress struct {
 	lastWidth   int
 	closed      bool
 }
+
+var termGetSize = term.GetSize
 
 func newProgress(a *app, label string, total int) *progress {
 	if total <= 1 {
@@ -98,7 +102,28 @@ func (p *progress) done() {
 
 func (p *progress) write(detail string) {
 	if p.interactive {
-		line := fmt.Sprintf("%s: [%s] %d/%d %s", p.label, p.bar(20), p.current, p.total, detail)
+		prefix := fmt.Sprintf("%s: [%s] %d/%d ", p.label, p.bar(20), p.current, p.total)
+		w := 0
+		if file, ok := p.writer.(*os.File); ok {
+			if tw, _, err := termGetSize(int(file.Fd())); err == nil && tw > 0 {
+				w = tw
+			}
+		}
+
+		if w > 0 {
+			// Leave a safety margin of at least 1 column.
+			maxDetailWidth := w - len(prefix) - 1
+			if maxDetailWidth < 0 {
+				maxDetailWidth = 0
+			}
+			detail = truncateToVisibleWidth(detail, maxDetailWidth, "\033[0m")
+
+			if p.lastWidth > w-1 {
+				p.lastWidth = w - 1
+			}
+		}
+
+		line := prefix + detail
 		if len(line) < p.lastWidth {
 			line += strings.Repeat(" ", p.lastWidth-len(line))
 		}
@@ -128,4 +153,57 @@ func (p *progress) bar(width int) string {
 		}
 	}
 	return string(bar)
+}
+
+func visibleWidth(s string) int {
+	inSeq := false
+	width := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			inSeq = true
+			continue
+		}
+		if inSeq {
+			if (s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') {
+				inSeq = false
+			}
+			continue
+		}
+		width++
+	}
+	return width
+}
+
+func truncateToVisibleWidth(s string, maxW int, resetCode string) string {
+	if maxW <= 0 {
+		return ""
+	}
+	inSeq := false
+	hasSeq := false
+	width := 0
+	var sb strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			inSeq = true
+			hasSeq = true
+			sb.WriteByte(s[i])
+			continue
+		}
+		if inSeq {
+			sb.WriteByte(s[i])
+			if (s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') {
+				inSeq = false
+			}
+			continue
+		}
+		if width >= maxW {
+			if hasSeq && resetCode != "" {
+				sb.WriteString(resetCode)
+			}
+			break
+		}
+		sb.WriteByte(s[i])
+		width++
+	}
+	return sb.String()
 }
