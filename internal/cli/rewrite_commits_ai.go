@@ -7,14 +7,12 @@ import (
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
+	"github.com/kaufmann-dev/git-wrangler/internal/config"
+	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 	"github.com/spf13/cobra"
 )
 
 func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
-	baseURL, _ := cmd.Flags().GetString("base-url")
-	model, _ := cmd.Flags().GetString("model")
-	apiKey, _ := cmd.Flags().GetString("api-key")
-	apiKeyEnv, _ := cmd.Flags().GetString("api-key-env")
 	batch, _ := cmd.Flags().GetInt("batch-size")
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
@@ -37,20 +35,27 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		a.plainErrorf("--timeout must be a positive integer.")
 		return 1
 	}
-	var ok bool
-	baseURL, ok = requiredStringFlag(a, cmd, "base-url", "OpenAI-compatible API base URL: ")
-	if !ok {
+
+	cfg, err := config.Load()
+	if err != nil {
+		a.plainErrorf("%s", err.Error())
 		return 1
 	}
-	model, ok = requiredStringFlag(a, cmd, "model", "Model name: ")
-	if !ok {
+	if cfg.AI.BaseURL == "" {
+		a.plainErrorf("AI base URL is required. Run 'git-wrangler config set ai.base-url <url>'.")
 		return 1
 	}
-	if envKey := os.Getenv(apiKeyEnv); envKey != "" {
-		apiKey = envKey
+	if cfg.AI.Model == "" {
+		a.plainErrorf("AI model is required. Run 'git-wrangler config set ai.model <model>'.")
+		return 1
 	}
-	if apiKey == "" {
-		a.plainErrorf("API key is required. Set %s or pass --api-key.", apiKeyEnv)
+	apiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
+	if apiKey.Err != nil {
+		a.plainErrorf("AI API key could not be read: %s", apiKey.Err.Error())
+		return 1
+	}
+	if apiKey.Value == "" {
+		a.plainErrorf("AI API key is required. Run 'git-wrangler config set ai.api-key' or set GIT_WRANGLER_AI_API_KEY.")
 		return 1
 	}
 
@@ -82,9 +87,9 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
 	}
 	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
-		BaseURL:           baseURL,
-		Model:             model,
-		APIKey:            apiKey,
+		BaseURL:           cfg.AI.BaseURL,
+		Model:             cfg.AI.Model,
+		APIKey:            apiKey.Value,
 		BatchSize:         batch,
 		MaxCharsPerCommit: maxCharsInt,
 		Timeout:           time.Duration(timeoutInt) * time.Second,

@@ -6,6 +6,8 @@ import (
 	"io"
 	"os/exec"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/auth"
+	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
@@ -34,4 +36,53 @@ func (f fakeRunner) Pipe(ctx context.Context, dir string, env []string, left run
 		return errors.New("unexpected pipe")
 	}
 	return f.pipe(ctx, dir, env, left, right, consume)
+}
+
+type fakeCredentialStore struct {
+	values map[string]string
+	err    error
+}
+
+func (s *fakeCredentialStore) Get(account string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	if s.values == nil {
+		return "", credentials.ErrNotFound
+	}
+	value, ok := s.values[account]
+	if !ok {
+		return "", credentials.ErrNotFound
+	}
+	return value, nil
+}
+
+func (s *fakeCredentialStore) Set(account, secret string) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	s.values[account] = secret
+	return nil
+}
+
+func (s *fakeCredentialStore) Delete(account string) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.values != nil {
+		delete(s.values, account)
+	}
+	return nil
+}
+
+type fakeGitHubAuth struct {
+	result auth.GitHubResult
+	err    error
+}
+
+func (f fakeGitHubAuth) AuthenticateGitHub(ctx context.Context, host string, stdin io.Reader, stdout io.Writer) (auth.GitHubResult, error) {
+	return f.result, f.err
 }
