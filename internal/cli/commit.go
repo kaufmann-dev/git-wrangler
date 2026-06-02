@@ -23,22 +23,31 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	status := 0
+	committed := 0
+	skipped := 0
+	failed := 0
 	for _, r := range repos {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not stage changes for %s%s\n", a.ui.Red, r.display, a.ui.Reset)
+			a.error(r.display, "Could not stage changes")
 			status = 1
+			failed++
 			continue
 		}
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "diff", "--cached", "--quiet"); err == nil {
-			fmt.Fprintf(a.stdout, "%sNo changes to commit for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			a.skip(r.display, "No changes to commit. Skipping...")
+			skipped++
 			continue
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", message); err == nil {
-			fmt.Fprintf(a.stdout, "%sCommit created for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
+			a.ok(r.display, "Commit created")
+			committed++
 		} else {
-			fmt.Fprintf(a.stderr, "%sError: Could not commit changes for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			a.error(r.display, "Could not commit changes:")
+			fmt.Fprintf(a.stderr, "%s\n\n", out)
 			status = 1
+			failed++
 		}
 	}
+	fmt.Fprintf(a.stdout, "Summary: %d committed, %d skipped, %d failed\n", committed, skipped, failed)
 	return status
 }

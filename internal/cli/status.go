@@ -28,9 +28,11 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	fmt.Fprintf(a.stdout, "%-30s | %-5s | %s\n", "REPOSITORY", "STATE", "TRACKING")
 	fmt.Fprintln(a.stdout, "-------------------------------+-------+------------------------")
 
+	totalClean := 0
 	totalDirty := 0
 	totalBehind := 0
 	totalNoRemote := 0
+	totalFailed := 0
 	status := 0
 
 	type statusResult struct {
@@ -46,20 +48,26 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		if result.err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, result.repo.display, result.err.Error(), a.ui.Reset)
 			status = 1
+			totalFailed++
 			continue
 		}
 		row := result.row
 		fmt.Fprintf(a.stdout, "%-30s | %s | %s\n", row.name, row.state, row.tracking)
+		if row.dirty == 0 {
+			totalClean++
+		}
 		totalDirty += row.dirty
 		totalBehind += row.behind
 		totalNoRemote += row.noRemote
 	}
 
 	fmt.Fprintln(a.stdout, "-------------------------------+-------+------------------------")
-	fmt.Fprintf(a.stderr, "Summary: %s%d dirty%s, %s%d behind%s, %s%d no remote%s\n",
+	fmt.Fprintf(a.stdout, "Summary: %s%d clean%s, %s%d dirty%s, %s%d behind%s, %s%d no remote%s, %s%d failed%s\n",
+		a.ui.Green, totalClean, a.ui.Reset,
 		a.ui.Yellow, totalDirty, a.ui.Reset,
 		a.ui.Red, totalBehind, a.ui.Reset,
-		a.ui.Muted, totalNoRemote, a.ui.Reset)
+		a.ui.Muted, totalNoRemote, a.ui.Reset,
+		a.ui.Red, totalFailed, a.ui.Reset)
 	return status
 }
 
