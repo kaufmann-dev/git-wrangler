@@ -78,6 +78,16 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		Body:              body,
 		WorkDir:           workDir,
 		Git:               a.git,
+		Progress: func(event ai.ProgressEvent) {
+			if event.Total <= 1 || event.Current == 0 {
+				return
+			}
+			if event.RepoName != "" {
+				fmt.Fprintf(a.stderr, "%s %s: %d/%d\n", event.Phase, event.RepoName, event.Current, event.Total)
+			} else {
+				fmt.Fprintf(a.stderr, "%s: %d/%d\n", event.Phase, event.Current, event.Total)
+			}
+		},
 	}, a.stderr, func(question string) bool {
 		if yes {
 			return true
@@ -106,12 +116,14 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	hadError := false
+	progress := newProgress(a, "Applying AI rewrites", len(plan.Repos))
 	for _, repoPlan := range plan.Repos {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 		if err == nil {
 			if restoreErr != nil {
 				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, restoreErr.Error(), a.ui.Reset)
 				hadError = true
+				progress.advance(repoPlan.Name)
 				continue
 			}
 			fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) for %s%s\n", a.ui.Green, repoPlan.ChangedCount, repoPlan.Name, a.ui.Reset)
@@ -122,7 +134,9 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 			}
 			hadError = true
 		}
+		progress.advance(repoPlan.Name)
 	}
+	progress.done()
 	if hadError {
 		return 1
 	}

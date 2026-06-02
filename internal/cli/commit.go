@@ -34,7 +34,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	committed := 0
 	skipped := 0
 	failed := 0
-	results := parallelGitMutations(repos, func(r repo) commitResult {
+	results := parallelGitMutationsProgress(repos, newProgress(a, "Committing repositories", len(repos)), func(r repo) commitResult {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
 			return commitResult{repo: r, err: err}
 		}
