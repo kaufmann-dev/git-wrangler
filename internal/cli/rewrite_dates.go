@@ -41,28 +41,32 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	status := 0
-	for _, r := range repos {
+	type dateRewriteScan struct {
+		repo      repo
+		err       error
+		errLabel  string
+		hasHead   bool
+		tooFew    bool
+		commits   []commitTime
+		mapping   map[string]int64
+		tzOffset  string
+		startBad  bool
+		countText string
+	}
+	scans := parallelRepos(repos, func(r repo) dateRewriteScan {
 		if !a.git.HasHead(a.ctx, r.dir) {
-			fmt.Fprintf(a.stdout, "%s%s has no commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+			return dateRewriteScan{repo: r}
 		}
-		fmt.Fprintf(a.stdout, "%sProcessing %s...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 		countOut, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not count commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			status = 1
-			continue
+			return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "Could not count commits"}
 		}
 		count, err := strconv.Atoi(strings.TrimSpace(countOut))
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: malformed commit count for %s: %q%s\n", a.ui.Red, r.display, strings.TrimSpace(countOut), a.ui.Reset)
-			status = 1
-			continue
+			return dateRewriteScan{repo: r, hasHead: true, err: err, countText: strings.TrimSpace(countOut)}
 		}
 		if count < 2 {
-			fmt.Fprintf(a.stdout, "%s%s has fewer than 2 commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+			return dateRewriteScan{repo: r, hasHead: true, tooFew: true}
 		}
 		startEpoch := int64(0)
 		endEpoch := int64(0)
@@ -71,9 +75,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		} else {
 			startEpoch, err = firstCommitEpoch(a, r.dir, "--reverse")
 			if err != nil {
-				fmt.Fprintf(a.stderr, "%sError: could not read start timestamp for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-				status = 1
-				continue
+				return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not read start timestamp"}
 			}
 		}
 		if endDate != "" {
@@ -81,40 +83,60 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		} else {
 			endEpoch, err = firstCommitEpoch(a, r.dir)
 			if err != nil {
-				fmt.Fprintf(a.stderr, "%sError: could not read end timestamp for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-				status = 1
-				continue
+				return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not read end timestamp"}
 			}
 		}
 		if startEpoch >= endEpoch {
+			return dateRewriteScan{repo: r, hasHead: true, startBad: true}
+		}
+		tzOffset, err := dominantTimezoneOffset(a, r.dir)
+		if err != nil {
+			return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not read time zones"}
+		}
+		commits, err := readCommitTimes(a, r.dir)
+		if err != nil {
+			return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not read commit timestamps"}
+		}
+		return dateRewriteScan{repo: r, hasHead: true, commits: commits, mapping: distributeCommitTimes(commits, startEpoch, endEpoch), tzOffset: tzOffset}
+	})
+	status := 0
+	for _, scan := range scans {
+		r := scan.repo
+		if !scan.hasHead {
+			fmt.Fprintf(a.stdout, "%s%s has no commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			continue
+		}
+		fmt.Fprintf(a.stdout, "%sProcessing %s...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+		if scan.countText != "" {
+			fmt.Fprintf(a.stderr, "%sError: malformed commit count for %s: %q%s\n", a.ui.Red, r.display, scan.countText, a.ui.Reset)
+			status = 1
+			continue
+		}
+		if scan.err != nil {
+			fmt.Fprintf(a.stderr, "%sError: %s for %s: %s%s\n", a.ui.Red, scan.errLabel, r.display, scan.err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
+		if scan.tooFew {
+			fmt.Fprintf(a.stdout, "%s%s has fewer than 2 commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			continue
+		}
+		if scan.startBad {
 			fmt.Fprintf(a.stderr, "%sError: start date must be before end date in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
 			status = 1
 			continue
 		}
-		tzOffset, err := dominantTimezoneOffset(a, r.dir)
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: could not read time zones for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			status = 1
-			continue
-		}
-		commits, err := readCommitTimes(a, r.dir)
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: could not read commit timestamps for %s: %s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			status = 1
-			continue
-		}
-		mapping := distributeCommitTimes(commits, startEpoch, endEpoch)
 		fmt.Fprintln(a.stdout, "Commit summary (old -> new):")
 		fmt.Fprintln(a.stdout, strings.Repeat("-", 70))
-		for _, c := range commits {
-			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(c.hash, 8), formatEpoch(c.epoch, tzOffset), formatEpoch(mapping[c.hash], tzOffset))
+		for _, c := range scan.commits {
+			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(c.hash, 8), formatEpoch(c.epoch, scan.tzOffset), formatEpoch(scan.mapping[c.hash], scan.tzOffset))
 		}
 		fmt.Fprintf(a.stderr, "%s\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n\n", a.ui.Red, a.ui.Reset)
 		if !yes && !confirm(a, "Proceed with rewrite for "+r.display+"?") {
 			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		callback, err := writeDateCallback(mapping, tzOffset)
+		callback, err := writeDateCallback(scan.mapping, scan.tzOffset)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: timestamp generation failed for %s:\n%s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1

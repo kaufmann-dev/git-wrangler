@@ -6,7 +6,11 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/ai"
 )
 
 func TestCategorizeCommit(t *testing.T) {
@@ -159,5 +163,45 @@ func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 	}
 	if !restored {
 		t.Fatal("expected origin restore after filter failure")
+	}
+}
+
+func TestApplyAIPlanRunsFilterRepoSerially(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var mu sync.Mutex
+	activeFilters := 0
+	maxActiveFilters := 0
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch {
+		case joined == "git remote get-url origin":
+			return "https://example.test/" + dir + ".git\n", "", nil
+		case strings.HasPrefix(joined, "git-filter-repo --partial --commit-callback"):
+			mu.Lock()
+			activeFilters++
+			if activeFilters > maxActiveFilters {
+				maxActiveFilters = activeFilters
+			}
+			mu.Unlock()
+			time.Sleep(25 * time.Millisecond)
+			mu.Lock()
+			activeFilters--
+			mu.Unlock()
+			return "rewritten\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+
+	status := applyAIPlan(a, &ai.Plan{Repos: []ai.RepoPlan{
+		{Dir: "repo-a", Name: "repo-a", CallbackFile: "callback-a.py", ChangedCount: 1},
+		{Dir: "repo-b", Name: "repo-b", CallbackFile: "callback-b.py", ChangedCount: 1},
+	}}, []string{"git-filter-repo"})
+	if status != 0 {
+		t.Fatalf("status = %d, want 0", status)
+	}
+	if maxActiveFilters != 1 {
+		t.Fatalf("git-filter-repo runs overlapped; max active = %d", maxActiveFilters)
 	}
 }

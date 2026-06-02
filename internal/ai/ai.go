@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/git"
@@ -218,49 +220,124 @@ func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config
 }
 
 func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats, error) {
+	type repoResult struct {
+		items []item
+		stats Stats
+		err   error
+	}
+	results := make([]repoResult, len(repositories))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for i := 0; i < aiScanWorkerCount(len(repositories)); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for repoIndex := range jobs {
+				repo := repositories[repoIndex]
+				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional)
+				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
+			}
+		}()
+	}
+	for repoIndex := range repositories {
+		jobs <- repoIndex
+	}
+	close(jobs)
+	wg.Wait()
+
 	var items []item
 	stats := Stats{}
-	for repoIndex, repo := range repositories {
-		stats.RepoCount++
-		if _, err := gitClient.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
-			stats.SkippedUnborn++
-			continue
+	for _, result := range results {
+		stats.RepoCount += result.stats.RepoCount
+		stats.TotalCommits += result.stats.TotalCommits
+		stats.SkippedFormatted += result.stats.SkippedFormatted
+		stats.SkippedEmpty += result.stats.SkippedEmpty
+		stats.SkippedUnborn += result.stats.SkippedUnborn
+		if result.err != nil {
+			return nil, stats, result.err
 		}
-		commitsOut, err := gitClient.Stdout(ctx, repo.Dir, nil, "rev-list", "--reverse", "--all")
-		if err != nil {
-			return nil, stats, fmt.Errorf("%s: list commits: %w", repo.Name, err)
-		}
-		commits := splitLines(commitsOut)
-		stats.TotalCommits += len(commits)
-		for _, commitHash := range commits {
-			oldMessage, err := gitClient.Stdout(ctx, repo.Dir, nil, "log", "-1", "--format=%B", commitHash)
-			if err != nil {
-				return nil, stats, fmt.Errorf("%s %s: read commit message: %w", repo.Name, shortHash(commitHash, 8), err)
-			}
-			if skipConventional && IsConventional(oldMessage) {
-				stats.SkippedFormatted++
-				continue
-			}
-			contextText, err := buildContext(ctx, gitClient, repo.Dir, repo.Name, commitHash, charBudget)
-			if err != nil {
-				return nil, stats, fmt.Errorf("%s %s: build commit context: %w", repo.Name, shortHash(commitHash, 8), err)
-			}
-			if strings.TrimSpace(contextText) == "" {
-				stats.SkippedEmpty++
-				continue
-			}
-			items = append(items, item{
-				ID:         fmt.Sprintf("c%06d", len(items)+1),
-				RepoIndex:  repoIndex,
-				RepoDir:    repo.Dir,
-				RepoName:   repo.Name,
-				Hash:       commitHash,
-				OldMessage: strings.TrimSpace(oldMessage),
-				Context:    contextText,
-			})
-		}
+		items = append(items, result.items...)
+	}
+	for i := range items {
+		items[i].ID = fmt.Sprintf("c%06d", i+1)
 	}
 	return items, stats, nil
+}
+
+func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats, error) {
+	stats := Stats{RepoCount: 1}
+	if _, err := gitClient.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
+		stats.SkippedUnborn++
+		return nil, stats, nil
+	}
+	commits, err := readCommitMessages(ctx, gitClient, repo.Dir)
+	if err != nil {
+		return nil, stats, fmt.Errorf("%s: list commits: %w", repo.Name, err)
+	}
+	stats.TotalCommits += len(commits)
+	items := []item{}
+	for _, commit := range commits {
+		if skipConventional && IsConventional(commit.message) {
+			stats.SkippedFormatted++
+			continue
+		}
+		contextText, err := buildContext(ctx, gitClient, repo.Dir, repo.Name, commit.hash, charBudget)
+		if err != nil {
+			return nil, stats, fmt.Errorf("%s %s: build commit context: %w", repo.Name, shortHash(commit.hash, 8), err)
+		}
+		if strings.TrimSpace(contextText) == "" {
+			stats.SkippedEmpty++
+			continue
+		}
+		items = append(items, item{
+			RepoIndex:  repoIndex,
+			RepoDir:    repo.Dir,
+			RepoName:   repo.Name,
+			Hash:       commit.hash,
+			OldMessage: strings.TrimSpace(commit.message),
+			Context:    contextText,
+		})
+	}
+	return items, stats, nil
+}
+
+type commitMessage struct {
+	hash    string
+	message string
+}
+
+func readCommitMessages(ctx context.Context, gitClient git.Client, repoDir string) ([]commitMessage, error) {
+	out, err := gitClient.Stdout(ctx, repoDir, nil, "log", "--reverse", "--all", "--format=%H%x1f%B%x1e")
+	if err != nil {
+		return nil, err
+	}
+	commits := []commitMessage{}
+	for _, record := range strings.Split(out, "\x1e") {
+		record = strings.Trim(record, "\n")
+		if record == "" {
+			continue
+		}
+		hash, message, ok := strings.Cut(record, "\x1f")
+		if !ok || strings.TrimSpace(hash) == "" {
+			return nil, fmt.Errorf("malformed commit log record")
+		}
+		commits = append(commits, commitMessage{hash: strings.TrimSpace(hash), message: message})
+	}
+	return commits, nil
+}
+
+func aiScanWorkerCount(repoCount int) int {
+	workers := runtime.NumCPU()
+	if workers > 32 {
+		workers = 32
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	if repoCount > 0 && workers > repoCount {
+		workers = repoCount
+	}
+	return workers
 }
 
 func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, commitHash string, charBudget int) (string, error) {

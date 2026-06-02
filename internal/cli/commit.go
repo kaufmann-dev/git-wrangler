@@ -22,28 +22,46 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	type commitResult struct {
+		repo      repo
+		out       string
+		err       error
+		staged    bool
+		skipped   bool
+		committed bool
+	}
 	status := 0
 	committed := 0
 	skipped := 0
 	failed := 0
-	for _, r := range repos {
+	results := parallelGitMutations(repos, func(r repo) commitResult {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
-			a.error(r.display, "Could not stage changes")
-			status = 1
-			failed++
-			continue
+			return commitResult{repo: r, err: err}
 		}
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "diff", "--cached", "--quiet"); err == nil {
-			a.skip(r.display, "No changes to commit. Skipping...")
-			skipped++
-			continue
+			return commitResult{repo: r, staged: true, skipped: true}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", message); err == nil {
-			a.ok(r.display, "Commit created")
-			committed++
+			return commitResult{repo: r, staged: true, out: out, committed: true}
 		} else {
-			a.error(r.display, "Could not commit changes:")
-			fmt.Fprintf(a.stderr, "%s\n\n", out)
+			return commitResult{repo: r, staged: true, out: out, err: err}
+		}
+	})
+	for _, result := range results {
+		switch {
+		case result.committed:
+			a.ok(result.repo.display, "Commit created")
+			committed++
+		case result.skipped:
+			a.skip(result.repo.display, "No changes to commit. Skipping...")
+			skipped++
+		case !result.staged:
+			a.error(result.repo.display, "Could not stage changes")
+			status = 1
+			failed++
+		default:
+			a.error(result.repo.display, "Could not commit changes:")
+			fmt.Fprintf(a.stderr, "%s\n\n", result.out)
 			status = 1
 			failed++
 		}

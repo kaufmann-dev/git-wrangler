@@ -21,23 +21,36 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	status := 0
-	for _, r := range repos {
+	type untrackScan struct {
+		repo         repo
+		out          string
+		err          error
+		hasGitignore bool
+	}
+	scans := parallelRepos(repos, func(r repo) untrackScan {
 		if !fileExists(filepath.Join(r.dir, ".gitignore")) {
+			return untrackScan{repo: r}
+		}
+		out, err := a.git.Stdout(a.ctx, r.dir, nil, "ls-files", "--ignored", "--cached", "--exclude-standard")
+		return untrackScan{repo: r, out: out, err: err, hasGitignore: true}
+	})
+	status := 0
+	for _, scan := range scans {
+		r := scan.repo
+		if !scan.hasGitignore {
 			fmt.Fprintf(a.stdout, "%sNo .gitignore file found for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		out, err := a.git.Stdout(a.ctx, r.dir, nil, "ls-files", "--ignored", "--cached", "--exclude-standard")
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not list ignored tracked files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+		if scan.err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not list ignored tracked files for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
-		if strings.TrimSpace(out) == "" {
+		if strings.TrimSpace(scan.out) == "" {
 			fmt.Fprintf(a.stdout, "%sNo currently tracked files match .gitignore in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
-		fmt.Fprintf(a.stdout, "%s%s:%s %d tracked ignored file(s) will be removed from the index.\n", a.ui.RepoColor, r.display, a.ui.Reset, lineCount(out))
+		fmt.Fprintf(a.stdout, "%s%s:%s %d tracked ignored file(s) will be removed from the index.\n", a.ui.RepoColor, r.display, a.ui.Reset, lineCount(scan.out))
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation will stop tracking ignored files and create a commit in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
 		if !yes && !confirm(a, "Stop tracking ignored files and commit for "+r.display+"?") {
 			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
