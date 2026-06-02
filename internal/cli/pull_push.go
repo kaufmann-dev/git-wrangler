@@ -31,7 +31,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	updated := 0
 	skipped := 0
 	failed := 0
-	results := parallelGitMutations(repos, func(r repo) pullResult {
+	results := parallelGitMutationsProgress(repos, newProgress(a, "Pulling repositories", len(repos)), func(r repo) pullResult {
 		pullArgs := []string{"pull"}
 		if rebase {
 			pullArgs = append(pullArgs, "--rebase")
@@ -89,7 +89,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	skipped := 0
 	failed := 0
 	if !forceUnsafe {
-		results := parallelGitMutations(repos, func(r repo) pushResult {
+		results := parallelGitMutationsProgress(repos, newProgress(a, "Pushing repositories", len(repos)), func(r repo) pushResult {
 			pushArgs := []string{"push", "origin", "HEAD"}
 			if force {
 				pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}

@@ -10,6 +10,8 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 Bulk per-repository work in `internal/cli` should use the shared ordered helpers in `parallel.go`: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and `git-filter-repo` history rewrite application remains sequential. Workers must return result structs; print only after collection so repository output order stays stable.
 
+Long-running bulk phases should report progress to stderr with the shared progress helper. Progress must not change ordered stdout summaries or interleave repository result blocks.
+
 `internal/repos` is filesystem-only repository discovery and display-name handling. It discovers normal `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. It must not call Git, `gh`, or any subprocess.
 
 `internal/git` owns Git subprocess behavior, including `git-filter-repo` detection and history rewrite helper execution. Support both `git-filter-repo` and `git filter-repo`, preferring the standalone executable.
@@ -26,7 +28,7 @@ Bulk per-repository work in `internal/cli` should use the shared ordered helpers
 
 `internal/ui` owns output streams, colors, plain output behavior, status vocabulary, prompts, and terminal detection.
 
-`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, response validation, retry behavior, and callback generation.
+`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, response validation, retry behavior, and callback generation. AI batch requests run with bounded concurrency; do not make them unbounded or add public concurrency flags unless explicitly requested.
 
 `internal/version` owns `Version`, `Commit`, and `Date`, defaulting to `dev`, `unknown`, and `unknown`. GoReleaser injects release values with ldflags.
 

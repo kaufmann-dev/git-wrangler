@@ -28,7 +28,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	statusCode := 0
-	results := parallelRepos(repos, func(r repo) infoResult {
+	results := parallelReposProgress(repos, newProgress(a, "Inspecting repositories", len(repos)), func(r repo) infoResult {
 		return collectInfo(a, r)
 	})
 	for _, result := range results {
