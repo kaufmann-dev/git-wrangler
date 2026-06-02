@@ -139,3 +139,38 @@ func TestRewriteCommitsAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())
 	}
 }
+
+func TestCommitAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.Defaults()
+	cfg.AI.Model = "gpt-test"
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	var lookedUp bool
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			lookedUp = true
+			return "", errors.New("unexpected lookpath")
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	a.creds = &fakeCredentialStore{}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"commit-ai"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing key failure")
+	}
+	if lookedUp {
+		t.Fatal("commit-ai checked dependencies before config credentials")
+	}
+	if !strings.Contains(stderr.String(), "AI API key is required") {
+		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	}
+}

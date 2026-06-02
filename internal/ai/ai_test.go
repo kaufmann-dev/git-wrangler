@@ -2,8 +2,12 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -106,18 +110,83 @@ func TestSensitivePathList(t *testing.T) {
 }
 
 func TestExtractMessagesAndValidate(t *testing.T) {
-	messages, err := ExtractMessages("```json\n{\"messages\":[{\"id\":\"c000001\",\"message\":\"feat(cli): add thing\"}]}\n```")
+	messages, err := ExtractMessages("```json\n{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}\n```")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messages["c000001"] != "feat(cli): add thing" {
+	if messages["c000001"].Subject != "feat(cli): add thing" {
 		t.Fatalf("message = %q", messages["c000001"])
 	}
-	if !ValidateMessage(messages["c000001"]) {
+	if !ValidateMessage(messages["c000001"].Subject) {
 		t.Fatal("expected valid Conventional Commit message")
 	}
 	if ValidateMessage("this is not conventional") {
 		t.Fatal("expected invalid message")
+	}
+}
+
+func TestExtractMessagesReportsIncompleteJSON(t *testing.T) {
+	_, err := ExtractMessages(`{"messages":[`)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "AI response was incomplete JSON") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateSubjectRejectsMultilineAndLongSubjects(t *testing.T) {
+	if !ValidateSubject("feat(cli): add thing") {
+		t.Fatal("expected valid subject")
+	}
+	for _, subject := range []string{
+		"feat(cli): add thing\nbody",
+		"feat(cli): add thing\rbody",
+		strings.Repeat("a", 121),
+		"not conventional",
+	} {
+		if ValidateSubject(subject) {
+			t.Fatalf("expected invalid subject %q", subject)
+		}
+	}
+}
+
+func TestValidateGeneratedMessageRequiresBodyWhenEnabled(t *testing.T) {
+	valid := Message{Subject: "feat(cli): add thing", Body: "Explain why this change was made."}
+	if !ValidateGeneratedMessage(valid, true) {
+		t.Fatal("expected valid message with body")
+	}
+	for _, message := range []Message{
+		{Subject: "feat(cli): add thing"},
+		{Subject: "feat(cli): add thing", Body: "   "},
+		{Subject: "feat(cli): add thing", Body: strings.Repeat("a", 1001)},
+		{Subject: "feat(cli): add thing", Body: "bad\x00body"},
+		{Subject: "not conventional", Body: "Body"},
+	} {
+		if ValidateGeneratedMessage(message, true) {
+			t.Fatalf("expected invalid message %#v", message)
+		}
+	}
+	if !ValidateGeneratedMessage(Message{Subject: "feat(cli): add thing"}, false) {
+		t.Fatal("body should be optional in subject-only mode")
+	}
+}
+
+func TestWriteCommitCallbackFormatsBodyWithSingleBlankLine(t *testing.T) {
+	path := t.TempDir() + "/callback.py"
+	err := writeCommitCallback(path, []mapping{{
+		hash:    "abc123",
+		message: FormatMessage(Message{Subject: "feat(cli): add thing", Body: "Explain why this change was made."}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `b'feat(cli): add thing\n\nExplain why this change was made.\n'`) {
+		t.Fatalf("callback did not preserve one blank line:\n%s", string(data))
 	}
 }
 
@@ -184,5 +253,57 @@ func TestProcessBatchRetrySleepRespectsCanceledContext(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		t.Fatalf("canceled retry slept too long: %s", elapsed)
+	}
+}
+
+func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
+	requests := 0
+	var maxTokens []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var payload struct {
+			MaxTokens int `json:"max_tokens"`
+			Messages  []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		maxTokens = append(maxTokens, payload.MaxTokens)
+		content := payload.Messages[1].Content
+		w.Header().Set("Content-Type", "application/json")
+		if requests <= 3 {
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"length","message":{"content":"{\"messages\":["}}]}`)
+			return
+		}
+		id := "c000001"
+		if strings.Contains(content, "c000002") {
+			id = "c000002"
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	accepted, failures := processBatch(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+	}, Config{
+		BaseURL: server.URL,
+		Model:   "test-model",
+		APIKey:  "test-key",
+		Timeout: time.Second,
+	}, io.Discard)
+	if len(failures) != 0 {
+		t.Fatalf("failures = %#v", failures)
+	}
+	if len(accepted) != 2 {
+		t.Fatalf("accepted = %#v", accepted)
+	}
+	if requests != 5 {
+		t.Fatalf("requests = %d, want 5", requests)
+	}
+	if len(maxTokens) < 3 || maxTokens[0] >= maxTokens[1] || maxTokens[1] >= maxTokens[2] {
+		t.Fatalf("max_tokens did not increase across retries: %#v", maxTokens)
 	}
 }

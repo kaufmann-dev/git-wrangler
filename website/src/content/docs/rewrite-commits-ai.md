@@ -1,14 +1,16 @@
 ---
 title: "rewrite-commits-ai"
 description: "Rewrites commit messages with an OpenAI-compatible AI endpoint."
-category: "History Rewriting"
-order: 3
+category: "AI Commands"
+order: 2
 usage: "git-wrangler rewrite-commits-ai [options]"
 ---
 
 # rewrite-commits-ai
 
 Generates Conventional Commit messages with an OpenAI-compatible chat completions endpoint, previews the results, and rewrites history with `git-filter-repo` after confirmation.
+
+By default, generated messages are subject-only. Use `--body` to generate a subject and body.
 
 ## Usage
 
@@ -22,6 +24,7 @@ git-wrangler rewrite-commits-ai [options]
 - `--max-chars-per-commit <number>` defaults to `3000`.
 - `--timeout <seconds>` defaults to `90`.
 - `--skip-conventional` skips messages that already use Conventional Commits.
+- `--body` generates a subject and body instead of subject only.
 - `--yes` skips the data-send and rewrite confirmation prompts.
 
 AI provider, base URL, model, and API key come from `git-wrangler init`, `git-wrangler config`, or supported environment variables.
