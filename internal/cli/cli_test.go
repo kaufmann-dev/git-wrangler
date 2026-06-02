@@ -137,7 +137,7 @@ func TestRewriteCommitsAIFlagValidation(t *testing.T) {
 		want string
 	}{
 		{[]string{"rewrite-commits-ai", "--batch-size", "51"}, "--batch-size must be 50 or less"},
-		{[]string{"rewrite-commits-ai", "--requests-per-minute", "0"}, "--requests-per-minute must be a positive integer"},
+		{[]string{"rewrite-commits-ai", "--rpm", "0"}, "--rpm must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
@@ -161,7 +161,7 @@ func TestCommitAIFlagValidation(t *testing.T) {
 		want string
 	}{
 		{[]string{"commit-ai", "--max-chars-per-commit", "0"}, "--max-chars-per-commit must be a positive integer"},
-		{[]string{"commit-ai", "--requests-per-minute", "0"}, "--requests-per-minute must be a positive integer"},
+		{[]string{"commit-ai", "--rpm", "0"}, "--rpm must be a positive integer"},
 		{[]string{"commit-ai", "--timeout", "0"}, "--timeout must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer
