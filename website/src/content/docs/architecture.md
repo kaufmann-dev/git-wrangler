@@ -48,14 +48,21 @@ Cobra generates help output and the completion command. There is no external hel
 
 ## Release flow
 
-GoReleaser builds native archives for macOS, Linux, and Windows on amd64 and arm64. It also publishes checksums, packages shell completions, and updates the `kaufmann-dev/homebrew-tap` cask.
+GoReleaser builds native archives for macOS, Linux, and Windows on amd64 and arm64. It also publishes checksums, packages shell completions, and updates package-manager metadata.
 
 The release workflow uses the latest GoReleaser v2 release.
 
-Homebrew is the primary distribution path:
+Homebrew is the package-manager path for macOS and Linux:
 
 ```bash
 brew install kaufmann-dev/tap/git-wrangler
+```
+
+Scoop is the native Windows package-manager path:
+
+```powershell
+scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
+scoop install kaufmann-dev/git-wrangler
 ```
 
 GitHub Release binaries are the secondary distribution path.
