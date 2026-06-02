@@ -94,17 +94,7 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 			if event.Phase != "Sending API requests" || event.Total <= 1 {
 				return
 			}
-			if apiProgress == nil {
-				apiProgress = newProgress(a, event.Phase, event.Total)
-			}
-			if event.Detail != "" {
-				apiProgress.log(event.Detail)
-				return
-			}
-			if event.Current == 0 {
-				return
-			}
-			apiProgress.advance("")
+			updateAIRequestProgress(a, &apiProgress, event)
 		},
 	}, a.stderr)
 	apiProgress.done()
