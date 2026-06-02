@@ -6,9 +6,7 @@
 
 **Orchestrate Git operations across many repositories.**
 
-Run status checks, pulls, pushes, commits, branch renames, GitHub repo operations,
-AI-powered commit generation, and guarded history rewrites — all from one directory,
-without stepping through every project by hand.
+A single, zero-dependency Go binary that coordinates dozens of Git repositories in parallel, eliminating the manual overhead of managing large developer workspaces.
 
 📖 [Documentation](https://git-wrangler.kaufmann.dev) · 📦 [Releases](https://github.com/kaufmann-dev/git-wrangler/releases)
 
@@ -27,21 +25,20 @@ without stepping through every project by hand.
 
 ## Why Git Wrangler?
 
-If you maintain a workspace full of related repositories, routine Git operations
-become tedious fast. Git Wrangler discovers every repository below your current
-directory and runs operations across all of them in one pass:
+Managing many related Git repositories by hand is repetitive, slow, and easy to
+mess up. Git Wrangler turns that workspace into one coordinated unit.
 
-- **One command, many repos** — `status`, `pull`, `push`, `commit`, and more work
-  across every discovered repository.
-- **AI commit messages** — generate Conventional Commit messages from diffs using
-  any OpenAI-compatible endpoint.
-- **Safe history rewrites** — rewrite authors, dates, commit messages, or purge
-  secrets with confirmation prompts and automatic origin restoration.
-- **GitHub integration** — clone all repos for a user or org, rename repos, and
-  manage visibility through `gh`.
-- **Stable, ordered output** — repositories are always processed and printed in
-  the same deterministic order, even when running in parallel.
-- **Single binary** — compiled Go with zero runtime dependencies beyond `git`.
+It finds repositories below your current directory and runs Git workflows across
+them in one pass, with parallel execution, stable output, and safe defaults.
+
+### What it gives you
+
+- **One command, many repositories** — run common Git workflows across every repo.
+- **Parallel execution, stable output** — fast runs without chaotic terminal output.
+- **AI-assisted commits** — generate Conventional Commit messages from diffs.
+- **Safer history rewrites** — rewrite metadata or remove secrets with confirmations.
+- **GitHub workflows** — clone, rename, and manage repositories through `gh`.
+- **Single binary** — portable Go executable with no runtime dependencies beyond `git`.
 
 ## Installation
 
