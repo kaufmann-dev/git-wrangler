@@ -52,6 +52,15 @@ type Config struct {
 	Body              bool
 	WorkDir           string
 	Git               git.Client
+	Progress          func(ProgressEvent)
+}
+
+type ProgressEvent struct {
+	Phase    string
+	RepoName string
+	Current  int
+	Total    int
+	Detail   string
 }
 
 type Plan struct {
@@ -143,7 +152,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	}
 
 	fmt.Fprintln(out, "Scanning repositories and preparing redacted commit context...")
-	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.MaxCharsPerCommit, cfg.SkipConventional)
+	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.MaxCharsPerCommit, cfg.SkipConventional, progressFunc(cfg, out))
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +228,23 @@ func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config
 	return results, publicFailures
 }
 
-func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats, error) {
+func progressFunc(cfg Config, out io.Writer) func(ProgressEvent) {
+	if cfg.Progress != nil {
+		return cfg.Progress
+	}
+	return func(event ProgressEvent) {
+		if event.Total <= 1 || event.Current == 0 {
+			return
+		}
+		if event.RepoName != "" {
+			fmt.Fprintf(out, "%s %s: %d/%d\n", event.Phase, event.RepoName, event.Current, event.Total)
+		} else {
+			fmt.Fprintf(out, "%s: %d/%d\n", event.Phase, event.Current, event.Total)
+		}
+	}
+}
+
+func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
 	type repoResult struct {
 		items []item
 		stats Stats
@@ -234,7 +259,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			defer wg.Done()
 			for repoIndex := range jobs {
 				repo := repositories[repoIndex]
-				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional)
+				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional, progress)
 				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
 			}
 		}()
@@ -264,7 +289,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 	return items, stats, nil
 }
 
-func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats, error) {
+func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, charBudget int, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
 	stats := Stats{RepoCount: 1}
 	if _, err := gitClient.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
 		stats.SkippedUnborn++
@@ -276,7 +301,10 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 	}
 	stats.TotalCommits += len(commits)
 	items := []item{}
-	for _, commit := range commits {
+	for commitIndex, commit := range commits {
+		if shouldReportAIProgress(commitIndex+1, len(commits)) {
+			progress(ProgressEvent{Phase: "Scanning commits", RepoName: repo.Name, Current: commitIndex + 1, Total: len(commits)})
+		}
 		if skipConventional && IsConventional(commit.message) {
 			stats.SkippedFormatted++
 			continue
@@ -299,6 +327,10 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 		})
 	}
 	return items, stats, nil
+}
+
+func shouldReportAIProgress(current, total int) bool {
+	return total > 1 && (current == total || current%100 == 0)
 }
 
 type commitMessage struct {
@@ -352,9 +384,13 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
 		return "", nil
 	}
-	diffText, err := gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
-	if err != nil {
-		return "", fmt.Errorf("read diff: %w", err)
+	diffText := "[SENSITIVE FILE CONTENT HIDDEN]"
+	if !allChangedPathsSensitive(nameStatus) {
+		diffText, err = gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
+		if err != nil {
+			return "", fmt.Errorf("read diff: %w", err)
+		}
+		diffText = RedactDiff(diffText)
 	}
 	contextText := strings.Join([]string{
 		"Repository: " + repoName,
@@ -367,9 +403,34 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 		limitedLines(numstat, 80),
 		"",
 		"Redacted diff snippet:",
-		RedactDiff(diffText),
+		diffText,
 	}, "\n")
 	return truncateText(contextText, charBudget), nil
+}
+
+func allChangedPathsSensitive(nameStatus string) bool {
+	paths := changedPaths(nameStatus)
+	if len(paths) == 0 {
+		return false
+	}
+	for _, path := range paths {
+		if !IsSensitivePath(path) {
+			return false
+		}
+	}
+	return true
+}
+
+func changedPaths(nameStatus string) []string {
+	paths := []string{}
+	for _, line := range splitLines(nameStatus) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		paths = append(paths, fields[len(fields)-1])
+	}
+	return paths
 }
 
 func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repoName string, charBudget int) (string, error) {
@@ -384,9 +445,13 @@ func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repo
 	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
 		return "", nil
 	}
-	diffText, err := gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3")
-	if err != nil {
-		return "", fmt.Errorf("read diff: %w", err)
+	diffText := "[SENSITIVE FILE CONTENT HIDDEN]"
+	if !allChangedPathsSensitive(nameStatus) {
+		diffText, err = gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3")
+		if err != nil {
+			return "", fmt.Errorf("read diff: %w", err)
+		}
+		diffText = RedactDiff(diffText)
 	}
 	contextText := strings.Join([]string{
 		"Repository: " + repoName,
@@ -398,7 +463,7 @@ func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repo
 		limitedLines(numstat, 80),
 		"",
 		"Redacted staged diff snippet:",
-		RedactDiff(diffText),
+		diffText,
 	}, "\n")
 	return truncateText(contextText, charBudget), nil
 }
@@ -469,23 +534,71 @@ func RedactLine(line string) string {
 }
 
 func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
-	results := map[string]Message{}
-	var failures []failure
 	totalBatches := (len(items) + cfg.BatchSize - 1) / cfg.BatchSize
+	if totalBatches == 0 {
+		return map[string]Message{}, nil
+	}
+	type batchTask struct {
+		index int
+		items []item
+	}
+	type batchResult struct {
+		index    int
+		results  map[string]Message
+		failures []failure
+	}
+	tasks := make(chan batchTask)
+	batchResults := make([]batchResult, totalBatches)
+	workerCount := min(2, totalBatches)
+	var wg sync.WaitGroup
+	output := &lockedWriter{writer: out}
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range tasks {
+				output.printf("Generating batch %d/%d (%d commit(s))...\n", task.index+1, totalBatches, len(task.items))
+				accepted, batchFailures := processBatch(ctx, task.items, cfg, output)
+				batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
+			}
+		}()
+	}
 	for batchIndex, start := 0, 0; start < len(items); batchIndex, start = batchIndex+1, start+cfg.BatchSize {
 		end := start + cfg.BatchSize
 		if end > len(items) {
 			end = len(items)
 		}
-		batch := items[start:end]
-		fmt.Fprintf(out, "Generating batch %d/%d (%d commit(s))...\n", batchIndex+1, totalBatches, len(batch))
-		accepted, batchFailures := processBatch(ctx, batch, cfg, out)
-		for id, message := range accepted {
+		tasks <- batchTask{index: batchIndex, items: items[start:end]}
+	}
+	close(tasks)
+	wg.Wait()
+
+	results := map[string]Message{}
+	var failures []failure
+	for _, batch := range batchResults {
+		for id, message := range batch.results {
 			results[id] = message
 		}
-		failures = append(failures, batchFailures...)
+		failures = append(failures, batch.failures...)
 	}
 	return results, failures
+}
+
+type lockedWriter struct {
+	mu     sync.Mutex
+	writer io.Writer
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
+}
+
+func (w *lockedWriter) printf(format string, args ...any) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	fmt.Fprintf(w.writer, format, args...)
 }
 
 func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
@@ -513,7 +626,7 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		}
 		pending = nextPending
 		if len(pending) > 0 && attempt < 3 {
-			fmt.Fprintf(out, "Retrying %d commit(s) after failed batch attempt %d.\n", len(pending), attempt)
+			fmt.Fprintf(out, "Retrying %d commit(s) after failed batch attempt %d: %s.\n", len(pending), attempt, retryReason(pending, errorsByID))
 			if !sleepContext(ctx, time.Duration(attempt)*250*time.Millisecond) {
 				break
 			}
@@ -532,6 +645,46 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
 	}
 	return accepted, failures
+}
+
+func retryReason(pending []item, errorsByID map[string]string) string {
+	counts := map[string]int{}
+	for _, item := range pending {
+		reason := strings.TrimSpace(errorsByID[item.ID])
+		if reason == "" {
+			reason = "unknown error"
+		}
+		counts[truncateText(reason, 160)]++
+	}
+	type row struct {
+		reason string
+		count  int
+	}
+	rows := make([]row, 0, len(counts))
+	for reason, count := range counts {
+		rows = append(rows, row{reason: reason, count: count})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].count == rows[j].count {
+			return rows[i].reason < rows[j].reason
+		}
+		return rows[i].count > rows[j].count
+	})
+	parts := make([]string, 0, min(len(rows), 3))
+	for i, row := range rows {
+		if i >= 3 {
+			break
+		}
+		if row.count == 1 {
+			parts = append(parts, row.reason)
+		} else {
+			parts = append(parts, fmt.Sprintf("%s (%d commits)", row.reason, row.count))
+		}
+	}
+	if len(rows) > 3 {
+		parts = append(parts, fmt.Sprintf("%d more reason(s)", len(rows)-3))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer) (map[string]Message, []failure) {

@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -278,7 +279,7 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 	items, stats, err := collectItems(context.Background(), []Repository{
 		{Dir: "repo-a", Name: "repo-a"},
 		{Dir: "repo-b", Name: "repo-b"},
-	}, gitClient, 3000, true)
+	}, gitClient, 3000, true, func(ProgressEvent) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,6 +355,7 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 	}))
 	defer server.Close()
 
+	var out bytes.Buffer
 	accepted, failures := processBatch(context.Background(), []item{
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
@@ -362,7 +364,7 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 		Model:   "test-model",
 		APIKey:  "test-key",
 		Timeout: time.Second,
-	}, io.Discard)
+	}, &out)
 	if len(failures) != 0 {
 		t.Fatalf("failures = %#v", failures)
 	}
@@ -375,18 +377,78 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 	if len(maxTokens) < 3 || maxTokens[0] >= maxTokens[1] || maxTokens[1] >= maxTokens[2] {
 		t.Fatalf("max_tokens did not increase across retries: %#v", maxTokens)
 	}
+	if !strings.Contains(out.String(), "Retrying 2 commit(s) after failed batch attempt 1: AI response was truncated by the output token limit (2 commits).") {
+		t.Fatalf("retry output missing reason:\n%s", out.String())
+	}
 }
 
-func TestProcessItemsSendsRequestsSerially(t *testing.T) {
+func TestProcessBatchRetryMessageIncludesHTTPFailureReason(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if requests == 1 {
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	accepted, failures := processBatch(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+	}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		Timeout:   time.Second,
+	}, &out)
+	if len(failures) != 0 || len(accepted) != 1 {
+		t.Fatalf("accepted = %#v failures = %#v", accepted, failures)
+	}
+	if !strings.Contains(out.String(), "Retrying 1 commit(s) after failed batch attempt 1: HTTP 429: rate limit exceeded") {
+		t.Fatalf("retry output missing HTTP reason:\n%s", out.String())
+	}
+}
+
+func TestBuildContextSkipsShowForSensitiveOnlyCommit(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return "M\t.env\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return "1\t0\t.env\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123":
+			return "", "", errors.New("git show should not run")
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "[SENSITIVE FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing sensitive marker:\n%s", contextText)
+	}
+}
+
+func TestProcessItemsSendsRequestsWithBoundedConcurrency(t *testing.T) {
 	var mu sync.Mutex
 	active := 0
 	maxActive := 0
+	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		active++
 		if active > maxActive {
 			maxActive = active
 		}
+		requests++
 		mu.Unlock()
 		time.Sleep(25 * time.Millisecond)
 		mu.Lock()
@@ -404,6 +466,8 @@ func TestProcessItemsSendsRequestsSerially(t *testing.T) {
 		id := "c000001"
 		if strings.Contains(payload.Messages[1].Content, "c000002") {
 			id = "c000002"
+		} else if strings.Contains(payload.Messages[1].Content, "c000003") {
+			id = "c000003"
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
@@ -413,6 +477,7 @@ func TestProcessItemsSendsRequestsSerially(t *testing.T) {
 	results, failures := processItems(context.Background(), []item{
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+		{ID: "c000003", RepoName: "repo", Hash: "333333333333", Context: "context"},
 	}, Config{
 		BaseURL:   server.URL,
 		Model:     "test-model",
@@ -420,10 +485,13 @@ func TestProcessItemsSendsRequestsSerially(t *testing.T) {
 		BatchSize: 1,
 		Timeout:   time.Second,
 	}, io.Discard)
-	if len(failures) != 0 || len(results) != 2 {
+	if len(failures) != 0 || len(results) != 3 {
 		t.Fatalf("results = %#v failures = %#v", results, failures)
 	}
-	if maxActive != 1 {
-		t.Fatalf("AI requests overlapped; max active = %d", maxActive)
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+	if maxActive < 2 || maxActive > 2 {
+		t.Fatalf("max active AI requests = %d, want 2", maxActive)
 	}
 }

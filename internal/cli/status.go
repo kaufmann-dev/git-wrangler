@@ -40,7 +40,7 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		row  statusTableRow
 		err  error
 	}
-	results := parallelRepos(repos, func(r repo) statusResult {
+	results := parallelReposProgress(repos, newProgress(a, "Checking status", len(repos)), func(r repo) statusResult {
 		row, err := statusRow(a, r)
 		return statusResult{repo: r, row: row, err: err}
 	})
