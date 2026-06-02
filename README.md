@@ -1,21 +1,38 @@
 # Git Wrangler
 
-Git Wrangler is a native CLI for managing many Git repositories at once.
+[![CI](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml)
+[![Release](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-If you keep related projects in one folder, Git Wrangler lets you check status,
-pull, push, review, commit, clean up ignores, rename branches, and run careful
-history rewrites without jumping from repo to repo by hand.
+```text
+  ____ _ _     __        __                       _
+ / ___(_) |_   \ \      / / __ __ _ _ __   __ _ | | ___ _ __
+| |  _| | __|   \ \ /\ / / '__/ _` | '_ \ / _` || |/ _ \ '__|
+| |_| | | |_     \ V  V /| | | (_| | | | | (_| || |  __/ |
+ \____|_|\__|     \_/\_/ |_|  \__,_|_| |_|\__, ||_|\___|_|
+                                           |___/
+```
+
+A native Go CLI for managing many Git repositories from one directory.
+
+Git Wrangler is for workspaces full of related repositories. Run status checks,
+pulls, pushes, commits, reviews, branch renames, GitHub repo operations, and
+guarded history rewrites without stepping through every project by hand.
+
+Full docs live at [git-wrangler.kaufmann.dev](https://git-wrangler.kaufmann.dev).
+Release archives are available from
+[GitHub Releases](https://github.com/kaufmann-dev/git-wrangler/releases).
 
 ## Navigation
 
 - [Install](#install)
-- [Quick start](#quick-start)
-- [Useful workflows](#useful-workflows)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
 - [Commands](#commands)
+- [Runtime Dependencies](#runtime-dependencies)
 - [Safety](#safety)
-- [Requirements](#requirements)
-- [Architecture and technology](#architecture-and-technology)
 - [Development](#development)
+- [License](#license)
 
 ## Install
 
@@ -25,17 +42,11 @@ macOS and Linux:
 brew install kaufmann-dev/tap/git-wrangler
 ```
 
-Upgrade with:
+Upgrade:
 
 ```bash
 brew upgrade git-wrangler
 ```
-
-Homebrew installs shell completions automatically.
-
-> [!TIP]
-> **Bash autocompletion on Linux:** Install and enable `bash-completion` first.
-> If you use Homebrew, run `brew install bash-completion`.
 
 Windows:
 
@@ -44,175 +55,100 @@ scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
 scoop install kaufmann-dev/git-wrangler
 ```
 
-Scoop and Homebrew install the CLI tool dependencies: `git`, `gh`, and
-`git-filter-repo`. Manual binary installs do not, so install the tools listed in
-[Requirements](#requirements) yourself as needed.
+Upgrade:
 
-## Quick start
-
-Clone a set of GitHub repositories into one folder:
-
-```bash
-git-wrangler clone --user myusername --visibility public --into ./repos
-cd repos
+```powershell
+scoop update git-wrangler
 ```
 
-See the state of every repository:
+Homebrew and Scoop install the normal CLI dependencies: `git`, `gh`, and
+`git-filter-repo`. If you install a release archive manually, install those
+tools yourself for the commands that need them.
+
+Homebrew installs bash, zsh, and fish completions automatically. Release
+archives include completion scripts under `completions/`, and the CLI can print
+completion scripts for bash, zsh, fish, and PowerShell:
 
 ```bash
-git-wrangler status
+git-wrangler completion --help
 ```
 
-Pull everything:
+On bash, install and enable `bash-completion` if completions are not already
+available.
+
+## Quick Start
+
+Show the built-in command overview:
 
 ```bash
-git-wrangler pull --rebase
+git-wrangler
 ```
 
-Review unpushed work before you publish it:
+Open the full help and command-specific help:
 
 ```bash
-git-wrangler review
+git-wrangler help
+git-wrangler help status
 ```
 
-Run `git-wrangler` for a compact command overview. Run `git-wrangler help`
-for the full command list, or `git-wrangler help <command>` for one command.
-
-Check your local runtime dependencies:
-
-```bash
-git-wrangler doctor
-```
-
-Set up GitHub and AI credentials when you need private GitHub workflows or AI-assisted commits:
+Set up GitHub and AI credentials when you need private GitHub workflows or
+AI-assisted commits:
 
 ```bash
 git-wrangler init
 ```
 
-## Useful workflows
-
-### Keep a workspace fresh
+Check your local setup:
 
 ```bash
-git-wrangler status
-git-wrangler pull --rebase
-git-wrangler status
+git-wrangler doctor
 ```
 
-Use this when you have a folder full of projects and want to know what changed,
-what is dirty, and what is behind origin.
-
-### Publish local work across repos
+## Usage
 
 ```bash
-git-wrangler review
-git-wrangler push
+git-wrangler <command> [flags]
 ```
 
-`review` shows unpushed changes first, so you can inspect what will be published
-before running `push`.
+Run `git-wrangler` for the compact command overview, `git-wrangler help` for
+the full command list, and `git-wrangler help <command>` for command-specific
+flags.
 
-### Apply the same branch rename everywhere
-
-```bash
-git-wrangler rename-branch --oldbranch master --newbranch main
-```
-
-This is useful for cleaning up older repositories that should share the same
-default branch name.
-
-### Fix common generated files
-
-```bash
-git-wrangler fix-gitignore
-git-wrangler untrack
-```
-
-Use this when build artifacts, dependency folders, or generated files have crept
-into tracking and should be ignored.
-
-### Clean up history when you need to
-
-```bash
-git-wrangler remove-secrets
-git-wrangler rewrite-authors --name "Your Name" --email "you@example.com"
-git-wrangler rewrite-commits
-```
-
-History rewrite commands are intentionally guarded. They require confirmation,
-print warnings, and use `git-filter-repo` for the actual rewrite work.
+Git Wrangler discovers regular `.git` directories and linked worktree `.git`
+files below the current directory, processes repositories in stable order, and
+keeps repository result output ordered.
 
 ## Commands
 
-Remote operations:
+| Command              | Purpose                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `clone`              | Clone multiple GitHub repositories for a user or organization.    |
+| `pull`               | Pull latest changes for discovered repositories.                  |
+| `push`               | Push local commits to origin.                                     |
+| `rename-repo`        | Rename GitHub repositories through `gh`.                          |
+| `commit`             | Stage all changes and create a commit in each changed repository. |
+| `commit-ai`          | Generate and create one AI Conventional Commit per repository.    |
+| `config`             | Show and edit Git Wrangler setup.                                 |
+| `doctor`             | Check runtime dependencies and local configuration.               |
+| `fix-gitignore`      | Add missing common generated-file patterns to `.gitignore`.       |
+| `info`               | Show detailed repository information.                             |
+| `init`               | Set up GitHub and AI credentials.                                 |
+| `license`            | Add or replace MIT license files.                                 |
+| `remove-secrets`     | Purge sensitive files from Git history.                           |
+| `rename-branch`      | Rename a branch across repositories.                              |
+| `reset`              | Reset current branches to their origin counterparts.              |
+| `review`             | Review unpushed changes across repositories.                      |
+| `rewrite-authors`    | Rewrite author and committer identity.                            |
+| `rewrite-commits`    | Rewrite commit messages to Conventional Commits.                  |
+| `rewrite-commits-ai` | Generate AI Conventional Commit rewrites, then rewrite history.   |
+| `rewrite-dates`      | Redistribute commit timestamps.                                   |
+| `status`             | Show clean, dirty, ahead, behind, and remote state.               |
+| `untrack`            | Stop tracking files already covered by `.gitignore`.              |
+| `version`            | Print version metadata.                                           |
+| `completion`         | Generate shell completion scripts.                                |
+| `help`               | Show command help.                                                |
 
-| Command       | What it does                                                   |
-| ------------- | -------------------------------------------------------------- |
-| `clone`       | Clone multiple GitHub repositories for a user or organization. |
-| `pull`        | Pull the latest changes for every discovered repository.       |
-| `push`        | Push local commits to origin.                                  |
-| `rename-repo` | Rename GitHub repositories with `gh`.                          |
-
-Local operations:
-
-| Command         | What it does                                                |
-| --------------- | ----------------------------------------------------------- |
-| `commit`        | Stage all changes and create a commit in every repository.  |
-| `fix-gitignore` | Add missing common generated-file patterns to `.gitignore`. |
-| `license`       | Add or replace MIT license files.                           |
-| `rename-branch` | Rename a branch across repositories.                        |
-| `reset`         | Reset current branches to their origin counterparts.        |
-| `review`        | Review unpushed changes across repositories.                |
-| `untrack`       | Stop tracking files already covered by `.gitignore`.        |
-
-AI commands:
-
-| Command              | What it does                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------- |
-| `commit-ai`          | Generate and create one Conventional Commit per changed repository. Use `--body` for commit bodies.       |
-| `rewrite-commits-ai` | Generate Conventional Commit rewrites with an OpenAI-compatible endpoint. Use `--body` for commit bodies. |
-
-History rewriting:
-
-| Command           | What it does                                     |
-| ----------------- | ------------------------------------------------ |
-| `remove-secrets`  | Purge sensitive files from Git history.          |
-| `rewrite-authors` | Rewrite author and committer identity.           |
-| `rewrite-commits` | Rewrite commit messages to Conventional Commits. |
-| `rewrite-dates`   | Redistribute commit timestamps.                  |
-
-Utility:
-
-| Command      | What it does                           |
-| ------------ | -------------------------------------- |
-| `config`     | Show and edit Git Wrangler setup.      |
-| `completion` | Generate shell completion scripts.     |
-| `doctor`     | Check runtime dependencies.            |
-| `help`       | Show help.                             |
-| `info`       | Show detailed repository information.  |
-| `init`       | Set up GitHub and AI credentials.      |
-| `status`     | Show clean, dirty, and tracking state. |
-| `version`    | Print version metadata.                |
-
-## Safety
-
-Git Wrangler is designed for bulk work, so it tries to make risky operations
-obvious.
-
-- History rewrite commands require confirmation before mutation.
-- `--yes` is the standard flag for noninteractive confirmation.
-- Destructive operations print warnings to stderr.
-- Bulk commands continue through discovered repositories, then exit nonzero if
-  any repository operation failed.
-- No-op skips are treated as successful.
-- AI commands do not send old commit messages as model context and
-  redacts sensitive file content before API calls.
-
-Repository discovery supports regular `.git` directories and linked worktree
-`.git` files with valid `gitdir:` pointers.
-
-## Requirements
+## Runtime Dependencies
 
 | Tool                                   | Needed for                                                      |
 | -------------------------------------- | --------------------------------------------------------------- |
@@ -221,54 +157,69 @@ Repository discovery supports regular `.git` directories and linked worktree
 | `git-filter-repo`                      | History rewrite commands.                                       |
 | OpenAI-compatible chat completions API | `commit-ai` and `rewrite-commits-ai`.                           |
 
-Run this before private or all-repository GitHub workflows:
+`git-wrangler doctor` reports missing `git` as an error because most commands
+need it. Missing `gh` or `git-filter-repo` is reported as a warning because
+those tools are only needed for specific workflows.
+
+Private or all-repository GitHub workflows require Git Wrangler GitHub auth:
 
 ```bash
 git-wrangler init
 ```
 
-History rewrite commands that require `git-filter-repo`:
+AI commands require an OpenAI-compatible base URL, model, and API key configured
+with `git-wrangler init`, `git-wrangler config`, or supported environment
+variables.
+
+## Safety
+
+Git Wrangler is built for bulk operations, so risky paths are explicit.
+
+- History rewrite commands require confirmation before mutation.
+- `--yes` is the standard noninteractive confirmation flag.
+- Destructive operations print warnings to stderr.
+- Bulk commands keep going after per-repository failures, then exit nonzero if
+  any repository failed.
+- No-op skips remain successful.
+- `push --force` uses `--force-with-lease`; raw force push is exposed as
+  `push --force-unsafe`.
+- AI commands redact sensitive file contents and common secret patterns before
+  API calls.
+- `rewrite-commits-ai` does not send old commit messages as model context.
+
+History rewrite commands use `git-filter-repo`:
 
 - `remove-secrets`
 - `rewrite-authors`
 - `rewrite-commits`
+- `rewrite-commits-ai`
 - `rewrite-dates`
-
-AI commands also need an OpenAI-compatible chat completions endpoint, a model
-name, and an API key configured with `git-wrangler init` or
-`git-wrangler config`.
-
-Run `git-wrangler doctor` to check local runtime dependencies. Missing `git`
-is reported as an error because most commands need it. Missing `gh` or
-`git-filter-repo` is reported as a warning because those tools are only needed
-for specific workflows.
-
-## Architecture and technology
-
-Git Wrangler is a compiled Go CLI built with Cobra.
-
-The command entrypoint is small: `cmd/git-wrangler/main.go` calls the CLI
-package, and the internal packages handle repository discovery, Git commands,
-GitHub CLI commands, terminal output, AI commit rewriting, and version metadata.
-
-At a high level:
-
-| Technology        | Role                                                                   |
-| ----------------- | ---------------------------------------------------------------------- |
-| Go                | Native binary.                                                         |
-| Cobra             | Commands, flags, help, and shell completion generation.                |
-| `git`             | Repository operations.                                                 |
-| `go-keyring`      | GitHub and AI credential storage.                                      |
-| `gh`              | GitHub repository transport for clone and rename workflows.            |
-| `git-filter-repo` | History rewrites.                                                      |
-| GoReleaser        | Release archives, checksums, completions, and package-manager updates. |
-
-The detailed contributor-facing architecture lives in [AGENTS.md](AGENTS.md).
 
 ## Development
 
-| Task                            | Command                                 |
-| ------------------------------- | --------------------------------------- |
-| Run the focused test suite      | `go test ./...`                         |
-| Run the full local check script | `scripts/check`                         |
-| Run a release dry run           | `goreleaser release --snapshot --clean` |
+Git Wrangler is a compiled Go CLI built with Cobra. The executable entrypoint is
+`cmd/git-wrangler/main.go`; contributor-facing package boundaries and workflow
+rules live in [AGENTS.md](AGENTS.md).
+
+Common local checks:
+
+| Task                     | Command                                 |
+| ------------------------ | --------------------------------------- |
+| Go test suite            | `go test ./...`                         |
+| Race-enabled test suite  | `go test -race ./...`                   |
+| Static vet checks        | `go vet ./...`                          |
+| Full local check wrapper | `scripts/check`                         |
+| Release dry run          | `goreleaser release --snapshot --clean` |
+
+For website changes, also run:
+
+```bash
+cd website
+pnpm run check
+pnpm run build
+pnpm audit --audit-level moderate
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
