@@ -63,6 +63,16 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "rename-repo") || !requireCommand(a, "gh", "rename-repo") {
 		return 1
 	}
+	ghEnv, authSource, ok, err := githubAuthEnv(a)
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
+	if !ok {
+		a.error("Git Wrangler GitHub auth is required for rename-repo. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.")
+		return 1
+	}
+	a.info("Using GitHub auth from " + string(authSource))
 	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
@@ -74,7 +84,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 	}
 	status := 0
 	for _, r := range repos {
-		oldName, err := a.gh.Stdout(a.ctx, r.dir, "repo", "view", "--json", "name", "-q", ".name")
+		oldName, err := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "name", "-q", ".name")
 		if err != nil {
 			fmt.Fprintf(a.stdout, "%sSkipping %s: No remote or not a GitHub repository.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
@@ -84,7 +94,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		newName, _ := promptRead(a, "Enter new name (leave blank to skip): ")
 		newDesc := ""
 		if editDescription {
-			oldDesc, _ := a.gh.Stdout(a.ctx, r.dir, "repo", "view", "--json", "description", "-q", ".description")
+			oldDesc, _ := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "description", "-q", ".description")
 			oldDesc = strings.TrimSpace(oldDesc)
 			if oldDesc == "" {
 				fmt.Fprintln(a.stdout, "Current description: <None>")
@@ -94,7 +104,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			newDesc, _ = promptRead(a, "Enter new description (leave blank to skip): ")
 		}
 		if editDescription && newDesc != "" {
-			if out, err := a.gh.Capture(a.ctx, r.dir, "repo", "edit", "--description", newDesc); err == nil {
+			if out, err := a.gh.CaptureEnv(a.ctx, r.dir, ghEnv, "repo", "edit", "--description", newDesc); err == nil {
 				fmt.Fprintf(a.stdout, "%sSuccessfully updated description for %s%s\n", a.ui.Green, oldName, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "%sError: Failed to update description for %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
@@ -102,7 +112,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			}
 		}
 		if newName != "" {
-			if out, err := a.gh.Capture(a.ctx, r.dir, "repo", "rename", newName, "--yes"); err == nil {
+			if out, err := a.gh.CaptureEnv(a.ctx, r.dir, ghEnv, "repo", "rename", newName, "--yes"); err == nil {
 				fmt.Fprintf(a.stdout, "%sSuccessfully renamed %s to %s%s\n", a.ui.Green, oldName, newName, a.ui.Reset)
 			} else {
 				fmt.Fprintf(a.stderr, "%sError: Failed to rename %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)

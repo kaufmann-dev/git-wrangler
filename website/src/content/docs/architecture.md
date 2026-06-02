@@ -30,6 +30,12 @@ Cobra generates help output and the completion command. There is no external hel
 
 `internal/git` owns Git command execution and `git-filter-repo` detection.
 
+`internal/config` owns non-secret JSON config.
+
+`internal/credentials` owns keyring-backed secret storage and environment credential resolution.
+
+`internal/auth` owns GitHub device OAuth setup.
+
 `internal/githubcli` owns `gh` command construction and execution.
 
 `internal/run` wraps subprocess execution and supports fake command behavior in tests.

@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/config"
+	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 	"github.com/kaufmann-dev/git-wrangler/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -38,6 +40,10 @@ func runDoctor(a *app, cmd *cobra.Command, args []string) int {
 	if missing {
 		fmt.Fprintln(a.stdout)
 		fmt.Fprintln(a.stdout, "Source installs do not include runtime dependencies. Install missing tools yourself or use an official bundled install.")
+	}
+	fmt.Fprintln(a.stdout)
+	if !doctorConfig(a) {
+		status = 1
 	}
 	return status
 }
@@ -85,4 +91,51 @@ func doctorMissing(a *app, name, neededFor string, critical bool) {
 		label = "ERROR"
 	}
 	fmt.Fprintf(a.stdout, "  %-5s %-16s not found; needed for %s\n", label, name, neededFor)
+}
+
+func doctorConfig(a *app) bool {
+	fmt.Fprintln(a.stdout, "Config and Auth:")
+	path, err := config.Path()
+	if err != nil {
+		fmt.Fprintf(a.stdout, "  ERROR config           %s\n", err.Error())
+		return false
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(a.stdout, "  ERROR config           %s: %s\n", path, err.Error())
+		return false
+	}
+	fmt.Fprintf(a.stdout, "  OK    config           %s\n", path)
+	if credentials.KeyringAvailable(a.creds) {
+		fmt.Fprintln(a.stdout, "  OK    keyring          available")
+	} else {
+		fmt.Fprintln(a.stdout, "  WARN  keyring          unavailable")
+	}
+	github := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
+	fmt.Fprintf(a.stdout, "  %-5s github.auth      %s\n", doctorCredentialLabel(github), github.Source)
+	fmt.Fprintf(a.stdout, "  OK    github.host      %s\n", cfg.GitHub.Host)
+	if cfg.GitHub.Username != "" {
+		fmt.Fprintf(a.stdout, "  OK    github.username  %s\n", cfg.GitHub.Username)
+	}
+	aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
+	fmt.Fprintf(a.stdout, "  %-5s ai.api-key       %s\n", doctorCredentialLabel(aiKey), aiKey.Source)
+	doctorConfigValue(a, "ai.provider", cfg.AI.Provider)
+	doctorConfigValue(a, "ai.base-url", cfg.AI.BaseURL)
+	doctorConfigValue(a, "ai.model", cfg.AI.Model)
+	return true
+}
+
+func doctorCredentialLabel(resolved credentials.Resolved) string {
+	if resolved.Value == "" {
+		return "WARN"
+	}
+	return "OK"
+}
+
+func doctorConfigValue(a *app, name, value string) {
+	if value == "" {
+		fmt.Fprintf(a.stdout, "  WARN  %-16s missing\n", name)
+		return
+	}
+	fmt.Fprintf(a.stdout, "  OK    %-16s %s\n", name, value)
 }
