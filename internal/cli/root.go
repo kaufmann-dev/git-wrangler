@@ -152,6 +152,7 @@ func newRootCommand(a *app) *cobra.Command {
 		}),
 		command(a, "commit-ai", "Generate and create one Conventional Commit per changed repository.", "ai", runCommitAI, flags{
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
+			intFlag("requests-per-minute", 60, "Maximum API requests to start per minute."),
 			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("body", "Generate commit message bodies."),
 			boolFlag("yes", "Skip confirmation prompts."),
@@ -191,6 +192,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "ai", runRewriteCommitsAI, flags{
 			intFlag("batch-size", 10, "Commits per API request."),
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
+			intFlag("requests-per-minute", 60, "Maximum API requests to start per minute."),
 			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
 			boolFlag("body", "Generate commit message bodies."),
