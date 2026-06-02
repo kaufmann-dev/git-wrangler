@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -205,10 +206,8 @@ func TestGenerateFailsBeforeConfirmationWhenContextCollectionFails(t *testing.T)
 		switch joined {
 		case "git rev-parse HEAD":
 			return "abc123\n", "", nil
-		case "git rev-list --reverse --all":
-			return "abc123\n", "", nil
-		case "git log -1 --format=%B abc123":
-			return "old message\n", "", nil
+		case "git log --reverse --all --format=%H%x1f%B%x1e":
+			return "abc123\x1fold message\n\x1e", "", nil
 		case "git diff-tree --root --no-commit-id --name-status -r abc123":
 			return "", "diff failed", errors.New("diff failed")
 		default:
@@ -234,6 +233,76 @@ func TestGenerateFailsBeforeConfirmationWhenContextCollectionFails(t *testing.T)
 	}
 	if confirmed {
 		t.Fatal("confirm should not be called after failed context collection")
+	}
+}
+
+func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
+	var mu sync.Mutex
+	activeLogs := 0
+	maxActiveLogs := 0
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git rev-parse HEAD":
+			return "head\n", "", nil
+		case "git log --reverse --all --format=%H%x1f%B%x1e":
+			mu.Lock()
+			activeLogs++
+			if activeLogs > maxActiveLogs {
+				maxActiveLogs = activeLogs
+			}
+			mu.Unlock()
+			time.Sleep(50 * time.Millisecond)
+			mu.Lock()
+			activeLogs--
+			mu.Unlock()
+			if dir == "repo-a" {
+				return "a1\x1ffeat(cli): existing\n\x1ea2\x1fold a\n\x1e", "", nil
+			}
+			return "b1\x1fold b\n\x1e", "", nil
+		case "git diff-tree --root --no-commit-id --name-status -r a2",
+			"git diff-tree --root --no-commit-id --name-status -r b1":
+			return "M\tmain.go\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r a2",
+			"git diff-tree --root --no-commit-id --numstat -r b1":
+			return "1\t0\tmain.go\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 a2":
+			return "diff --git a/main.go b/main.go\n+repo a\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 b1":
+			return "diff --git a/main.go b/main.go\n+repo b\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	items, stats, err := collectItems(context.Background(), []Repository{
+		{Dir: "repo-a", Name: "repo-a"},
+		{Dir: "repo-b", Name: "repo-b"},
+	}, gitClient, 3000, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if maxActiveLogs < 2 {
+		t.Fatalf("repo scans did not overlap; max active logs = %d", maxActiveLogs)
+	}
+	if stats.RepoCount != 2 || stats.TotalCommits != 3 || stats.SkippedFormatted != 1 || stats.SkippedEmpty != 0 || stats.SkippedUnborn != 0 {
+		t.Fatalf("stats = %#v", stats)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want 2", len(items))
+	}
+	wants := []struct {
+		id   string
+		repo string
+		hash string
+	}{
+		{"c000001", "repo-a", "a2"},
+		{"c000002", "repo-b", "b1"},
+	}
+	for i, want := range wants {
+		if items[i].ID != want.id || items[i].RepoName != want.repo || items[i].Hash != want.hash {
+			t.Fatalf("item[%d] = id=%q repo=%q hash=%q, want %#v", i, items[i].ID, items[i].RepoName, items[i].Hash, want)
+		}
 	}
 }
 
@@ -305,5 +374,56 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 	}
 	if len(maxTokens) < 3 || maxTokens[0] >= maxTokens[1] || maxTokens[1] >= maxTokens[2] {
 		t.Fatalf("max_tokens did not increase across retries: %#v", maxTokens)
+	}
+}
+
+func TestProcessItemsSendsRequestsSerially(t *testing.T) {
+	var mu sync.Mutex
+	active := 0
+	maxActive := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		active++
+		if active > maxActive {
+			maxActive = active
+		}
+		mu.Unlock()
+		time.Sleep(25 * time.Millisecond)
+		mu.Lock()
+		active--
+		mu.Unlock()
+
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		id := "c000001"
+		if strings.Contains(payload.Messages[1].Content, "c000002") {
+			id = "c000002"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	results, failures := processItems(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+	}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		Timeout:   time.Second,
+	}, io.Discard)
+	if len(failures) != 0 || len(results) != 2 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if maxActive != 1 {
+		t.Fatalf("AI requests overlapped; max active = %d", maxActive)
 	}
 }

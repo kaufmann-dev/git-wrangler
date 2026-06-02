@@ -28,31 +28,49 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	type renameBranchResult struct {
+		repo       repo
+		out        string
+		message    string
+		failed     bool
+		accessible bool
+		validRepo  bool
+	}
 	status := 0
-	for _, r := range repos {
+	results := parallelGitMutations(repos, func(r repo) renameBranchResult {
 		if _, err := os.Stat(r.dir); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Directory is inaccessible: %s%s\n", a.ui.Red, r.display, a.ui.Reset)
-			status = 1
-			continue
+			return renameBranchResult{repo: r, failed: true, message: fmt.Sprintf("Error: Directory is inaccessible: %s", r.display)}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Not a valid git repository for %s:\n%s%s\n", a.ui.Red, r.display, out, a.ui.Reset)
-			status = 1
-			continue
+			return renameBranchResult{repo: r, out: out, failed: true, accessible: true}
 		}
 		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+oldBranch) {
-			fmt.Fprintf(a.stdout, "%sOld branch '%s' does not exist in %s. Skipping...%s\n", a.ui.Yellow, oldBranch, r.display, a.ui.Reset)
-			continue
+			return renameBranchResult{repo: r, message: fmt.Sprintf("Old branch '%s' does not exist in %s. Skipping...", oldBranch, r.display), accessible: true, validRepo: true}
 		}
 		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+newBranch) {
-			fmt.Fprintf(a.stdout, "%sNew branch '%s' already exists in %s. Skipping...%s\n", a.ui.Yellow, newBranch, r.display, a.ui.Reset)
-			continue
+			return renameBranchResult{repo: r, message: fmt.Sprintf("New branch '%s' already exists in %s. Skipping...", newBranch, r.display), accessible: true, validRepo: true}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", oldBranch, newBranch); err == nil {
-			fmt.Fprintf(a.stdout, "%sBranch renamed from '%s' to '%s' for %s%s\n", a.ui.Green, oldBranch, newBranch, r.display, a.ui.Reset)
+			return renameBranchResult{repo: r, message: fmt.Sprintf("Branch renamed from '%s' to '%s' for %s", oldBranch, newBranch, r.display), accessible: true, validRepo: true}
 		} else {
-			fmt.Fprintf(a.stderr, "%sError: Failed to rename branch in %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			return renameBranchResult{repo: r, out: out, failed: true, accessible: true, validRepo: true}
+		}
+	})
+	for _, result := range results {
+		switch {
+		case result.failed && !result.accessible:
+			fmt.Fprintf(a.stderr, "%s%s%s\n", a.ui.Red, result.message, a.ui.Reset)
 			status = 1
+		case result.failed && !result.validRepo:
+			fmt.Fprintf(a.stderr, "%sError: Not a valid git repository for %s:\n%s%s\n", a.ui.Red, result.repo.display, result.out, a.ui.Reset)
+			status = 1
+		case result.failed:
+			fmt.Fprintf(a.stderr, "%sError: Failed to rename branch in %s:\n%s%s\n\n", a.ui.Red, result.repo.display, result.out, a.ui.Reset)
+			status = 1
+		case strings.HasPrefix(result.message, "Branch renamed"):
+			fmt.Fprintf(a.stdout, "%s%s%s\n", a.ui.Green, result.message, a.ui.Reset)
+		default:
+			fmt.Fprintf(a.stdout, "%s%s%s\n", a.ui.Yellow, result.message, a.ui.Reset)
 		}
 	}
 	return status
