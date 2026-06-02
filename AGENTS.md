@@ -8,6 +8,8 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `internal/cli` owns Cobra command registration, command groups, generated help, flags, `version`, `completion`, and command wiring. Use `SilenceUsage: true` and `SilenceErrors: true`, and print command errors once to stderr.
 
+Bulk per-repository work in `internal/cli` should use the shared ordered helpers in `parallel.go`: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and `git-filter-repo` history rewrite application remains sequential. Workers must return result structs; print only after collection so repository output order stays stable.
+
 `internal/repos` is filesystem-only repository discovery and display-name handling. It discovers normal `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. It must not call Git, `gh`, or any subprocess.
 
 `internal/git` owns Git subprocess behavior, including `git-filter-repo` detection and history rewrite helper execution. Support both `git-filter-repo` and `git filter-repo`, preferring the standalone executable.

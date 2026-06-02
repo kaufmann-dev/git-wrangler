@@ -24,27 +24,38 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	candidates := []string{"bin/", "obj/", ".idea/", "vendor/", "node_modules/", "dist/", "build/", "wp-includes/", ".DS_Store", "Thumbs.db", "*.log"}
-	status := 0
-	for _, r := range repos {
-		added := []string{}
-		covered := []string{}
-		notPresent := []string{}
+	type gitignoreScan struct {
+		repo       repo
+		added      []string
+		covered    []string
+		notPresent []string
+	}
+	scans := parallelRepos(repos, func(r repo) gitignoreScan {
+		scan := gitignoreScan{repo: r}
 		for _, entry := range candidates {
 			match := findExistingMatch(r.dir, entry)
 			if match == "" {
-				notPresent = append(notPresent, entry)
+				scan.notPresent = append(scan.notPresent, entry)
 				continue
 			}
 			if _, err := a.git.Capture(a.ctx, r.dir, nil, "check-ignore", "-q", match); err == nil {
-				covered = append(covered, entry)
+				scan.covered = append(scan.covered, entry)
 				continue
 			}
 			if fileContainsLine(filepath.Join(r.dir, ".gitignore"), entry) {
-				covered = append(covered, entry)
+				scan.covered = append(scan.covered, entry)
 			} else {
-				added = append(added, entry)
+				scan.added = append(scan.added, entry)
 			}
 		}
+		return scan
+	})
+	status := 0
+	for _, scan := range scans {
+		r := scan.repo
+		added := scan.added
+		covered := scan.covered
+		notPresent := scan.notPresent
 		printedRepo := false
 		if len(added) > 0 {
 			fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)

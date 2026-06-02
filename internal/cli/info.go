@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -27,111 +28,125 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	statusCode := 0
-	for _, r := range repos {
-		fmt.Fprintf(a.stdout, "Repository:         %s%s%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
-		status, err := a.git.StatusPorcelain(a.ctx, r.dir)
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+	results := parallelRepos(repos, func(r repo) infoResult {
+		return collectInfo(a, r)
+	})
+	for _, result := range results {
+		fmt.Fprint(a.stdout, result.stdout)
+		if result.stderr != "" {
+			fmt.Fprint(a.stderr, result.stderr)
+		}
+		if result.failed {
 			statusCode = 1
-			continue
 		}
-		if strings.TrimSpace(status) == "" {
-			fmt.Fprintf(a.stdout, "Status:             %sClean%s\n", a.ui.Green, a.ui.Reset)
-		} else {
-			fmt.Fprintf(a.stdout, "Status:             %sDirty (uncommitted changes or untracked files)%s\n", a.ui.Yellow, a.ui.Reset)
-		}
-		printLicenseInfo(a, r.dir)
-		branch, err := a.git.CurrentBranch(a.ctx, r.dir)
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect branch for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		fmt.Fprintf(a.stdout, "Current branch:     %s\n", strings.TrimSpace(branch))
-		hasCommits := a.git.HasHead(a.ctx, r.dir)
-		ab, _ := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--left-right", "--count", "HEAD...@{u}")
-		if fields := strings.Fields(ab); len(fields) >= 2 {
-			fmt.Fprintf(a.stdout, "Ahead/behind:       %s ahead, %s behind remote\n", fields[0], fields[1])
-		} else {
-			fmt.Fprintln(a.stdout, "Ahead/behind:       No upstream set")
-		}
-		if err := printBranches(a, r.dir); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect branches for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		if err := printRemotes(a, r.dir); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect remotes for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		initial, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--reverse", "--format=%ci - %s")
-		if err != nil && hasCommits {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect initial commit for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		if hasCommits && strings.TrimSpace(initial) != "" {
-			fmt.Fprintf(a.stdout, "Initial commit:     %s\n", firstLine(initial))
-		} else {
-			fmt.Fprintln(a.stdout, "Initial commit:     None (repository is empty)")
-		}
-		commitCount, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count")
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not count commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		fmt.Fprintf(a.stdout, "Total commits:      %s\n", strings.TrimSpace(commitCount))
-		lastMonth, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--since=1 month ago", "--format=%ci")
-		if err != nil && hasCommits {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect recent commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		fmt.Fprintf(a.stdout, "Commits last month: %d\n", len(splitLines(lastMonth)))
-		last, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "-1", "--format=%ci - %s")
-		if err != nil && hasCommits {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect last commit for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		fmt.Fprintf(a.stdout, "Last commit:        %s\n", strings.TrimSpace(last))
-		if hasCommits {
-			if err := printTopAuthors(a, r.dir); err != nil {
-				fmt.Fprintf(a.stderr, "%sError: Could not inspect authors for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-				statusCode = 1
-				continue
-			}
-		} else {
-			fmt.Fprintln(a.stdout, "Top authors:        None (repository is empty)")
-		}
-		if err := printLargestFiles(a, r.dir); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect largest files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			statusCode = 1
-			continue
-		}
-		fmt.Fprintln(a.stdout)
 	}
 	return statusCode
 }
 
+type infoResult struct {
+	stdout string
+	stderr string
+	failed bool
+}
+
+func collectInfo(a *app, r repo) infoResult {
+	var stdout, stderr bytes.Buffer
+	errorf := func(label string, err error) infoResult {
+		fmt.Fprintf(&stderr, "%sError: %s for %s:\n%s%s\n\n", a.ui.Red, label, r.display, err.Error(), a.ui.Reset)
+		return infoResult{stdout: stdout.String(), stderr: stderr.String(), failed: true}
+	}
+
+	fmt.Fprintf(&stdout, "Repository:         %s%s%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
+	status, err := a.git.StatusPorcelain(a.ctx, r.dir)
+	if err != nil {
+		return errorf("Could not inspect status", err)
+	}
+	if strings.TrimSpace(status) == "" {
+		fmt.Fprintf(&stdout, "Status:             %sClean%s\n", a.ui.Green, a.ui.Reset)
+	} else {
+		fmt.Fprintf(&stdout, "Status:             %sDirty (uncommitted changes or untracked files)%s\n", a.ui.Yellow, a.ui.Reset)
+	}
+	writeLicenseInfo(&stdout, a, r.dir)
+	branch, err := a.git.CurrentBranch(a.ctx, r.dir)
+	if err != nil {
+		return errorf("Could not inspect branch", err)
+	}
+	fmt.Fprintf(&stdout, "Current branch:     %s\n", strings.TrimSpace(branch))
+	hasCommits := a.git.HasHead(a.ctx, r.dir)
+	ab, _ := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--left-right", "--count", "HEAD...@{u}")
+	if fields := strings.Fields(ab); len(fields) >= 2 {
+		fmt.Fprintf(&stdout, "Ahead/behind:       %s ahead, %s behind remote\n", fields[0], fields[1])
+	} else {
+		fmt.Fprintln(&stdout, "Ahead/behind:       No upstream set")
+	}
+	if err := writeBranches(&stdout, a, r.dir); err != nil {
+		return errorf("Could not inspect branches", err)
+	}
+	if err := writeRemotes(&stdout, a, r.dir); err != nil {
+		return errorf("Could not inspect remotes", err)
+	}
+	initial, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--reverse", "--format=%ci - %s")
+	if err != nil && hasCommits {
+		return errorf("Could not inspect initial commit", err)
+	}
+	if hasCommits && strings.TrimSpace(initial) != "" {
+		fmt.Fprintf(&stdout, "Initial commit:     %s\n", firstLine(initial))
+	} else {
+		fmt.Fprintln(&stdout, "Initial commit:     None (repository is empty)")
+	}
+	commitCount, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count")
+	if err != nil {
+		return errorf("Could not count commits", err)
+	}
+	fmt.Fprintf(&stdout, "Total commits:      %s\n", strings.TrimSpace(commitCount))
+	lastMonth, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--since=1 month ago", "--format=%ci")
+	if err != nil && hasCommits {
+		return errorf("Could not inspect recent commits", err)
+	}
+	fmt.Fprintf(&stdout, "Commits last month: %d\n", len(splitLines(lastMonth)))
+	last, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "-1", "--format=%ci - %s")
+	if err != nil && hasCommits {
+		return errorf("Could not inspect last commit", err)
+	}
+	fmt.Fprintf(&stdout, "Last commit:        %s\n", strings.TrimSpace(last))
+	if hasCommits {
+		if err := writeTopAuthors(&stdout, a, r.dir); err != nil {
+			return errorf("Could not inspect authors", err)
+		}
+	} else {
+		fmt.Fprintln(&stdout, "Top authors:        None (repository is empty)")
+	}
+	if err := writeLargestFiles(&stdout, a, r.dir); err != nil {
+		return errorf("Could not inspect largest files", err)
+	}
+	fmt.Fprintln(&stdout)
+	return infoResult{stdout: stdout.String()}
+}
+
 func printLicenseInfo(a *app, dir string) {
-	fmt.Fprint(a.stdout, "License:            ")
+	writeLicenseInfo(a.stdout, a, dir)
+}
+
+func writeLicenseInfo(w io.Writer, a *app, dir string) {
+	fmt.Fprint(w, "License:            ")
 	data, err := os.ReadFile(filepath.Join(dir, "LICENSE"))
 	if err != nil {
-		fmt.Fprintf(a.stdout, "%sNone%s\n", a.ui.Yellow, a.ui.Reset)
+		fmt.Fprintf(w, "%sNone%s\n", a.ui.Yellow, a.ui.Reset)
 		return
 	}
 	line := firstLine(string(data))
 	if line == "" {
-		fmt.Fprintf(a.stdout, "%sYes%s\n", a.ui.Green, a.ui.Reset)
+		fmt.Fprintf(w, "%sYes%s\n", a.ui.Green, a.ui.Reset)
 	} else {
-		fmt.Fprintf(a.stdout, "%s'%s'%s\n", a.ui.Green, truncate(line, 70), a.ui.Reset)
+		fmt.Fprintf(w, "%s'%s'%s\n", a.ui.Green, truncate(line, 70), a.ui.Reset)
 	}
 }
 
 func printBranches(a *app, dir string) error {
+	return writeBranches(a.stdout, a, dir)
+}
+
+func writeBranches(w io.Writer, a *app, dir string) error {
 	out, err := a.git.Stdout(a.ctx, dir, nil, "branch", "-a", "--no-color")
 	if err != nil {
 		return err
@@ -146,21 +161,25 @@ func printBranches(a *app, dir string) error {
 			branches = append(branches, line)
 		}
 	}
-	fmt.Fprintf(a.stdout, "Branches (%d):       ", len(branches))
+	fmt.Fprintf(w, "Branches (%d):       ", len(branches))
 	for i, branch := range branches {
 		if i == 0 {
-			fmt.Fprintln(a.stdout, branch)
+			fmt.Fprintln(w, branch)
 		} else {
-			fmt.Fprintf(a.stdout, "%-20s%s\n", "", branch)
+			fmt.Fprintf(w, "%-20s%s\n", "", branch)
 		}
 	}
 	if len(branches) == 0 {
-		fmt.Fprintln(a.stdout)
+		fmt.Fprintln(w)
 	}
 	return nil
 }
 
 func printRemotes(a *app, dir string) error {
+	return writeRemotes(a.stdout, a, dir)
+}
+
+func writeRemotes(w io.Writer, a *app, dir string) error {
 	out, err := a.git.Stdout(a.ctx, dir, nil, "remote", "-v")
 	if err != nil {
 		return err
@@ -176,20 +195,24 @@ func printRemotes(a *app, dir string) error {
 	}
 	sort.Strings(remotes)
 	if len(remotes) == 0 {
-		fmt.Fprintln(a.stdout, "Remotes:            None")
+		fmt.Fprintln(w, "Remotes:            None")
 		return nil
 	}
 	for i, remote := range remotes {
 		if i == 0 {
-			fmt.Fprintf(a.stdout, "Remotes:            %s\n", remote)
+			fmt.Fprintf(w, "Remotes:            %s\n", remote)
 		} else {
-			fmt.Fprintf(a.stdout, "%-20s%s\n", "", remote)
+			fmt.Fprintf(w, "%-20s%s\n", "", remote)
 		}
 	}
 	return nil
 }
 
 func printTopAuthors(a *app, dir string) error {
+	return writeTopAuthors(a.stdout, a, dir)
+}
+
+func writeTopAuthors(w io.Writer, a *app, dir string) error {
 	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--format=%an <%ae>")
 	if err != nil {
 		return err
@@ -217,9 +240,9 @@ func printTopAuthors(a *app, dir string) error {
 			break
 		}
 		if i == 0 {
-			fmt.Fprintf(a.stdout, "Top authors:        %d - %s\n", row.count, row.name)
+			fmt.Fprintf(w, "Top authors:        %d - %s\n", row.count, row.name)
 		} else {
-			fmt.Fprintf(a.stdout, "%-20s%d - %s\n", "", row.count, row.name)
+			fmt.Fprintf(w, "%-20s%d - %s\n", "", row.count, row.name)
 		}
 	}
 	return nil
@@ -231,6 +254,10 @@ type largestFileRow struct {
 }
 
 func printLargestFiles(a *app, dir string) error {
+	return writeLargestFiles(a.stdout, a, dir)
+}
+
+func writeLargestFiles(w io.Writer, a *app, dir string) error {
 	seen := map[string]bool{}
 	rows := []largestFileRow{}
 	err := a.git.CatFileBatchCheckAllObjects(a.ctx, dir, func(output io.Reader) error {
@@ -256,9 +283,9 @@ func printLargestFiles(a *app, dir string) error {
 	}
 	for i, row := range rows {
 		if i == 0 {
-			fmt.Fprintf(a.stdout, "Largest files:      %s - %s\n", humanSize(row.size), row.path)
+			fmt.Fprintf(w, "Largest files:      %s - %s\n", humanSize(row.size), row.path)
 		} else {
-			fmt.Fprintf(a.stdout, "%-20s%s - %s\n", "", humanSize(row.size), row.path)
+			fmt.Fprintf(w, "%-20s%s - %s\n", "", humanSize(row.size), row.path)
 		}
 	}
 	return nil
