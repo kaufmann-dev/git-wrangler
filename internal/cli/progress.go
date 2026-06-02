@@ -110,7 +110,7 @@ func (p *progress) finish(key, detail string) {
 
 func (p *progress) currentDetailLocked() string {
 	if len(p.activeKeys) > 0 {
-		key := p.activeKeys[0]
+		key := p.activeKeys[len(p.activeKeys)-1]
 		if val, ok := p.activeMap[key]; ok {
 			return val
 		}
