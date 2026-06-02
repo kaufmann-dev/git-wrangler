@@ -27,7 +27,9 @@ Homebrew installs bash, zsh, and fish completions automatically.
 
 Windows users can either run Git Wrangler inside WSL using the Linux/Homebrew path or download the matching Windows archive from GitHub Releases, extract the `git-wrangler` binary, and place it on `PATH`.
 
-Manual binary installs do not install runtime dependencies. Install the dependencies below yourself as needed for the commands you run.
+Official packaged installs include runtime dependencies. Source installs do not, so install the dependencies below yourself as needed for the commands you run.
+
+Run `git-wrangler doctor` after installation to check the local tools Git Wrangler can use.
 
 ## Runtime dependencies
 
@@ -46,6 +48,8 @@ gh auth login
 - `rewrite-commits`
 - `rewrite-commits-ai`
 - `rewrite-dates`
+
+`git-wrangler doctor` reports missing `git` as an error because most commands need it. Missing `gh` or `git-filter-repo` is reported as a warning because those tools are only needed for specific workflows.
 
 ## Uninstall
 
