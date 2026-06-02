@@ -140,8 +140,9 @@ func TestRequiredFlagFailsNonInteractive(t *testing.T) {
 	}
 }
 
-func TestYesDoesNotPromptForRequiredFlag(t *testing.T) {
+func TestRewriteCommitsAIMissingConfigDoesNotPrompt(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stderr bytes.Buffer
 	cmd := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader("ignored\n"), io.Discard, &stderr))
 	cmd.SetArgs([]string{"rewrite-commits-ai", "--yes"})
@@ -153,9 +154,9 @@ func TestYesDoesNotPromptForRequiredFlag(t *testing.T) {
 		t.Fatal("expected missing flag failure")
 	}
 	if strings.Contains(stderr.String(), "OpenAI-compatible API base URL:") {
-		t.Fatalf("--yes should not prompt:\n%s", stderr.String())
+		t.Fatalf("rewrite-commits-ai should not prompt for removed flags:\n%s", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "--base-url is required") {
+	if !strings.Contains(stderr.String(), "AI model is required") {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())
 	}
 }
