@@ -24,7 +24,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `internal/ui` owns output streams, colors, plain output behavior, status vocabulary, prompts, and terminal detection.
 
-`internal/ai` owns `rewrite-commits-ai`: redaction, batching, OpenAI-compatible chat completions calls, response validation, retry behavior, and callback generation.
+`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, response validation, retry behavior, and callback generation.
 
 `internal/version` owns `Version`, `Commit`, and `Date`, defaulting to `dev`, `unknown`, and `unknown`. GoReleaser injects release values with ldflags.
 
@@ -32,7 +32,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`clone`, `commit`, `config`, `doctor`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`clone`, `commit`, `commit-ai`, `config`, `doctor`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
