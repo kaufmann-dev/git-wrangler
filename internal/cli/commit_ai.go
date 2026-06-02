@@ -15,12 +15,17 @@ type commitAIChange struct {
 
 func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
+	requestsPerMinute, _ := cmd.Flags().GetInt("requests-per-minute")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
 
 	if maxCharsInt <= 0 {
 		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
+		return 1
+	}
+	if requestsPerMinute <= 0 {
+		a.plainErrorf("--requests-per-minute must be a positive integer.")
 		return 1
 	}
 	if timeoutInt <= 0 {
@@ -74,17 +79,33 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 	for _, change := range changes {
 		inputs = append(inputs, change.input)
 	}
+	apiProgress := (*progress)(nil)
 	messages, generationFailures := ai.GenerateMessages(a.ctx, inputs, ai.Config{
 		BaseURL:           settings.Config.AI.BaseURL,
 		Model:             settings.Config.AI.Model,
 		APIKey:            settings.APIKey,
 		BatchSize:         4,
 		MaxCharsPerCommit: maxCharsInt,
+		RequestsPerMinute: requestsPerMinute,
 		Timeout:           time.Duration(timeoutInt) * time.Second,
 		Body:              body,
 		Git:               a.git,
+		Progress: func(event ai.ProgressEvent) {
+			if event.Phase != "Sending API requests" || event.Total <= 1 || event.Current == 0 {
+				return
+			}
+			if apiProgress == nil {
+				apiProgress = newProgress(a, event.Phase, event.Total)
+			}
+			apiProgress.advance("")
+		},
 	}, a.stderr)
+	apiProgress.done()
 	if len(generationFailures) > 0 {
+		if allGenerationFailuresAre(generationFailures, ai.ErrAPICancelled.Error()) {
+			fmt.Fprintf(a.stdout, "%sStopped while sending API requests. No commit was created.%s\n", a.ui.Yellow, a.ui.Reset)
+			return 1
+		}
 		for _, failure := range generationFailures {
 			fmt.Fprintf(a.stderr, "Failed %s: %s\n", failure.RepoName, failure.Reason)
 		}
@@ -120,6 +141,18 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	return 0
+}
+
+func allGenerationFailuresAre(failures []ai.GenerationFailure, reason string) bool {
+	if len(failures) == 0 {
+		return false
+	}
+	for _, failure := range failures {
+		if failure.Reason != reason {
+			return false
+		}
+	}
+	return true
 }
 
 func collectCommitAIChanges(a *app, repos []repo, maxChars int) ([]commitAIChange, int, int) {
