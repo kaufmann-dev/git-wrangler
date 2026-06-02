@@ -37,7 +37,7 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 		validRepo  bool
 	}
 	status := 0
-	results := parallelGitMutations(repos, func(r repo) renameBranchResult {
+	results := parallelGitMutationsProgress(repos, newProgress(a, "Renaming branches", len(repos)), func(r repo) renameBranchResult {
 		if _, err := os.Stat(r.dir); err != nil {
 			return renameBranchResult{repo: r, failed: true, message: fmt.Sprintf("Error: Directory is inaccessible: %s", r.display)}
 		}
