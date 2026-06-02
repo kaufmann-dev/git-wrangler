@@ -20,6 +20,9 @@ type progress struct {
 	current     int
 	lastWidth   int
 	closed      bool
+	activeKeys  []string
+	activeMap   map[string]string
+	lastDetail  string
 }
 
 var termGetSize = term.GetSize
@@ -36,7 +39,51 @@ func newProgress(a *app, label string, total int) *progress {
 	}
 }
 
+func (p *progress) start(detail string) {
+	if p == nil || detail == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
+	if p.activeMap == nil {
+		p.activeMap = make(map[string]string)
+	}
+	if _, exists := p.activeMap[detail]; !exists {
+		p.activeKeys = append(p.activeKeys, detail)
+	}
+	p.activeMap[detail] = detail
+	if p.interactive {
+		p.write(p.currentDetailLocked())
+	}
+}
+
+func (p *progress) update(key, detail string) {
+	if p == nil || key == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
+	if p.activeMap != nil {
+		if _, exists := p.activeMap[key]; exists {
+			p.activeMap[key] = detail
+			if p.interactive {
+				p.write(p.currentDetailLocked())
+			}
+		}
+	}
+}
+
 func (p *progress) advance(detail string) {
+	p.finish(detail, detail)
+}
+
+func (p *progress) finish(key, detail string) {
 	if p == nil {
 		return
 	}
@@ -45,10 +92,31 @@ func (p *progress) advance(detail string) {
 	if p.closed {
 		return
 	}
+	for i, a := range p.activeKeys {
+		if a == key {
+			p.activeKeys = append(p.activeKeys[:i], p.activeKeys[i+1:]...)
+			break
+		}
+	}
+	if p.activeMap != nil {
+		delete(p.activeMap, key)
+	}
+	p.lastDetail = detail
 	p.current++
 	if p.shouldWrite() {
-		p.write(detail)
+		p.write(p.currentDetailLocked())
 	}
+}
+
+func (p *progress) currentDetailLocked() string {
+	if len(p.activeKeys) > 0 {
+		key := p.activeKeys[0]
+		if val, ok := p.activeMap[key]; ok {
+			return val
+		}
+		return key
+	}
+	return p.lastDetail
 }
 
 func (p *progress) message(detail string) {
