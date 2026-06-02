@@ -13,6 +13,7 @@ import (
 func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	batch, _ := cmd.Flags().GetInt("batch-size")
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
+	requestsPerMinute, _ := cmd.Flags().GetInt("requests-per-minute")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
 	body, _ := cmd.Flags().GetBool("body")
@@ -28,6 +29,10 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	}
 	if maxCharsInt <= 0 {
 		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
+		return 1
+	}
+	if requestsPerMinute <= 0 {
+		a.plainErrorf("--requests-per-minute must be a positive integer.")
 		return 1
 	}
 	if timeoutInt <= 0 {
@@ -68,12 +73,14 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
 	}
 	scanProgress := newProgress(a, "Scanning repositories", len(repos))
+	apiProgress := (*progress)(nil)
 	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
 		BaseURL:           settings.Config.AI.BaseURL,
 		Model:             settings.Config.AI.Model,
 		APIKey:            settings.APIKey,
 		BatchSize:         batch,
 		MaxCharsPerCommit: maxCharsInt,
+		RequestsPerMinute: requestsPerMinute,
 		Timeout:           time.Duration(timeoutInt) * time.Second,
 		SkipConventional:  skipConventional,
 		Body:              body,
@@ -88,6 +95,11 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 				scanProgress.advance(event.RepoName)
 			case "Scanning commits":
 				scanProgress.message(fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
+			case "Sending API requests":
+				if apiProgress == nil {
+					apiProgress = newProgress(a, event.Phase, event.Total)
+				}
+				apiProgress.advance("")
 			default:
 				scanProgress.message(fmt.Sprintf("%s %d/%d", event.Phase, event.Current, event.Total))
 			}
@@ -99,8 +111,13 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		return confirm(a, question)
 	})
 	scanProgress.done()
+	apiProgress.done()
 	if errors.Is(err, ai.ErrCancelled) {
 		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
+		return 1
+	}
+	if errors.Is(err, ai.ErrAPICancelled) {
+		fmt.Fprintf(a.stdout, "%sStopped while sending API requests. No history was changed.%s\n", a.ui.Yellow, a.ui.Reset)
 		return 1
 	}
 	if err != nil {

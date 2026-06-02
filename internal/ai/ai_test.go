@@ -111,6 +111,25 @@ func TestSensitivePathList(t *testing.T) {
 	}
 }
 
+func TestExcludedDiffPathList(t *testing.T) {
+	excluded := []string{
+		"node_modules/pkg/index.js",
+		"vendor/library/file.go",
+		"app/.next/server/page.js",
+		"wp-admin/includes/file.php",
+		"wp-content/uploads/2026/image.jpg",
+		"public/uploads/image.jpg",
+	}
+	for _, path := range excluded {
+		if !IsExcludedDiffPath(path) {
+			t.Fatalf("expected excluded path %q", path)
+		}
+	}
+	if IsExcludedDiffPath("app/main.go") {
+		t.Fatal("normal source path must not be excluded")
+	}
+}
+
 func TestExtractMessagesAndValidate(t *testing.T) {
 	messages, err := ExtractMessages("```json\n{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}\n```")
 	if err != nil {
@@ -437,22 +456,88 @@ func TestBuildContextSkipsShowForSensitiveOnlyCommit(t *testing.T) {
 	}
 }
 
-func TestProcessItemsSendsRequestsWithBoundedConcurrency(t *testing.T) {
+func TestBuildContextSkipsShowForExcludedOnlyCommit(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return "M\tnode_modules/pkg/index.js\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return "1\t0\tnode_modules/pkg/index.js\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123":
+			return "", "", errors.New("git show should not run")
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "node_modules/pkg/index.js") {
+		t.Fatalf("missing excluded path context:\n%s", contextText)
+	}
+	if !strings.Contains(contextText, "[EXCLUDED OR SENSITIVE FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing excluded marker:\n%s", contextText)
+	}
+}
+
+func TestBuildStagedContextSkipsDiffForExcludedOnlyChanges(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff --cached --name-status":
+			return "M\tvendor/pkg/file.go\n", "", nil
+		case "git diff --cached --numstat":
+			return "1\t0\tvendor/pkg/file.go\n", "", nil
+		case "git diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3":
+			return "", "", errors.New("git diff should not run")
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "vendor/pkg/file.go") {
+		t.Fatalf("missing excluded path context:\n%s", contextText)
+	}
+	if !strings.Contains(contextText, "[EXCLUDED OR SENSITIVE FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing excluded marker:\n%s", contextText)
+	}
+}
+
+func TestRedactDiffHidesExcludedPathContentInMixedDiff(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/node_modules/pkg/index.js b/node_modules/pkg/index.js",
+		"+large generated content",
+		"diff --git a/main.go b/main.go",
+		"+useful source content",
+	}, "\n")
+
+	redacted := RedactDiff(diff)
+	if strings.Contains(redacted, "large generated content") {
+		t.Fatalf("excluded content leaked:\n%s", redacted)
+	}
+	if !strings.Contains(redacted, "[EXCLUDED FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing excluded marker:\n%s", redacted)
+	}
+	if !strings.Contains(redacted, "useful source content") {
+		t.Fatalf("normal source content was hidden:\n%s", redacted)
+	}
+}
+
+func TestProcessItemsPacesRequestStartsAndKeepsResults(t *testing.T) {
 	var mu sync.Mutex
-	active := 0
-	maxActive := 0
 	requests := 0
+	var starts []time.Time
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		active++
-		if active > maxActive {
-			maxActive = active
-		}
 		requests++
-		mu.Unlock()
-		time.Sleep(25 * time.Millisecond)
-		mu.Lock()
-		active--
+		starts = append(starts, time.Now())
 		mu.Unlock()
 
 		var payload struct {
@@ -466,32 +551,134 @@ func TestProcessItemsSendsRequestsWithBoundedConcurrency(t *testing.T) {
 		id := "c000001"
 		if strings.Contains(payload.Messages[1].Content, "c000002") {
 			id = "c000002"
+			time.Sleep(20 * time.Millisecond)
 		} else if strings.Contains(payload.Messages[1].Content, "c000003") {
 			id = "c000003"
+		} else {
+			time.Sleep(80 * time.Millisecond)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
 	}))
 	defer server.Close()
 
-	results, failures := processItems(context.Background(), []item{
+	results, failures, err := processItems(context.Background(), []item{
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
 		{ID: "c000003", RepoName: "repo", Hash: "333333333333", Context: "context"},
 	}, Config{
-		BaseURL:   server.URL,
-		Model:     "test-model",
-		APIKey:    "test-key",
-		BatchSize: 1,
-		Timeout:   time.Second,
+		BaseURL:           server.URL,
+		Model:             "test-model",
+		APIKey:            "test-key",
+		BatchSize:         1,
+		RequestsPerMinute: 3000,
+		Timeout:           time.Second,
 	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(failures) != 0 || len(results) != 3 {
 		t.Fatalf("results = %#v failures = %#v", results, failures)
 	}
 	if requests != 3 {
 		t.Fatalf("requests = %d, want 3", requests)
 	}
-	if maxActive < 2 || maxActive > 2 {
-		t.Fatalf("max active AI requests = %d, want 2", maxActive)
+	if len(starts) != 3 {
+		t.Fatalf("starts = %d, want 3", len(starts))
+	}
+	for i := 1; i < len(starts); i++ {
+		if delta := starts[i].Sub(starts[i-1]); delta < 12*time.Millisecond {
+			t.Fatalf("request %d started too soon after previous request: %s", i+1, delta)
+		}
+	}
+	for _, id := range []string{"c000001", "c000002", "c000003"} {
+		if results[id].Subject != "feat(cli): add thing" {
+			t.Fatalf("missing result for %s: %#v", id, results[id])
+		}
+	}
+}
+
+func TestProcessItemsReportsProgressWithoutBatchSpam(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		id := "c000001"
+		if strings.Contains(payload.Messages[1].Content, "c000002") {
+			id = "c000002"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	var events []ProgressEvent
+	results, failures, err := processItems(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+	}, Config{
+		BaseURL:           server.URL,
+		Model:             "test-model",
+		APIKey:            "test-key",
+		BatchSize:         1,
+		RequestsPerMinute: 60000,
+		Timeout:           time.Second,
+		Progress: func(event ProgressEvent) {
+			events = append(events, event)
+		},
+	}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || len(results) != 2 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if strings.Contains(out.String(), "Generating batch") {
+		t.Fatalf("old batch spam was printed:\n%s", out.String())
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %#v, want 2", events)
+	}
+	for i, event := range events {
+		if event.Phase != "Sending API requests" || event.Current != i+1 || event.Total != 2 {
+			t.Fatalf("event[%d] = %#v", i, event)
+		}
+	}
+}
+
+func TestProcessItemsCancellationSuppressesRetryOutput(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	_, failures, err := processItems(ctx, []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+	}, Config{
+		BaseURL:           server.URL,
+		Model:             "test-model",
+		APIKey:            "test-key",
+		BatchSize:         1,
+		RequestsPerMinute: 60000,
+		Timeout:           time.Second,
+	}, &out)
+	if !errors.Is(err, ErrAPICancelled) {
+		t.Fatalf("err = %v, want ErrAPICancelled", err)
+	}
+	if len(failures) != 0 {
+		t.Fatalf("failures = %#v", failures)
+	}
+	if strings.Contains(out.String(), "Retrying") {
+		t.Fatalf("retry output was printed for cancellation:\n%s", out.String())
 	}
 }

@@ -22,9 +22,10 @@ import (
 )
 
 var (
-	ErrCancelled   = errors.New("cancelled")
-	conventionalRe = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+$`)
-	secretPatterns = []*regexp.Regexp{
+	ErrCancelled    = errors.New("cancelled")
+	ErrAPICancelled = errors.New("api generation cancelled")
+	conventionalRe  = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+$`)
+	secretPatterns  = []*regexp.Regexp{
 		regexp.MustCompile(`(['"]?)(sk-[a-zA-Z0-9_-]{20,}|sk_[a-zA-Z0-9_-]{20,})(['"]?)`),
 		regexp.MustCompile(`(['"]?)(gh[pousr]_[a-zA-Z0-9_]{20,})(['"]?)`),
 		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
@@ -47,6 +48,7 @@ type Config struct {
 	APIKey            string
 	BatchSize         int
 	MaxCharsPerCommit int
+	RequestsPerMinute int
 	Timeout           time.Duration
 	SkipConventional  bool
 	Body              bool
@@ -141,6 +143,9 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	if cfg.MaxCharsPerCommit <= 0 {
 		cfg.MaxCharsPerCommit = 3000
 	}
+	if cfg.RequestsPerMinute <= 0 {
+		cfg.RequestsPerMinute = 60
+	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 90 * time.Second
 	}
@@ -185,7 +190,10 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 		return nil, ErrCancelled
 	}
 
-	results, failures := processItems(ctx, items, cfg, out)
+	results, failures, err := processItems(ctx, items, cfg, out)
+	if err != nil {
+		return nil, err
+	}
 	if len(failures) > 0 {
 		for _, f := range failures {
 			fmt.Fprintf(out, "Failed %s %s: %s\n", f.Item.RepoName, f.Item.Hash[:8], f.Reason)
@@ -202,6 +210,9 @@ func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config
 	if cfg.MaxCharsPerCommit <= 0 {
 		cfg.MaxCharsPerCommit = 3000
 	}
+	if cfg.RequestsPerMinute <= 0 {
+		cfg.RequestsPerMinute = 60
+	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 90 * time.Second
 	}
@@ -215,8 +226,19 @@ func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config
 			Context:  change.Context,
 		})
 	}
-	results, failures := processItems(ctx, items, cfg, out)
+	results, failures, err := processItems(ctx, items, cfg, out)
 	publicFailures := make([]GenerationFailure, 0, len(failures))
+	if err != nil {
+		for _, change := range changes {
+			publicFailures = append(publicFailures, GenerationFailure{
+				ID:       change.ID,
+				RepoName: change.RepoName,
+				Ref:      change.Ref,
+				Reason:   err.Error(),
+			})
+		}
+		return results, publicFailures
+	}
 	for _, failure := range failures {
 		publicFailures = append(publicFailures, GenerationFailure{
 			ID:       failure.Item.ID,
@@ -391,8 +413,8 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
 		return "", nil
 	}
-	diffText := "[SENSITIVE FILE CONTENT HIDDEN]"
-	if !allChangedPathsSensitive(nameStatus) {
+	diffText := hiddenDiffMarker(nameStatus)
+	if !allChangedPathsHidden(nameStatus) {
 		diffText, err = gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
@@ -415,17 +437,27 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 	return truncateText(contextText, charBudget), nil
 }
 
-func allChangedPathsSensitive(nameStatus string) bool {
+func allChangedPathsHidden(nameStatus string) bool {
 	paths := changedPaths(nameStatus)
 	if len(paths) == 0 {
 		return false
 	}
 	for _, path := range paths {
-		if !IsSensitivePath(path) {
+		if !IsSensitivePath(path) && !IsExcludedDiffPath(path) {
 			return false
 		}
 	}
 	return true
+}
+
+func hiddenDiffMarker(nameStatus string) string {
+	paths := changedPaths(nameStatus)
+	for _, path := range paths {
+		if !IsSensitivePath(path) && IsExcludedDiffPath(path) {
+			return "[EXCLUDED OR SENSITIVE FILE CONTENT HIDDEN]"
+		}
+	}
+	return "[SENSITIVE FILE CONTENT HIDDEN]"
 }
 
 func changedPaths(nameStatus string) []string {
@@ -452,8 +484,8 @@ func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repo
 	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
 		return "", nil
 	}
-	diffText := "[SENSITIVE FILE CONTENT HIDDEN]"
-	if !allChangedPathsSensitive(nameStatus) {
+	diffText := hiddenDiffMarker(nameStatus)
+	if !allChangedPathsHidden(nameStatus) {
 		diffText, err = gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3")
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
@@ -511,16 +543,38 @@ func IsSensitivePath(path string) bool {
 	return false
 }
 
+func IsExcludedDiffPath(path string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	normalized = strings.Trim(normalized, "/")
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains("/"+normalized+"/", "/wp-content/uploads/") {
+		return true
+	}
+	for _, segment := range strings.Split(normalized, "/") {
+		switch segment {
+		case "node_modules", "vendor", "dist", "build", ".next", ".nuxt", ".astro", ".cache", "coverage", "tmp", "temp", "bin", "obj", "target", "wp-admin", "wp-includes", "uploads":
+			return true
+		}
+	}
+	return false
+}
+
 func RedactDiff(diffText string) string {
 	var lines []string
 	hiding := false
 	for _, line := range strings.Split(diffText, "\n") {
 		if strings.HasPrefix(line, "diff --git ") {
 			path, ok := diffPath(line)
-			hiding = !ok || IsSensitivePath(path)
+			hiding = !ok || IsSensitivePath(path) || IsExcludedDiffPath(path)
 			lines = append(lines, RedactLine(line))
 			if hiding {
-				lines = append(lines, "[SENSITIVE FILE CONTENT HIDDEN]")
+				if ok && IsExcludedDiffPath(path) && !IsSensitivePath(path) {
+					lines = append(lines, "[EXCLUDED FILE CONTENT HIDDEN]")
+				} else {
+					lines = append(lines, "[SENSITIVE FILE CONTENT HIDDEN]")
+				}
 			}
 			continue
 		}
@@ -540,10 +594,10 @@ func RedactLine(line string) string {
 	return redacted
 }
 
-func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
+func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) (map[string]Message, []failure, error) {
 	totalBatches := (len(items) + cfg.BatchSize - 1) / cfg.BatchSize
 	if totalBatches == 0 {
-		return map[string]Message{}, nil
+		return map[string]Message{}, nil, nil
 	}
 	type batchTask struct {
 		index int
@@ -554,31 +608,43 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		results  map[string]Message
 		failures []failure
 	}
-	tasks := make(chan batchTask)
+	tasks := make([]batchTask, 0, totalBatches)
 	batchResults := make([]batchResult, totalBatches)
-	workerCount := min(2, totalBatches)
 	var wg sync.WaitGroup
+	completedBatches := 0
+	var completedMu sync.Mutex
 	output := &lockedWriter{writer: out}
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for task := range tasks {
-				output.printf("Generating batch %d/%d (%d commit(s))...\n", task.index+1, totalBatches, len(task.items))
-				accepted, batchFailures := processBatch(ctx, task.items, cfg, output)
-				batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
-			}
-		}()
-	}
+	progress := progressFunc(cfg, output)
+	interval := requestInterval(cfg.RequestsPerMinute)
 	for batchIndex, start := 0, 0; start < len(items); batchIndex, start = batchIndex+1, start+cfg.BatchSize {
 		end := start + cfg.BatchSize
 		if end > len(items) {
 			end = len(items)
 		}
-		tasks <- batchTask{index: batchIndex, items: items[start:end]}
+		tasks = append(tasks, batchTask{index: batchIndex, items: items[start:end]})
 	}
-	close(tasks)
+	for _, task := range tasks {
+		if task.index > 0 && !sleepContext(ctx, interval) {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(task batchTask) {
+			defer wg.Done()
+			accepted, batchFailures := processBatch(ctx, task.items, cfg, output)
+			batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
+			completedMu.Lock()
+			completedBatches++
+			progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches})
+			completedMu.Unlock()
+		}(task)
+	}
 	wg.Wait()
+	if ctx.Err() != nil {
+		return nil, nil, ErrAPICancelled
+	}
 
 	results := map[string]Message{}
 	var failures []failure
@@ -588,7 +654,14 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		}
 		failures = append(failures, batch.failures...)
 	}
-	return results, failures
+	return results, failures, nil
+}
+
+func requestInterval(requestsPerMinute int) time.Duration {
+	if requestsPerMinute <= 0 {
+		requestsPerMinute = 60
+	}
+	return time.Minute / time.Duration(requestsPerMinute)
 }
 
 type lockedWriter struct {
@@ -600,12 +673,6 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.writer.Write(p)
-}
-
-func (w *lockedWriter) printf(format string, args ...any) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	fmt.Fprintf(w.writer, format, args...)
 }
 
 func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
@@ -633,6 +700,9 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		}
 		pending = nextPending
 		if len(pending) > 0 && attempt < 3 {
+			if ctx.Err() != nil {
+				break
+			}
 			fmt.Fprintf(out, "Retrying %d commit(s) after failed batch attempt %d: %s.\n", len(pending), attempt, retryReason(pending, errorsByID))
 			if !sleepContext(ctx, time.Duration(attempt)*250*time.Millisecond) {
 				break
@@ -640,6 +710,9 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		}
 	}
 	if len(pending) > 1 {
+		if ctx.Err() != nil {
+			return accepted, failuresForPending(pending, errorsByID)
+		}
 		fmt.Fprintf(out, "Retrying %d commit(s) individually after failed batch generation.\n", len(pending))
 		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out)
 		for id, message := range recovered {
@@ -652,6 +725,18 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
 	}
 	return accepted, failures
+}
+
+func failuresForPending(pending []item, errorsByID map[string]string) []failure {
+	failures := make([]failure, 0, len(pending))
+	for _, item := range pending {
+		reason := errorsByID[item.ID]
+		if reason == "" {
+			reason = ErrCancelled.Error()
+		}
+		failures = append(failures, failure{Item: item, Reason: reason})
+	}
+	return failures
 }
 
 func retryReason(pending []item, errorsByID map[string]string) string {
