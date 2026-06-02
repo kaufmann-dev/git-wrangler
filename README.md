@@ -3,12 +3,12 @@
 [![CI](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml)
 [![Release](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-git--wrangler.kaufmann.dev-blue)](https://git-wrangler.kaufmann.dev)
+[![GitHub Releases](https://img.shields.io/badge/releases-GitHub-blue)](https://github.com/kaufmann-dev/git-wrangler/releases)
 
-**Orchestrate Git operations across many repositories.**
+**Git operations, orchestrated at scale.**
 
 A single, zero-dependency Go binary that coordinates dozens of Git repositories in parallel, eliminating the manual overhead of managing large developer workspaces.
-
-📖 [Documentation](https://git-wrangler.kaufmann.dev) · 📦 [Releases](https://github.com/kaufmann-dev/git-wrangler/releases)
 
 ---
 
@@ -75,27 +75,18 @@ scoop update git-wrangler
 ## Quick Start
 
 ```bash
-# 1. Verify your setup
-git-wrangler doctor
-
-# 2. Set up GitHub auth and AI credentials (if needed)
+# 1. Set up GitHub auth and AI credentials
 git-wrangler init
+
+# 2. Verify your setup
+git-wrangler doctor
 
 # 3. Check state across all repos in the current directory
 git-wrangler status
 
-# 4. Pull latest changes everywhere
-git-wrangler pull --rebase
-
-# 5. Review what you haven't pushed yet
-git-wrangler review
-
-# 6. Generate AI commit messages for every dirty repo
-git-wrangler commit-ai
+# 4. See the full command list to decide what to do next
+git-wrangler help
 ```
-
-Run `git-wrangler help` for the full command list, or
-`git-wrangler help <command>` for command-specific flags.
 
 ## Commands
 
@@ -163,23 +154,25 @@ git-wrangler config set ai-model gpt-4o
 git-wrangler config set ai-api-key
 ```
 
-**Privacy by default** — diff content is redacted to remove sensitive file
-contents and common secret patterns before being sent to the API. Old commit
-messages are never sent as context.
-
 ## Safety & Guardrails
 
-Git Wrangler is built for bulk operations, so risky actions are always explicit:
+Git Wrangler is built for bulk Git operations, where small mistakes can affect
+many repositories at once. Destructive actions are therefore explicit, guarded,
+and designed to fail safely.
 
-- **Confirmation required** — history rewrite commands prompt before mutating.
-  Pass `--yes` for noninteractive use.
-- **Safe force push** — `push --force` uses `--force-with-lease`. Raw force push
-  is a separate `--force-unsafe` flag.
-- **Fail-safe bulk runs** — bulk commands continue after per-repo failures, then
-  exit nonzero if anything failed. No-op skips stay successful.
+- **Privacy by default** — AI commands redact diff content before sending it to
+  the API, including sensitive file contents and common secret patterns. Old
+  commit messages are not sent as context.
+- **Confirmation before mutation** — history rewrite commands ask before making
+  destructive changes. Use `--yes` only for intentional noninteractive runs.
+- **Safer force pushes** — `push --force` uses `--force-with-lease`. Raw force
+  push requires the separate `--force-unsafe` flag.
+- **Fail-safe bulk runs** — per-repository failures do not stop the whole run.
+  Git Wrangler reports all failures and exits nonzero if anything failed.
 - **Origin preservation** — history rewrite commands restore the `origin` remote
   after `git-filter-repo` removes it.
-- **Warnings on stderr** — destructive operations always warn before proceeding.
+- **Warnings on stderr** — destructive operations warn clearly without polluting
+  normal command output.
 
 ### Runtime dependencies
 
