@@ -2,7 +2,7 @@
 title: "completion"
 description: "Generates shell completion scripts."
 category: "Utility"
-order: 5
+order: 6
 usage: "git-wrangler completion [bash|zsh|fish|powershell]"
 ---
 
