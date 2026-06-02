@@ -3,7 +3,7 @@
 [![CI](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml)
 [![Release](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-git--wrangler.kaufmann.dev-blue)](https://git-wrangler.kaufmann.dev)
+[![Documentation](https://img.shields.io/badge/docs-wrangler.kaufmann.dev-blue)](https://wrangler.kaufmann.dev/docs/introduction)
 [![GitHub Releases](https://img.shields.io/badge/releases-GitHub-blue)](https://github.com/kaufmann-dev/git-wrangler/releases)
 
 **Git operations, orchestrated at scale.**
