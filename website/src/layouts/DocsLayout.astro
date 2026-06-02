@@ -18,7 +18,7 @@ const { title, description, currentSlug } = Astro.props;
 const allDocs = await getCollection('docs');
 
 // Sort entries: put General / meta pages first, then alphabetically within category
-const categoryOrder = ['General', 'Utility', 'Local Operations', 'Remote Operations', 'History Rewriting'];
+const categoryOrder = ['General', 'Utility', 'Local Operations', 'Remote Operations', 'AI Commands', 'History Rewriting'];
 
 const grouped: Record<string, typeof allDocs> = {};
 for (const doc of allDocs) {

@@ -121,6 +121,7 @@ func newRootCommand(a *app) *cobra.Command {
 	root.AddGroup(
 		&cobra.Group{ID: "remote", Title: "Remote Operations:"},
 		&cobra.Group{ID: "local", Title: "Local Operations:"},
+		&cobra.Group{ID: "ai", Title: "AI Commands:"},
 		&cobra.Group{ID: "history", Title: "History Rewriting:"},
 		&cobra.Group{ID: "utility", Title: "Utility:"},
 	)
@@ -148,6 +149,12 @@ func newRootCommand(a *app) *cobra.Command {
 		}),
 		command(a, "commit", "Stage all changes and create a commit in every repository.", "local", runCommit, flags{
 			stringFlag("message", "", "Commit message."),
+		}),
+		command(a, "commit-ai", "Generate and create one Conventional Commit per changed repository.", "ai", runCommitAI, flags{
+			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
+			intFlag("timeout", 90, "API timeout in seconds."),
+			boolFlag("body", "Generate commit message bodies."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "fix-gitignore", "Add missing common generated-file patterns to .gitignore.", "local", runFixGitignore, flags{
 			boolFlag("yes", "Skip confirmation prompts."),
@@ -181,11 +188,12 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "rewrite-commits", "Rewrite commit messages to Conventional Commits.", "history", runRewriteCommits, flags{
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
-		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommitsAI, flags{
+		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "ai", runRewriteCommitsAI, flags{
 			intFlag("batch-size", 10, "Commits per API request."),
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
 			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
+			boolFlag("body", "Generate commit message bodies."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{

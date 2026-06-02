@@ -84,7 +84,7 @@ Check your local runtime dependencies:
 git-wrangler doctor
 ```
 
-Set up GitHub and AI credentials when you need private GitHub workflows or AI-assisted commit rewrites:
+Set up GitHub and AI credentials when you need private GitHub workflows or AI-assisted commits:
 
 ```bash
 git-wrangler init
@@ -166,15 +166,21 @@ Local operations:
 | `review`        | Review unpushed changes across repositories.                |
 | `untrack`       | Stop tracking files already covered by `.gitignore`.        |
 
+AI commands:
+
+| Command              | What it does                                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------- |
+| `commit-ai`          | Generate and create one Conventional Commit per changed repository. Use `--body` for commit bodies.       |
+| `rewrite-commits-ai` | Generate Conventional Commit rewrites with an OpenAI-compatible endpoint. Use `--body` for commit bodies. |
+
 History rewriting:
 
-| Command              | What it does                                                              |
-| -------------------- | ------------------------------------------------------------------------- |
-| `remove-secrets`     | Purge sensitive files from Git history.                                   |
-| `rewrite-authors`    | Rewrite author and committer identity.                                    |
-| `rewrite-commits`    | Rewrite commit messages to Conventional Commits.                          |
-| `rewrite-commits-ai` | Generate Conventional Commit messages with an OpenAI-compatible endpoint. |
-| `rewrite-dates`      | Redistribute commit timestamps.                                           |
+| Command           | What it does                                     |
+| ----------------- | ------------------------------------------------ |
+| `remove-secrets`  | Purge sensitive files from Git history.          |
+| `rewrite-authors` | Rewrite author and committer identity.           |
+| `rewrite-commits` | Rewrite commit messages to Conventional Commits. |
+| `rewrite-dates`   | Redistribute commit timestamps.                  |
 
 Utility:
 
@@ -200,7 +206,7 @@ obvious.
 - Bulk commands continue through discovered repositories, then exit nonzero if
   any repository operation failed.
 - No-op skips are treated as successful.
-- `rewrite-commits-ai` does not send old commit messages as model context and
+- AI commands do not send old commit messages as model context and
   redacts sensitive file content before API calls.
 
 Repository discovery supports regular `.git` directories and linked worktree
@@ -213,7 +219,7 @@ Repository discovery supports regular `.git` directories and linked worktree
 | `git`                                  | Normal repository operations.                                   |
 | `gh`                                   | GitHub repository operations such as `clone` and `rename-repo`. |
 | `git-filter-repo`                      | History rewrite commands.                                       |
-| OpenAI-compatible chat completions API | `rewrite-commits-ai`.                                           |
+| OpenAI-compatible chat completions API | `commit-ai` and `rewrite-commits-ai`.                           |
 
 Run this before private or all-repository GitHub workflows:
 
@@ -226,11 +232,10 @@ History rewrite commands that require `git-filter-repo`:
 - `remove-secrets`
 - `rewrite-authors`
 - `rewrite-commits`
-- `rewrite-commits-ai`
 - `rewrite-dates`
 
-`rewrite-commits-ai` also needs an OpenAI-compatible chat completions endpoint,
-a model name, and an API key configured with `git-wrangler init` or
+AI commands also need an OpenAI-compatible chat completions endpoint, a model
+name, and an API key configured with `git-wrangler init` or
 `git-wrangler config`.
 
 Run `git-wrangler doctor` to check local runtime dependencies. Missing `git`
@@ -248,15 +253,15 @@ GitHub CLI commands, terminal output, AI commit rewriting, and version metadata.
 
 At a high level:
 
-| Technology        | Role                                                                         |
-| ----------------- | ---------------------------------------------------------------------------- |
-| Go                | Native binary.                                                               |
-| Cobra             | Commands, flags, help, and shell completion generation.                      |
-| `git`             | Repository operations.                                                       |
-| `go-keyring`      | GitHub and AI credential storage.                                            |
-| `gh`              | GitHub repository transport for clone and rename workflows.                  |
-| `git-filter-repo` | History rewrites.                                                            |
-| GoReleaser        | Release archives, checksums, completions, and package-manager updates.       |
+| Technology        | Role                                                                   |
+| ----------------- | ---------------------------------------------------------------------- |
+| Go                | Native binary.                                                         |
+| Cobra             | Commands, flags, help, and shell completion generation.                |
+| `git`             | Repository operations.                                                 |
+| `go-keyring`      | GitHub and AI credential storage.                                      |
+| `gh`              | GitHub repository transport for clone and rename workflows.            |
+| `git-filter-repo` | History rewrites.                                                      |
+| GoReleaser        | Release archives, checksums, completions, and package-manager updates. |
 
 The detailed contributor-facing architecture lives in [AGENTS.md](AGENTS.md).
 
