@@ -9,6 +9,32 @@ import (
 	"testing"
 )
 
+func TestRootCommandShowsLanding(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithIO([]string{}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("root command returned error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"____ _ _",
+		"Orchestrate Git operations across many repositories.",
+		"Common commands:",
+		"git-wrangler status",
+		"git-wrangler help",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("landing missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Remote Operations:") || strings.Contains(out, "History Rewriting:") {
+		t.Fatalf("landing should not include Cobra command groups:\n%s", out)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
 func TestRootHelpUsesCobraGroups(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
