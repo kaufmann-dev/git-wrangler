@@ -63,6 +63,7 @@ type ProgressEvent struct {
 	Current  int
 	Total    int
 	Detail   string
+	Error    bool
 }
 
 type Plan struct {
@@ -171,6 +172,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	batches := (len(items) + cfg.BatchSize - 1) / cfg.BatchSize
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Data send notice")
+	fmt.Fprintln(out, "----------------")
 	fmt.Fprintf(out, "Endpoint: %s\n", cfg.BaseURL)
 	fmt.Fprintf(out, "Model: %s\n", cfg.Model)
 	fmt.Fprintf(out, "Repositories scanned: %d\n", stats.RepoCount)
@@ -186,6 +188,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	}
 	fmt.Fprintln(out, "The command will send file paths, stats, and redacted diff snippets.")
 	fmt.Fprintln(out, "Old commit messages and API keys are not sent in commit context.")
+	fmt.Fprintln(out)
 	if confirm == nil || !confirm("Send this data to the configured API endpoint?") {
 		return nil, ErrCancelled
 	}
@@ -414,8 +417,10 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 		return "", nil
 	}
 	diffText := hiddenDiffMarker(nameStatus)
-	if !allChangedPathsHidden(nameStatus) {
-		diffText, err = gitClient.Stdout(ctx, repoDir, nil, "show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash)
+	paths := visibleDiffPaths(nameStatus)
+	if len(paths) > 0 {
+		args := append([]string{"show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash, "--"}, paths...)
+		diffText, err = gitClient.Stdout(ctx, repoDir, nil, args...)
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
 		}
@@ -437,19 +442,6 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 	return truncateText(contextText, charBudget), nil
 }
 
-func allChangedPathsHidden(nameStatus string) bool {
-	paths := changedPaths(nameStatus)
-	if len(paths) == 0 {
-		return false
-	}
-	for _, path := range paths {
-		if !IsSensitivePath(path) && !IsExcludedDiffPath(path) {
-			return false
-		}
-	}
-	return true
-}
-
 func hiddenDiffMarker(nameStatus string) string {
 	paths := changedPaths(nameStatus)
 	for _, path := range paths {
@@ -460,10 +452,20 @@ func hiddenDiffMarker(nameStatus string) string {
 	return "[SENSITIVE FILE CONTENT HIDDEN]"
 }
 
+func visibleDiffPaths(nameStatus string) []string {
+	paths := []string{}
+	for _, path := range changedPaths(nameStatus) {
+		if !IsSensitivePath(path) && !IsExcludedDiffPath(path) {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
 func changedPaths(nameStatus string) []string {
 	paths := []string{}
 	for _, line := range splitLines(nameStatus) {
-		fields := strings.Fields(line)
+		fields := strings.Split(line, "\t")
 		if len(fields) < 2 {
 			continue
 		}
@@ -485,8 +487,10 @@ func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repo
 		return "", nil
 	}
 	diffText := hiddenDiffMarker(nameStatus)
-	if !allChangedPathsHidden(nameStatus) {
-		diffText, err = gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3")
+	paths := visibleDiffPaths(nameStatus)
+	if len(paths) > 0 {
+		args := append([]string{"diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", "--"}, paths...)
+		diffText, err = gitClient.Stdout(ctx, repoDir, nil, args...)
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
 		}
@@ -548,6 +552,17 @@ func IsExcludedDiffPath(path string) bool {
 	normalized = strings.Trim(normalized, "/")
 	if normalized == "" {
 		return false
+	}
+	ext := filepath.Ext(normalized)
+	switch ext {
+	case ".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".pdf", ".png", ".svg", ".webp",
+		".mp3", ".mp4", ".ogg", ".wav", ".webm",
+		".eot", ".otf", ".ttf", ".woff", ".woff2",
+		".glb", ".gltf":
+		return true
+	}
+	if strings.HasSuffix(normalized, ".min.js") || strings.HasSuffix(normalized, ".min.css") {
+		return true
 	}
 	if strings.Contains("/"+normalized+"/", "/wp-content/uploads/") {
 		return true
@@ -635,14 +650,14 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 			defer wg.Done()
 			reportRetry := func(message string) {
 				completedMu.Lock()
-				progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: message})
+				progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: message, Error: true})
 				completedMu.Unlock()
 			}
 			accepted, batchFailures := processBatchWithProgress(ctx, task.items, cfg, output, reportRetry)
 			batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
 			completedMu.Lock()
 			completedBatches++
-			progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches})
+			progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("batch %d completed", task.index+1)})
 			completedMu.Unlock()
 		}(task)
 	}
