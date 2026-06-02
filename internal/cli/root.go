@@ -45,6 +45,13 @@ type exitError struct {
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
+const rootBanner = `  ____ _ _     __        __                       _
+ / ___(_) |_   \ \      / / __ __ _ _ __   __ _ | | ___ _ __
+| |  _| | __|   \ \ /\ / / '__/ _` + "`" + ` | '_ \ / _` + "`" + ` || |/ _ \ '__|
+| |_| | | |_     \ V  V /| | | (_| | | | | (_| || |  __/ |
+ \____|_|\__|     \_/\_/ |_|  \__,_|_| |_|\__, ||_|\___|_|
+                                           |___/`
+
 func Execute() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -105,7 +112,8 @@ func newRootCommand(a *app) *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Full(),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
+			printRootLanding(a)
+			return nil
 		},
 	}
 	root.SetVersionTemplate("{{.Version}}\n")
@@ -195,6 +203,17 @@ func newRootCommand(a *app) *cobra.Command {
 		versionCommand(a),
 	)
 	return root
+}
+
+func printRootLanding(a *app) {
+	fmt.Fprintf(a.stdout, "%s%s%s\n\n", a.ui.Bold+a.ui.Cyan, rootBanner, a.ui.Reset)
+	fmt.Fprintln(a.stdout, "Orchestrate Git operations across many repositories.")
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "Common commands:")
+	fmt.Fprintln(a.stdout, "  git-wrangler status          Show repository state")
+	fmt.Fprintln(a.stdout, "  git-wrangler pull --rebase   Refresh every repo")
+	fmt.Fprintln(a.stdout, "  git-wrangler review          Review unpushed work")
+	fmt.Fprintln(a.stdout, "  git-wrangler help            Show all commands")
 }
 
 func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, []string) int, specs flags) *cobra.Command {
