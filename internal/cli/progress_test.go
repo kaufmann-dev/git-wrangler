@@ -54,3 +54,44 @@ func TestProgressThrottlesPlainLinesForNonTTY(t *testing.T) {
 		t.Fatalf("progress was not throttled:\n%s", out)
 	}
 }
+
+func TestProgressLogWritesStandaloneLineForNonTTY(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+
+	progress := newProgress(a, "Testing progress", 3)
+	progress.advance("")
+	progress.log("Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.")
+	progress.advance("")
+	progress.done()
+
+	out := stderr.String()
+	if !strings.Contains(out, "\nRetrying 1 commit(s) after failed batch attempt 1: missing or invalid message.\n") {
+		t.Fatalf("retry log was not standalone:\n%s", out)
+	}
+	if strings.Contains(out, "Testing progress: 1/3 Retrying") {
+		t.Fatalf("retry log was mixed into progress line:\n%s", out)
+	}
+}
+
+func TestProgressLogClearsAndRedrawsInteractiveLine(t *testing.T) {
+	var stderr bytes.Buffer
+	progress := &progress{
+		writer:      &stderr,
+		interactive: true,
+		label:       "Testing progress",
+		total:       3,
+	}
+
+	progress.advance("")
+	progress.log("Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.")
+
+	out := stderr.String()
+	if !strings.Contains(out, "\n\rTesting progress: [######--------------] 1/3 ") {
+		t.Fatalf("progress line was not redrawn after log:\n%q", out)
+	}
+	if strings.Contains(out, "1/3 Retrying") {
+		t.Fatalf("retry log was mixed into progress line:\n%q", out)
+	}
+}
