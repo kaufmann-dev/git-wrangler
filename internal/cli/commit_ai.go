@@ -131,7 +131,7 @@ func collectCommitAIChanges(a *app, repos []repo, maxChars int) ([]commitAIChang
 		contextError bool
 		skipped      bool
 	}
-	results := parallelRepos(repos, func(r repo) commitAICollectResult {
+	results := parallelReposProgress(repos, newProgress(a, "Preparing AI commits", len(repos)), func(r repo) commitAICollectResult {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
 			return commitAICollectResult{repo: r, err: err, stageFailed: true}
 		}
