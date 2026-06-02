@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func (a *app) status(stream io.Writer, color, symbol string, parts ...string) {
@@ -117,16 +117,25 @@ func noRepos(a *app) int {
 
 func confirm(a *app, question string) bool {
 	fmt.Fprintf(a.stderr, "%s [y/N] ", question)
-	reader := bufio.NewReader(a.stdin)
-	answer, _ := reader.ReadString('\n')
+	answer, _ := a.input.ReadString('\n')
 	answer = strings.TrimRight(answer, "\r\n")
 	return answer == "y" || answer == "Y"
 }
 
 func promptRead(a *app, prompt string) (string, error) {
 	fmt.Fprint(a.stderr, prompt)
-	reader := bufio.NewReader(a.stdin)
-	answer, err := reader.ReadString('\n')
+	answer, err := a.input.ReadString('\n')
+	return strings.TrimRight(answer, "\r\n"), err
+}
+
+func promptSecret(a *app, prompt string) (string, error) {
+	fmt.Fprint(a.stderr, prompt)
+	if f, ok := a.stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		answer, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(a.stderr)
+		return strings.TrimRight(string(answer), "\r\n"), err
+	}
+	answer, err := a.input.ReadString('\n')
 	return strings.TrimRight(answer, "\r\n"), err
 }
 
