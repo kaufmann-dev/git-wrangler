@@ -81,6 +81,7 @@ jobs:
           test -f completions/git-wrangler.zsh
           test -f completions/git-wrangler.fish
           test -n "$(find dist -path '*Casks*git-wrangler*' -type f)"
+          test -n "$(find dist -name 'git-wrangler.json' -type f)"
 
       - name: Whitespace
         run: git diff --check
