@@ -15,13 +15,12 @@ A single, zero-dependency Go binary that coordinates dozens of Git repositories 
 ## Navigation
 
 - [Why Git Wrangler?](#why-git-wrangler)
-- [Install](#install)
+- [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Commands](#commands)
 - [AI-Powered Workflows](#ai-powered-workflows)
 - [Safety & Guardrails](#safety--guardrails)
 - [Shell Completions](#shell-completions)
-- [License](#license)
 
 ## Why Git Wrangler?
 
