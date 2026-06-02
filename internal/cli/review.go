@@ -34,7 +34,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		individualDeleted []string
 	}
 	status := 0
-	results := parallelRepos(repos, func(r repo) reviewResult {
+	results := parallelReposProgress(repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
 			return reviewResult{repo: r, err: err, errMessage: "Could not list unpushed commits"}

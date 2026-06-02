@@ -124,6 +124,34 @@ func TestWriteCommitCallbackUsesBytesLiterals(t *testing.T) {
 	}
 }
 
+func TestBuildCommitMessageMappingUsesCombinedCommitLog(t *testing.T) {
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		if name != "git" {
+			return "", "", errors.New("unexpected command")
+		}
+		joined := strings.Join(args, " ")
+		switch joined {
+		case "log --reverse --all --format=%H%x1f%B%x1e":
+			return "abc123\x1fold message\n\x1e", "", nil
+		case "diff-tree --root --no-commit-id --name-status -r abc123":
+			return "M\tmain.go\n", "", nil
+		case "log -1 --format=%B abc123":
+			return "", "", errors.New("per-commit log should not run")
+		default:
+			return "", "", errors.New("unexpected git args: " + joined)
+		}
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+
+	mapping, err := buildCommitMessageMapping(a, "repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mapping["abc123"] != "fix: update main.go" {
+		t.Fatalf("mapping = %#v", mapping)
+	}
+}
+
 func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	remoteGetCalls := 0

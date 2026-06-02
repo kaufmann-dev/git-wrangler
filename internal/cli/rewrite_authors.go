@@ -42,11 +42,13 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 		"--name-callback", `import os; return os.environ["NEW_NAME_ENV"].encode("utf-8")`,
 	)
 	status := 0
+	progress := newProgress(a, "Rewriting authors", len(repos))
 	for _, r := range repos {
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
 		if !yes && !confirm(a, "Rewrite author and committer identity for "+r.display+"?") {
 			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
+			progress.advance(r.display)
 			continue
 		}
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
@@ -54,6 +56,7 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 			if restoreErr != nil {
 				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 				status = 1
+				progress.advance(r.display)
 				continue
 			}
 			fmt.Fprintf(a.stdout, "%sAuthor and committer information updated for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
@@ -64,6 +67,8 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 			}
 			status = 1
 		}
+		progress.advance(r.display)
 	}
+	progress.done()
 	return status
 }

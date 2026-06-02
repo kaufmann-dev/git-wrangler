@@ -27,7 +27,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		err          error
 		hasGitignore bool
 	}
-	scans := parallelRepos(repos, func(r repo) untrackScan {
+	scans := parallelReposProgress(repos, newProgress(a, "Scanning ignored tracked files", len(repos)), func(r repo) untrackScan {
 		if !fileExists(filepath.Join(r.dir, ".gitignore")) {
 			return untrackScan{repo: r}
 		}
