@@ -71,6 +71,7 @@ func parallelReposWithWorkersProgress[T any](repos []repo, workers int, progress
 		go func() {
 			defer wg.Done()
 			for index := range jobs {
+				progress.message(repos[index].display)
 				results[index] = inspect(repos[index])
 				progress.advance(repos[index].display)
 			}
