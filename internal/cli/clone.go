@@ -37,8 +37,12 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	}
 	ghEnv, authSource, ok, err := githubAuthEnv(a)
 	if err != nil {
-		a.error(err.Error())
-		return 1
+		if visibility == "private" || visibility == "all" {
+			a.error(err.Error())
+			return 1
+		}
+		ghEnv = nil
+		ok = false
 	}
 	if !ok && (visibility == "private" || visibility == "all") {
 		a.errorf("Git Wrangler GitHub auth is required for %s repository cloning. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.", visibility)
