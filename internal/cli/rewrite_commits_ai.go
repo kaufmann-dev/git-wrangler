@@ -103,17 +103,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 				}
 				scanProgress.message(fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
 			case "Sending API requests":
-				if apiProgress == nil {
-					apiProgress = newProgress(a, event.Phase, event.Total)
-				}
-				if event.Detail != "" {
-					apiProgress.log(event.Detail)
-					return
-				}
-				if event.Current == 0 {
-					return
-				}
-				apiProgress.advance("")
+				updateAIRequestProgress(a, &apiProgress, event)
 			default:
 				if event.Current == 0 {
 					return
@@ -145,6 +135,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	if plan.GeneratedCount == 0 {
 		return 0
 	}
+	fmt.Fprintln(a.stderr)
 	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update remotes.%s\n", a.ui.Red, a.ui.Reset)
 	if !yes && !confirm(a, "Apply these generated commit messages to all listed repositories?") {
 		fmt.Fprintf(a.stdout, "%sRewrite cancelled. Generated AI messages were temporary and have been discarded.%s\n", a.ui.Yellow, a.ui.Reset)
@@ -189,6 +180,8 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	progress.done()
 
 	hadError := false
+	succeededRepos := 0
+	succeededCommits := 0
 	for _, result := range results {
 		if result.err == nil {
 			if result.restoreErr != nil {
@@ -196,7 +189,8 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 				hadError = true
 				continue
 			}
-			fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) for %s%s\n", a.ui.Green, result.plan.ChangedCount, result.plan.Name, a.ui.Reset)
+			succeededRepos++
+			succeededCommits += result.plan.ChangedCount
 			continue
 		}
 		fmt.Fprintf(a.stderr, "%sError: Could not rewrite commit messages for %s:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.output, a.ui.Reset)
@@ -204,6 +198,9 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 			fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
 		}
 		hadError = true
+	}
+	if succeededRepos > 0 {
+		fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) across %d repositories.%s\n", a.ui.Green, succeededCommits, succeededRepos, a.ui.Reset)
 	}
 	if hadError {
 		return 1
@@ -218,5 +215,36 @@ func aiApplyProgressDetail(result aiApplyResult) string {
 	if result.restoreErr != nil {
 		return result.plan.Name + " rewrite done, origin restore failed"
 	}
-	return fmt.Sprintf("%s rewrote %d commit message(s)", result.plan.Name, result.plan.ChangedCount)
+	return result.plan.Name
+}
+
+func updateAIRequestProgress(a *app, apiProgress **progress, event ai.ProgressEvent) {
+	if event.Total <= 1 {
+		return
+	}
+	if *apiProgress == nil {
+		*apiProgress = newProgress(a, event.Phase, event.Total)
+	}
+	detail := aiProgressDetail(a, event)
+	if event.Error {
+		(*apiProgress).message(detail)
+		return
+	}
+	if event.Current == 0 {
+		if detail != "" {
+			(*apiProgress).message(detail)
+		}
+		return
+	}
+	(*apiProgress).advance(detail)
+}
+
+func aiProgressDetail(a *app, event ai.ProgressEvent) string {
+	if event.Detail == "" {
+		return ""
+	}
+	if event.Error {
+		return a.ui.Red + event.Detail + a.ui.Reset
+	}
+	return event.Detail
 }
