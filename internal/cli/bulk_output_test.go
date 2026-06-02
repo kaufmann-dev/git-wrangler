@@ -52,24 +52,16 @@ func TestPullRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	var mu sync.Mutex
 	active := 0
 	maxActive := 0
+	release := make(chan struct{})
+	var releaseOnce sync.Once
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 			if name != "git" || strings.Join(args, " ") != "pull" {
 				return "", "", errors.New("unexpected command")
 			}
-			mu.Lock()
-			active++
-			if active > maxActive {
-				maxActive = active
-			}
-			mu.Unlock()
-			if filepath.Base(dir) == "a-slow" {
-				time.Sleep(50 * time.Millisecond)
-			}
-			mu.Lock()
-			active--
-			mu.Unlock()
+			done := trackConcurrentStart(&mu, &active, &maxActive, release, &releaseOnce)
+			defer done()
 			return "updated\n", "", nil
 		},
 	}
@@ -168,6 +160,8 @@ func TestCommitRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	var mu sync.Mutex
 	activeAdds := 0
 	maxActiveAdds := 0
+	release := make(chan struct{})
+	var releaseOnce sync.Once
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
@@ -176,18 +170,8 @@ func TestCommitRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 			}
 			switch strings.Join(args, " ") {
 			case "add -A":
-				mu.Lock()
-				activeAdds++
-				if activeAdds > maxActiveAdds {
-					maxActiveAdds = activeAdds
-				}
-				mu.Unlock()
-				if filepath.Base(dir) == "a-slow" {
-					time.Sleep(50 * time.Millisecond)
-				}
-				mu.Lock()
-				activeAdds--
-				mu.Unlock()
+				done := trackConcurrentStart(&mu, &activeAdds, &maxActiveAdds, release, &releaseOnce)
+				defer done()
 				return "", "", nil
 			case "diff --cached --quiet":
 				return "", "", errors.New("changes")
@@ -262,6 +246,8 @@ func TestReviewRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	var mu sync.Mutex
 	activeRevLists := 0
 	maxActiveRevLists := 0
+	release := make(chan struct{})
+	var releaseOnce sync.Once
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
@@ -270,18 +256,8 @@ func TestReviewRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 			}
 			switch {
 			case strings.Join(args, " ") == "rev-list HEAD --not --remotes":
-				mu.Lock()
-				activeRevLists++
-				if activeRevLists > maxActiveRevLists {
-					maxActiveRevLists = activeRevLists
-				}
-				mu.Unlock()
-				if filepath.Base(dir) == "a-slow" {
-					time.Sleep(50 * time.Millisecond)
-				}
-				mu.Lock()
-				activeRevLists--
-				mu.Unlock()
+				done := trackConcurrentStart(&mu, &activeRevLists, &maxActiveRevLists, release, &releaseOnce)
+				defer done()
 				return "commit\n", "", nil
 			case strings.HasPrefix(strings.Join(args, " "), "rev-parse --verify commit^"):
 				return "", "", errors.New("no parent")
@@ -422,6 +398,27 @@ func tempGitRepos(t *testing.T, names ...string) string {
 		}
 	}
 	return root
+}
+
+func trackConcurrentStart(mu *sync.Mutex, active, maxActive *int, release chan struct{}, releaseOnce *sync.Once) func() {
+	mu.Lock()
+	(*active)++
+	if *active > *maxActive {
+		*maxActive = *active
+	}
+	if *active >= 2 {
+		releaseOnce.Do(func() { close(release) })
+	}
+	mu.Unlock()
+	select {
+	case <-release:
+	case <-time.After(500 * time.Millisecond):
+	}
+	return func() {
+		mu.Lock()
+		*active--
+		mu.Unlock()
+	}
 }
 
 func fakeGitLookPath(name string) (string, error) {
