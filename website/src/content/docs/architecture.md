@@ -19,6 +19,7 @@ The command groups are:
 
 - Remote Operations
 - Local Operations
+- AI Commands
 - History Rewriting
 - Utility
 
@@ -42,7 +43,7 @@ Cobra generates help output and the completion command. There is no external hel
 
 `internal/ui` owns output streams, color/plain behavior, prompts, and status vocabulary.
 
-`internal/ai` owns AI-assisted commit message rewriting: context redaction, batching, OpenAI-compatible API calls, response validation, retry behavior, and callback generation.
+`internal/ai` owns AI commit creation and AI rewrite generation: context redaction, batching, OpenAI-compatible API calls, response validation, retry behavior, and callback generation.
 
 `internal/version` exposes release metadata injected by GoReleaser.
 

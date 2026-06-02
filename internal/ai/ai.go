@@ -21,7 +21,7 @@ import (
 
 var (
 	ErrCancelled   = errors.New("cancelled")
-	conventionalRe = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+`)
+	conventionalRe = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+$`)
 	secretPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(['"]?)(sk-[a-zA-Z0-9_-]{20,}|sk_[a-zA-Z0-9_-]{20,})(['"]?)`),
 		regexp.MustCompile(`(['"]?)(gh[pousr]_[a-zA-Z0-9_]{20,})(['"]?)`),
@@ -47,6 +47,7 @@ type Config struct {
 	MaxCharsPerCommit int
 	Timeout           time.Duration
 	SkipConventional  bool
+	Body              bool
 	WorkDir           string
 	Git               git.Client
 }
@@ -72,6 +73,26 @@ type Stats struct {
 	SkippedUnborn    int
 }
 
+type Message struct {
+	Subject string
+	Body    string
+}
+
+type GenerationInput struct {
+	ID       string
+	RepoDir  string
+	RepoName string
+	Ref      string
+	Context  string
+}
+
+type GenerationFailure struct {
+	ID       string
+	RepoName string
+	Ref      string
+	Reason   string
+}
+
 type item struct {
 	ID         string
 	RepoIndex  int
@@ -94,7 +115,8 @@ type mapping struct {
 
 type generatedMessage struct {
 	ID      string `json:"id"`
-	Message string `json:"message"`
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
 }
 
 type generatedResponse struct {
@@ -143,6 +165,9 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	}
 	fmt.Fprintf(out, "API batches: %d\n", batches)
 	fmt.Fprintf(out, "Per-commit context budget: %d characters\n", cfg.MaxCharsPerCommit)
+	if cfg.Body {
+		fmt.Fprintln(out, "Generated messages will include a subject and body.")
+	}
 	fmt.Fprintln(out, "The command will send file paths, stats, and redacted diff snippets.")
 	fmt.Fprintln(out, "Old commit messages and API keys are not sent in commit context.")
 	if confirm == nil || !confirm("Send this data to the configured API endpoint?") {
@@ -157,6 +182,39 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 		return nil, fmt.Errorf("AI generation is incomplete; no history was changed")
 	}
 	return buildPlan(items, results, stats, cfg.WorkDir)
+}
+
+func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config, out io.Writer) (map[string]Message, []GenerationFailure) {
+	if cfg.BatchSize <= 0 {
+		cfg.BatchSize = 4
+	}
+	if cfg.MaxCharsPerCommit <= 0 {
+		cfg.MaxCharsPerCommit = 3000
+	}
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 90 * time.Second
+	}
+	items := make([]item, 0, len(changes))
+	for _, change := range changes {
+		items = append(items, item{
+			ID:       change.ID,
+			RepoDir:  change.RepoDir,
+			RepoName: change.RepoName,
+			Hash:     change.Ref,
+			Context:  change.Context,
+		})
+	}
+	results, failures := processItems(ctx, items, cfg, out)
+	publicFailures := make([]GenerationFailure, 0, len(failures))
+	for _, failure := range failures {
+		publicFailures = append(publicFailures, GenerationFailure{
+			ID:       failure.Item.ID,
+			RepoName: failure.Item.RepoName,
+			Ref:      failure.Item.Hash,
+			Reason:   failure.Reason,
+		})
+	}
+	return results, publicFailures
 }
 
 func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool) ([]item, Stats, error) {
@@ -237,6 +295,37 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 	return truncateText(contextText, charBudget), nil
 }
 
+func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repoName string, charBudget int) (string, error) {
+	nameStatus, err := gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--name-status")
+	if err != nil {
+		return "", fmt.Errorf("read changed files: %w", err)
+	}
+	numstat, err := gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--numstat")
+	if err != nil {
+		return "", fmt.Errorf("read change stats: %w", err)
+	}
+	if strings.TrimSpace(nameStatus) == "" && strings.TrimSpace(numstat) == "" {
+		return "", nil
+	}
+	diffText, err := gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3")
+	if err != nil {
+		return "", fmt.Errorf("read diff: %w", err)
+	}
+	contextText := strings.Join([]string{
+		"Repository: " + repoName,
+		"",
+		"Files changed:",
+		limitedLines(nameStatus, 80),
+		"",
+		"Stats:",
+		limitedLines(numstat, 80),
+		"",
+		"Redacted staged diff snippet:",
+		RedactDiff(diffText),
+	}, "\n")
+	return truncateText(contextText, charBudget), nil
+}
+
 func IsConventional(message string) bool {
 	first := firstLine(strings.TrimSpace(message))
 	return conventionalRe.MatchString(first)
@@ -302,8 +391,8 @@ func RedactLine(line string) string {
 	return redacted
 }
 
-func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) (map[string]string, []failure) {
-	results := map[string]string{}
+func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
+	results := map[string]Message{}
 	var failures []failure
 	totalBatches := (len(items) + cfg.BatchSize - 1) / cfg.BatchSize
 	for batchIndex, start := 0, 0; start < len(items); batchIndex, start = batchIndex+1, start+cfg.BatchSize {
@@ -322,12 +411,12 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	return results, failures
 }
 
-func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]string, []failure) {
-	accepted := map[string]string{}
+func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
+	accepted := map[string]Message{}
 	pending := append([]item(nil), batch...)
 	errorsByID := map[string]string{}
 	for attempt := 1; attempt <= 3 && len(pending) > 0; attempt++ {
-		returned, err := requestBatch(ctx, pending, cfg)
+		returned, err := requestBatch(ctx, pending, cfg, attempt)
 		nextPending := []item{}
 		if err != nil {
 			for _, item := range pending {
@@ -337,7 +426,7 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 		} else {
 			for _, item := range pending {
 				message := returned[item.ID]
-				if ValidateMessage(message) {
+				if ValidateGeneratedMessage(message, cfg.Body) {
 					accepted[item.ID] = message
 				} else {
 					errorsByID[item.ID] = "missing or invalid message"
@@ -353,9 +442,30 @@ func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) 
 			}
 		}
 	}
+	if len(pending) > 1 {
+		fmt.Fprintf(out, "Retrying %d commit(s) individually after failed batch generation.\n", len(pending))
+		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out)
+		for id, message := range recovered {
+			accepted[id] = message
+		}
+		return accepted, individualFailures
+	}
 	failures := make([]failure, 0, len(pending))
 	for _, item := range pending {
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
+	}
+	return accepted, failures
+}
+
+func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
+	accepted := map[string]Message{}
+	var failures []failure
+	for _, pendingItem := range pending {
+		itemAccepted, itemFailures := processBatch(ctx, []item{pendingItem}, cfg, out)
+		for id, message := range itemAccepted {
+			accepted[id] = message
+		}
+		failures = append(failures, itemFailures...)
 	}
 	return accepted, failures
 }
@@ -371,7 +481,7 @@ func sleepContext(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
-func requestBatch(ctx context.Context, batch []item, cfg Config) (map[string]string, error) {
+func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (map[string]Message, error) {
 	commits := make([]map[string]string, 0, len(batch))
 	for _, item := range batch {
 		commits = append(commits, map[string]string{
@@ -381,10 +491,17 @@ func requestBatch(ctx context.Context, batch []item, cfg Config) (map[string]str
 			"context":    item.Context,
 		})
 	}
-	userContent := "Generate one Conventional Commit message for each commit below.\n" +
-		"Return exactly this JSON shape: {\"messages\":[{\"id\":\"c000001\",\"message\":\"feat(scope): add thing\"}]}\n" +
-		"Preserve every input id exactly once. Use lowercase messages, present tense, no trailing period.\n\n" +
-		"Commits:\n" + mustJSON(commits)
+	shape := "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add thing\"}]}"
+	if cfg.Body {
+		shape = "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add thing\",\"body\":\"Explain why this change was made.\"}]}"
+	}
+	userContent := "Generate one Conventional Commit subject for each commit below.\n" +
+		"Return exactly this JSON shape: " + shape + "\n" +
+		"Preserve every input id exactly once. Use lowercase subjects, present tense, no trailing period.\n"
+	if cfg.Body {
+		userContent += "Include a concise non-empty body for every message. Do not repeat the subject in the body.\n"
+	}
+	userContent += "\nCommits:\n" + mustJSON(commits)
 	payload := map[string]any{
 		"model": cfg.Model,
 		"messages": []map[string]string{
@@ -392,7 +509,7 @@ func requestBatch(ctx context.Context, batch []item, cfg Config) (map[string]str
 			{"role": "user", "content": userContent},
 		},
 		"temperature": 0.2,
-		"max_tokens":  min(max(400, len(batch)*160), 4000),
+		"max_tokens":  messageTokenLimit(len(batch), cfg.Body, attempt),
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ChatEndpoint(cfg.BaseURL), bytes.NewReader(body))
@@ -413,7 +530,8 @@ func requestBatch(ctx context.Context, batch []item, cfg Config) (map[string]str
 	}
 	var envelope struct {
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
@@ -424,7 +542,26 @@ func requestBatch(ctx context.Context, batch []item, cfg Config) (map[string]str
 	if len(envelope.Choices) == 0 {
 		return nil, errors.New("response has no choices")
 	}
+	if envelope.Choices[0].FinishReason == "length" {
+		return nil, errors.New("AI response was truncated by the output token limit")
+	}
 	return ExtractMessages(envelope.Choices[0].Message.Content)
+}
+
+func messageTokenLimit(batchSize int, includeBody bool, attempt int) int {
+	perMessage := 160
+	if includeBody {
+		perMessage = 320
+	}
+	limit := max(400, batchSize*perMessage)
+	if attempt > 1 {
+		limit *= attempt
+	}
+	cap := 6000
+	if includeBody {
+		cap = 12000
+	}
+	return min(limit, cap)
 }
 
 func ChatEndpoint(baseURL string) string {
@@ -435,7 +572,7 @@ func ChatEndpoint(baseURL string) string {
 	return base + "/chat/completions"
 }
 
-func ExtractMessages(content string) (map[string]string, error) {
+func ExtractMessages(content string) (map[string]Message, error) {
 	content = strings.TrimSpace(content)
 	if strings.HasPrefix(content, "```") {
 		content = regexp.MustCompile("^```(?:json)?\\s*").ReplaceAllString(content, "")
@@ -446,28 +583,70 @@ func ExtractMessages(content string) (map[string]string, error) {
 		start := strings.IndexByte(content, '{')
 		end := strings.LastIndexByte(content, '}')
 		if start < 0 || end <= start {
-			return nil, err
+			return nil, responseJSONError(err)
 		}
 		if retryErr := json.Unmarshal([]byte(content[start:end+1]), &parsed); retryErr != nil {
-			return nil, retryErr
+			return nil, responseJSONError(retryErr)
 		}
 	}
-	result := map[string]string{}
+	result := map[string]Message{}
 	for _, row := range parsed.Messages {
 		id := strings.TrimSpace(row.ID)
-		message := normalizeMessage(row.Message)
 		if id != "" {
-			result[id] = message
+			result[id] = Message{
+				Subject: normalizeSubject(row.Subject),
+				Body:    normalizeBody(row.Body),
+			}
 		}
 	}
 	return result, nil
 }
 
-func ValidateMessage(message string) bool {
-	return message != "" && len(message) <= 120 && conventionalRe.MatchString(message)
+func responseJSONError(err error) error {
+	if strings.Contains(err.Error(), "unexpected end of JSON input") {
+		return errors.New("AI response was incomplete JSON")
+	}
+	return fmt.Errorf("AI response was not valid JSON: %w", err)
 }
 
-func buildPlan(items []item, results map[string]string, stats Stats, workDir string) (*Plan, error) {
+func ValidateMessage(message string) bool {
+	return ValidateSubject(message)
+}
+
+func ValidateSubject(subject string) bool {
+	return subject != "" && len(subject) <= 120 && !strings.ContainsAny(subject, "\r\n") && conventionalRe.MatchString(subject)
+}
+
+func ValidateBody(body string) bool {
+	body = strings.TrimSpace(body)
+	if body == "" || len(body) > 1000 {
+		return false
+	}
+	for _, r := range body {
+		if r < 0x20 && r != '\n' && r != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+func ValidateGeneratedMessage(message Message, requireBody bool) bool {
+	if !ValidateSubject(message.Subject) {
+		return false
+	}
+	return !requireBody || ValidateBody(message.Body)
+}
+
+func FormatMessage(message Message) string {
+	subject := strings.TrimSpace(message.Subject)
+	body := strings.TrimSpace(message.Body)
+	if body == "" {
+		return subject
+	}
+	return subject + "\n\n" + body
+}
+
+func buildPlan(items []item, results map[string]Message, stats Stats, workDir string) (*Plan, error) {
 	type key struct {
 		index int
 		dir   string
@@ -477,10 +656,11 @@ func buildPlan(items []item, results map[string]string, stats Stats, workDir str
 	var samples []string
 	unchanged := 0
 	for _, item := range items {
-		message := results[item.ID]
-		if message == "" {
+		result := results[item.ID]
+		if result.Subject == "" {
 			continue
 		}
+		message := FormatMessage(result)
 		if message == strings.TrimSpace(item.OldMessage) {
 			unchanged++
 			continue
@@ -646,15 +826,12 @@ func truncateText(text string, limit int) string {
 	return text[:limit-len(suffix)] + suffix
 }
 
-func normalizeMessage(message string) string {
-	message = strings.Trim(strings.TrimSpace(message), `"'`)
-	for _, line := range strings.Split(message, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line
-		}
-	}
-	return ""
+func normalizeSubject(subject string) string {
+	return strings.Trim(strings.TrimSpace(subject), `"'`)
+}
+
+func normalizeBody(body string) string {
+	return strings.TrimSpace(body)
 }
 
 func splitLines(s string) []string {
