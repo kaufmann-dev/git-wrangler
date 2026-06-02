@@ -2,7 +2,7 @@
 title: "version"
 description: "Prints Git Wrangler version metadata."
 category: "Utility"
-order: 4
+order: 5
 usage: "git-wrangler version"
 ---
 
