@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ui"
@@ -15,6 +16,7 @@ type progress struct {
 	label       string
 	total       int
 	current     int
+	lastWidth   int
 	closed      bool
 }
 
@@ -74,7 +76,12 @@ func (p *progress) done() {
 
 func (p *progress) write(detail string) {
 	if p.interactive {
-		fmt.Fprintf(p.writer, "\r%s: [%s] %d/%d %s", p.label, p.bar(20), p.current, p.total, detail)
+		line := fmt.Sprintf("%s: [%s] %d/%d %s", p.label, p.bar(20), p.current, p.total, detail)
+		if len(line) < p.lastWidth {
+			line += strings.Repeat(" ", p.lastWidth-len(line))
+		}
+		p.lastWidth = len(line)
+		fmt.Fprintf(p.writer, "\r%s", line)
 		return
 	}
 	if detail == "" {
