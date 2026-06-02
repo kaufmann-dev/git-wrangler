@@ -63,6 +63,26 @@ func (p *progress) message(detail string) {
 	p.write(detail)
 }
 
+func (p *progress) clear() {
+	if p.lastWidth == 0 {
+		return
+	}
+	w := 0
+	if file, ok := p.writer.(*os.File); ok {
+		if tw, _, err := termGetSize(int(file.Fd())); err == nil && tw > 0 {
+			w = tw
+		}
+	}
+	if w > 0 {
+		rows := (p.lastWidth + w - 1) / w
+		if rows > 1 {
+			fmt.Fprintf(p.writer, "\x1b[%dA", rows-1)
+		}
+	}
+	fmt.Fprint(p.writer, "\r\x1b[J")
+	p.lastWidth = 0
+}
+
 func (p *progress) log(message string) {
 	if p == nil || message == "" {
 		return
@@ -73,9 +93,7 @@ func (p *progress) log(message string) {
 		return
 	}
 	if p.interactive {
-		if p.lastWidth > 0 {
-			fmt.Fprintf(p.writer, "\r%s\r", strings.Repeat(" ", p.lastWidth))
-		}
+		p.clear()
 		fmt.Fprintln(p.writer, message)
 		if p.current > 0 {
 			p.write("")
@@ -102,6 +120,7 @@ func (p *progress) done() {
 
 func (p *progress) write(detail string) {
 	if p.interactive {
+		p.clear()
 		prefix := fmt.Sprintf("%s: [%s] %d/%d ", p.label, p.bar(20), p.current, p.total)
 		w := 0
 		if file, ok := p.writer.(*os.File); ok {
@@ -112,23 +131,16 @@ func (p *progress) write(detail string) {
 
 		if w > 0 {
 			// Leave a safety margin of at least 1 column.
-			maxDetailWidth := w - len(prefix) - 1
+			maxDetailWidth := w - visibleWidth(prefix) - 1
 			if maxDetailWidth < 0 {
 				maxDetailWidth = 0
 			}
 			detail = truncateToVisibleWidth(detail, maxDetailWidth, "\033[0m")
-
-			if p.lastWidth > w-1 {
-				p.lastWidth = w - 1
-			}
 		}
 
 		line := prefix + detail
-		if len(line) < p.lastWidth {
-			line += strings.Repeat(" ", p.lastWidth-len(line))
-		}
-		p.lastWidth = len(line)
-		fmt.Fprintf(p.writer, "\r%s", line)
+		p.lastWidth = visibleWidth(line)
+		fmt.Fprint(p.writer, line)
 		return
 	}
 	if detail == "" {

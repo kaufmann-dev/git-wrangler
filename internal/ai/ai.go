@@ -286,6 +286,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			defer wg.Done()
 			for repoIndex := range jobs {
 				repo := repositories[repoIndex]
+				progress(ProgressEvent{Phase: "Scanning repositories", RepoName: repo.Name, Current: 0, Total: len(repositories)})
 				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional, progress)
 				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
 				completedMu.Lock()
