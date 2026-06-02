@@ -47,7 +47,7 @@ directory and runs operations across all of them in one pass:
 
 ### Package Managers
 
-```
+```bash
 # macOS & Linux
 brew install kaufmann-dev/tap/git-wrangler
 
@@ -65,7 +65,7 @@ the `git-wrangler` binary, and place it on your `PATH`. You'll need to install
 
 ### Updating
 
-```
+```bash
 # Homebrew
 brew update
 brew upgrade git-wrangler
