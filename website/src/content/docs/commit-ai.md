@@ -20,6 +20,8 @@ git-wrangler commit-ai [options]
 
 Iterates through Git repositories found under the current directory, stages all changes with `git add -A`, skips repositories with no staged changes, sends redacted staged change context to the configured AI endpoint, and commits each changed repository with the generated message.
 
+Diff bodies for common generated, vendor, cache, build, and upload paths are hidden while file names and stats remain visible.
+
 If generation fails for any repository after retries, Git Wrangler creates no commits and exits nonzero. Staged changes may remain.
 
 ## Options
@@ -27,6 +29,7 @@ If generation fails for any repository after retries, Git Wrangler creates no co
 | Flag                           | Default | Description                                            |
 | ------------------------------ | ------- | ------------------------------------------------------ |
 | `--max-chars-per-commit <num>` | `3000`  | Maximum redacted staged context characters per commit. |
+| `--requests-per-minute <num>`  | `60`    | Maximum API requests to start per minute.              |
 | `--timeout <seconds>`          | `90`    | API timeout in seconds.                                |
 | `--body`                       | `false` | Generate a subject and body instead of subject only.   |
 | `--yes`                        | `false` | Skip the data-send confirmation prompt.                |

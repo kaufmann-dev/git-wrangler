@@ -132,17 +132,25 @@ func TestCompletionCommandIsPresent(t *testing.T) {
 
 func TestRewriteCommitsAIFlagValidation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
-	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-commits-ai", "--batch-size", "51"}, strings.NewReader(""), &stdout, &stderr)
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-	var exit exitError
-	if !errors.As(err, &exit) || exit.code != 1 {
-		t.Fatalf("expected exitError(1), got %T %v", err, err)
-	}
-	if !strings.Contains(stderr.String(), "--batch-size must be 50 or less") {
-		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"rewrite-commits-ai", "--batch-size", "51"}, "--batch-size must be 50 or less"},
+		{[]string{"rewrite-commits-ai", "--requests-per-minute", "0"}, "--requests-per-minute must be a positive integer"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		if err == nil {
+			t.Fatalf("%v returned nil error", tc.args)
+		}
+		var exit exitError
+		if !errors.As(err, &exit) || exit.code != 1 {
+			t.Fatalf("expected exitError(1), got %T %v", err, err)
+		}
+		if !strings.Contains(stderr.String(), tc.want) {
+			t.Fatalf("%v stderr:\n%s", tc.args, stderr.String())
+		}
 	}
 }
 
@@ -153,6 +161,7 @@ func TestCommitAIFlagValidation(t *testing.T) {
 		want string
 	}{
 		{[]string{"commit-ai", "--max-chars-per-commit", "0"}, "--max-chars-per-commit must be a positive integer"},
+		{[]string{"commit-ai", "--requests-per-minute", "0"}, "--requests-per-minute must be a positive integer"},
 		{[]string{"commit-ai", "--timeout", "0"}, "--timeout must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer
