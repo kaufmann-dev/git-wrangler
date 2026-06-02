@@ -34,7 +34,7 @@ Keep these public commands unless the user explicitly asks to change the surface
 
 `clone`, `commit`, `config`, `doctor`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
-Do not restore `update` or `uninstall`. Updates are handled by Homebrew or manual replacement of release binaries.
+Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
 ## Runtime Dependencies
 
@@ -48,11 +48,13 @@ Do not add Python, Node, npm, pnpm, Go, or shell-script runtimes as normal CLI d
 
 ## Release
 
-Use GoReleaser for release builds, GitHub Release archives, checksums, completions, and Homebrew tap cask updates. CI uses the latest GoReleaser v2 release.
+Use GoReleaser for release builds, GitHub Release archives, checksums, completions, Homebrew tap cask updates, and Scoop bucket updates. CI uses the latest GoReleaser v2 release.
 
 The Homebrew cask is generated for `kaufmann-dev/homebrew-tap` with dependencies on `git`, `gh`, and `git-filter-repo`. It must install bash, zsh, and fish completions from release archives.
 
 GitHub OAuth setup uses the public client ID embedded in `internal/auth.GitHubOAuthClientID`.
+
+The Scoop manifest is generated for `kaufmann-dev/scoop-bucket` with dependencies on `git`, `gh`, and `git-filter-repo`. Release automation requires `SCOOP_BUCKET_GITHUB_TOKEN` with write access to that bucket.
 
 Local release dry run:
 
