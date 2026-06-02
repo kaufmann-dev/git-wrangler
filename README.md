@@ -45,8 +45,8 @@ Homebrew installs shell completions automatically.
 | Windows with WSL | Use the Linux/Homebrew path inside WSL.                                                                    | Best fit if your Git work already lives in WSL. |
 | Windows native   | Download the Windows binary from [GitHub Releases](https://github.com/kaufmann-dev/git-wrangler/releases). | Put the binary somewhere on `PATH`.             |
 
-Manual binary installs do not install runtime dependencies, so install the tools
-listed in [Requirements](#requirements) yourself as needed.
+Official packaged installs include runtime dependencies. Source installs do not,
+so install the tools listed in [Requirements](#requirements) yourself as needed.
 
 ## Quick start
 
@@ -77,6 +77,12 @@ git-wrangler review
 
 Run `git-wrangler help` for the full command list, or
 `git-wrangler help <command>` for one command.
+
+Check your local runtime dependencies:
+
+```bash
+git-wrangler doctor
+```
 
 ## Useful workflows
 
@@ -169,6 +175,7 @@ Utility:
 | Command      | What it does                           |
 | ------------ | -------------------------------------- |
 | `completion` | Generate shell completion scripts.     |
+| `doctor`     | Check runtime dependencies.            |
 | `help`       | Show help.                             |
 | `info`       | Show detailed repository information.  |
 | `status`     | Show clean, dirty, and tracking state. |
@@ -216,6 +223,11 @@ History rewrite commands that require `git-filter-repo`:
 
 `rewrite-commits-ai` also needs an OpenAI-compatible chat completions endpoint,
 a model name, and an API key for the run.
+
+Run `git-wrangler doctor` to check local runtime dependencies. Missing `git`
+is reported as an error because most commands need it. Missing `gh` or
+`git-filter-repo` is reported as a warning because those tools are only needed
+for specific workflows.
 
 ## Architecture and technology
 

@@ -22,6 +22,7 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 		"History Rewriting:",
 		"Utility:",
 		"completion",
+		"doctor",
 		"version",
 	} {
 		if !strings.Contains(out, want) {
@@ -29,9 +30,6 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 		}
 	}
 	if strings.Contains(out, "update") || strings.Contains(out, "uninstall") {
-		t.Fatalf("removed commands appeared in help:\n%s", out)
-	}
-	if strings.Contains(out, "\n  doctor") {
 		t.Fatalf("removed commands appeared in help:\n%s", out)
 	}
 }
@@ -74,6 +72,7 @@ func TestCommandsRejectPositionalArgs(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, args := range [][]string{
 		{"version", "extra"},
+		{"doctor", "extra"},
 		{"status", "extra"},
 		{"commit", "extra", "--message", "test"},
 	} {
