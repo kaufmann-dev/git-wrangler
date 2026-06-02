@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/auth"
+	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/kaufmann-dev/git-wrangler/internal/githubcli"
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
@@ -21,10 +24,13 @@ type app struct {
 	stdout io.Writer
 	stderr io.Writer
 	stdin  io.Reader
+	input  *bufio.Reader
 	ui     ui.Theme
 	runner run.Runner
 	git    git.Client
 	gh     githubcli.Client
+	creds  credentials.Store
+	auth   auth.GitHubAuthenticator
 }
 
 type repo struct {
@@ -65,10 +71,13 @@ func newApp(ctx context.Context, runner run.Runner, stdin io.Reader, stdout, std
 		stdout: stdout,
 		stderr: stderr,
 		stdin:  stdin,
+		input:  bufio.NewReader(stdin),
 		ui:     ui.New(stdout),
 		runner: runner,
 		git:    git.New(runner),
 		gh:     githubcli.New(runner),
+		creds:  credentials.NewKeyringStore(),
+		auth:   auth.NewGitHubDeviceAuthenticator(),
 	}
 }
 
@@ -165,10 +174,6 @@ func newRootCommand(a *app) *cobra.Command {
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-commits-ai", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommitsAI, flags{
-			stringFlag("base-url", "", "OpenAI-compatible API base URL."),
-			stringFlag("model", "", "Model name."),
-			stringFlag("api-key", "", "API key for this run."),
-			stringFlag("api-key-env", "OPENAI_API_KEY", "Environment variable containing the API key."),
 			intFlag("batch-size", 10, "Commits per API request."),
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
 			intFlag("timeout", 90, "API timeout in seconds."),
@@ -184,6 +189,8 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("repo", "", "Repository directory to target."),
 		}),
 		command(a, "doctor", "Check Git Wrangler runtime dependencies.", "utility", runDoctor, nil),
+		initCommand(a),
+		configCommand(a),
 		command(a, "status", "Show clean, dirty, and tracking state.", "utility", runStatus, nil),
 		versionCommand(a),
 	)
