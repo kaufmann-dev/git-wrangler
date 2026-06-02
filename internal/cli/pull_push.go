@@ -21,11 +21,17 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	type pullResult struct {
+		repo    repo
+		out     string
+		err     error
+		skipped bool
+	}
 	status := 0
 	updated := 0
 	skipped := 0
 	failed := 0
-	for _, r := range repos {
+	results := parallelGitMutations(repos, func(r repo) pullResult {
 		pullArgs := []string{"pull"}
 		if rebase {
 			pullArgs = append(pullArgs, "--rebase")
@@ -34,19 +40,20 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 			pullArgs = append(pullArgs, "--force")
 		}
 		out, err := a.git.Capture(a.ctx, r.dir, nil, pullArgs...)
-		if err == nil {
-			if strings.Contains(out, "Already up to date") {
-				a.skip(r.display, "Already up to date. Skipping...")
-				skipped++
-			} else {
-				a.ok(r.display, "Git pull completed")
-				updated++
-			}
-		} else {
-			a.error(r.display, "Git pull failed:")
-			fmt.Fprintf(a.stderr, "%s\n\n", out)
+		return pullResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Already up to date")}
+	})
+	for _, result := range results {
+		if result.err != nil {
+			a.error(result.repo.display, "Git pull failed:")
+			fmt.Fprintf(a.stderr, "%s\n\n", result.out)
 			status = 1
 			failed++
+		} else if result.skipped {
+			a.skip(result.repo.display, "Already up to date. Skipping...")
+			skipped++
+		} else {
+			a.ok(result.repo.display, "Git pull completed")
+			updated++
 		}
 	}
 	fmt.Fprintf(a.stdout, "Summary: %d updated, %d skipped, %d failed\n", updated, skipped, failed)
@@ -71,22 +78,50 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	type pushResult struct {
+		repo    repo
+		out     string
+		err     error
+		skipped bool
+	}
 	status := 0
 	pushed := 0
 	skipped := 0
 	failed := 0
+	if !forceUnsafe {
+		results := parallelGitMutations(repos, func(r repo) pushResult {
+			pushArgs := []string{"push", "origin", "HEAD"}
+			if force {
+				pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}
+			}
+			out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
+			return pushResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Everything up-to-date")}
+		})
+		for _, result := range results {
+			if result.err != nil {
+				a.error(result.repo.display, "Git push failed:")
+				fmt.Fprintf(a.stderr, "%s\n\n", result.out)
+				status = 1
+				failed++
+			} else if result.skipped {
+				a.skip(result.repo.display, "No changes to push. Skipping...")
+				skipped++
+			} else {
+				a.ok(result.repo.display, "Git push completed")
+				pushed++
+			}
+		}
+		fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
+		return status
+	}
 	for _, r := range repos {
 		pushArgs := []string{"push", "origin", "HEAD"}
-		if force {
-			pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}
-		} else if forceUnsafe {
-			if !yesFlag(cmd) && !confirm(a, "Raw force push "+r.display+" with --force?") {
-				a.skip(r.display, "Skipping unsafe force push.")
-				skipped++
-				continue
-			}
-			pushArgs = []string{"push", "--force", "origin", "HEAD"}
+		if !yesFlag(cmd) && !confirm(a, "Raw force push "+r.display+" with --force?") {
+			a.skip(r.display, "Skipping unsafe force push.")
+			skipped++
+			continue
 		}
+		pushArgs = []string{"push", "--force", "origin", "HEAD"}
 		out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
 		if err == nil {
 			if strings.Contains(out, "Everything up-to-date") {

@@ -123,43 +123,60 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 }
 
 func collectCommitAIChanges(a *app, repos []repo, maxChars int) ([]commitAIChange, int, int) {
-	changes := []commitAIChange{}
-	skipped := 0
-	failed := 0
-	for _, r := range repos {
+	type commitAICollectResult struct {
+		change       commitAIChange
+		repo         repo
+		err          error
+		stageFailed  bool
+		contextError bool
+		skipped      bool
+	}
+	results := parallelRepos(repos, func(r repo) commitAICollectResult {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
-			a.error(r.display, "Could not stage changes")
-			failed++
-			continue
+			return commitAICollectResult{repo: r, err: err, stageFailed: true}
 		}
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "diff", "--cached", "--quiet"); err == nil {
-			a.skip(r.display, "No changes to commit. Skipping...")
-			skipped++
-			continue
+			return commitAICollectResult{repo: r, skipped: true}
 		}
 		contextText, err := ai.BuildStagedContext(a.ctx, a.git, r.dir, r.display, maxChars)
 		if err != nil {
-			a.error(r.display, "Could not prepare commit context:")
-			fmt.Fprintf(a.stderr, "%s\n\n", err.Error())
-			failed++
-			continue
+			return commitAICollectResult{repo: r, err: err, contextError: true}
 		}
 		if contextText == "" {
-			a.skip(r.display, "No changes to commit. Skipping...")
-			skipped++
-			continue
+			return commitAICollectResult{repo: r, skipped: true}
 		}
-		id := fmt.Sprintf("c%06d", len(changes)+1)
-		changes = append(changes, commitAIChange{
+		return commitAICollectResult{
 			repo: r,
-			input: ai.GenerationInput{
-				ID:       id,
-				RepoDir:  r.dir,
-				RepoName: r.display,
-				Ref:      "staged",
-				Context:  contextText,
+			change: commitAIChange{
+				repo: r,
+				input: ai.GenerationInput{
+					RepoDir:  r.dir,
+					RepoName: r.display,
+					Ref:      "staged",
+					Context:  contextText,
+				},
 			},
-		})
+		}
+	})
+	changes := []commitAIChange{}
+	skipped := 0
+	failed := 0
+	for _, result := range results {
+		switch {
+		case result.stageFailed:
+			a.error(result.repo.display, "Could not stage changes")
+			failed++
+		case result.contextError:
+			a.error(result.repo.display, "Could not prepare commit context:")
+			fmt.Fprintf(a.stderr, "%s\n\n", result.err.Error())
+			failed++
+		case result.skipped:
+			a.skip(result.repo.display, "No changes to commit. Skipping...")
+			skipped++
+		default:
+			result.change.input.ID = fmt.Sprintf("c%06d", len(changes)+1)
+			changes = append(changes, result.change)
+		}
 	}
 	return changes, skipped, failed
 }
