@@ -40,7 +40,7 @@ Manual binary installs do not include runtime dependencies, so install the depen
 
 Run `git-wrangler doctor` after installation to check the local tools Git Wrangler can use.
 
-Run `git-wrangler init` when you need private GitHub workflows or AI-assisted commit rewrites.
+Run `git-wrangler init` when you need private GitHub workflows or AI-assisted commits.
 
 ## Runtime dependencies
 
@@ -57,8 +57,9 @@ git-wrangler init
 - `remove-secrets`
 - `rewrite-authors`
 - `rewrite-commits`
-- `rewrite-commits-ai`
 - `rewrite-dates`
+
+AI commands such as `commit-ai` and `rewrite-commits-ai` require an OpenAI-compatible chat completions endpoint, a model, and an API key.
 
 `git-wrangler doctor` reports missing `git` as an error because most commands need it. Missing `gh` or `git-filter-repo` is reported as a warning because those tools are only needed for specific workflows.
 
