@@ -94,6 +94,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 			switch event.Phase {
 			case "Scanning repositories":
 				if event.Current == 0 {
+					scanProgress.message(event.RepoName)
 					return
 				}
 				scanProgress.advance(event.RepoName)
@@ -166,6 +167,7 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 			defer wg.Done()
 			for index := range jobs {
 				repoPlan := plan.Repos[index]
+				progress.message(repoPlan.Name)
 				out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 				results[index] = aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
 				progress.advance(aiApplyProgressDetail(results[index]))

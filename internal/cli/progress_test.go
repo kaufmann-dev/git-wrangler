@@ -92,11 +92,9 @@ func TestProgressLogClearsAndRedrawsInteractiveLine(t *testing.T) {
 	progress.log("Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.")
 
 	out := stderr.String()
-	if !strings.Contains(out, "\n\rTesting progress: [######--------------] 1/3 ") {
-		t.Fatalf("progress line was not redrawn after log:\n%q", out)
-	}
-	if strings.Contains(out, "1/3 Retrying") {
-		t.Fatalf("retry log was mixed into progress line:\n%q", out)
+	want := "Testing progress: [######--------------] 1/3 \r\x1b[JRetrying 1 commit(s) after failed batch attempt 1: missing or invalid message.\nTesting progress: [######--------------] 1/3 "
+	if out != want {
+		t.Fatalf("unexpected output:\ngot:  %q\nwant: %q", out, want)
 	}
 }
 
@@ -205,8 +203,48 @@ func TestProgressTruncatesLongInteractiveDetails(t *testing.T) {
 	}
 
 	out := buf.String()
-	expected := "\rTest: [##########----------] 5/10 123456789012345"
+	expected := "Test: [##########----------] 5/10 123456789012345"
 	if out != expected {
 		t.Errorf("expected output %q, got %q", expected, out)
+	}
+}
+
+func TestProgressClearHandlesMultipleRows(t *testing.T) {
+	oldTermGetSize := termGetSize
+	defer func() { termGetSize = oldTermGetSize }()
+
+	termGetSize = func(fd int) (int, int, error) {
+		return 20, 0, nil
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	progress := &progress{
+		writer:      w,
+		interactive: true,
+		label:       "Test",
+		total:       10,
+		current:     5,
+		lastWidth:   45,
+	}
+
+	progress.clear()
+	w.Close()
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := buf.String()
+	expected := "\x1b[2A\r\x1b[J"
+	if out != expected {
+		t.Errorf("expected clear output %q, got %q", expected, out)
 	}
 }
