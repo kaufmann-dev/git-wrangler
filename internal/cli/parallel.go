@@ -6,9 +6,21 @@ import (
 )
 
 func readOnlyWorkerCount(repoCount int) int {
+	return cappedWorkerCount(repoCount, 32)
+}
+
+func gitMutationWorkerCount(repoCount int) int {
+	return cappedWorkerCount(repoCount, 4)
+}
+
+func historyRewriteWorkerCount(repoCount int) int {
+	return cappedWorkerCount(repoCount, 1)
+}
+
+func cappedWorkerCount(repoCount, cap int) int {
 	workers := runtime.NumCPU()
-	if workers > 32 {
-		workers = 32
+	if workers > cap {
+		workers = cap
 	}
 	if workers < 1 {
 		workers = 1
@@ -20,10 +32,28 @@ func readOnlyWorkerCount(repoCount int) int {
 }
 
 func parallelRepos[T any](repos []repo, inspect func(repo) T) []T {
+	return parallelReposWithWorkers(repos, readOnlyWorkerCount(len(repos)), inspect)
+}
+
+func parallelGitMutations[T any](repos []repo, mutate func(repo) T) []T {
+	return parallelReposWithWorkers(repos, gitMutationWorkerCount(len(repos)), mutate)
+}
+
+func parallelHistoryRewrites[T any](repos []repo, rewrite func(repo) T) []T {
+	return parallelReposWithWorkers(repos, historyRewriteWorkerCount(len(repos)), rewrite)
+}
+
+func parallelReposWithWorkers[T any](repos []repo, workers int, inspect func(repo) T) []T {
 	results := make([]T, len(repos))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for i := 0; i < readOnlyWorkerCount(len(repos)); i++ {
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(repos) && len(repos) > 0 {
+		workers = len(repos)
+	}
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -34,34 +35,44 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		".aws/credentials", ".aws/config", ".config/gcloud/*", "application_default_credentials.json",
 		"azureProfile.json", "accessTokens.json",
 	}
-	status := 0
-	for _, r := range repos {
+	type secretScan struct {
+		repo            repo
+		err             error
+		invalidRepo     bool
+		matchedPatterns []string
+		matchedFiles    []string
+	}
+	scans := parallelRepos(repos, func(r repo) secretScan {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
+			return secretScan{repo: r, err: err, invalidRepo: true}
+		}
+		args := append([]string{"log", "--all", "--format=", "--name-only", "--"}, patterns...)
+		files, err := a.git.Stdout(a.ctx, r.dir, nil, args...)
+		if err != nil {
+			return secretScan{repo: r, err: err}
+		}
+		matchedFiles := sortedUnique(splitLines(files))
+		return secretScan{
+			repo:            r,
+			matchedFiles:    matchedFiles,
+			matchedPatterns: matchedSecretPatterns(patterns, matchedFiles),
+		}
+	})
+	status := 0
+	for _, scan := range scans {
+		r := scan.repo
+		if scan.invalidRepo {
 			fmt.Fprintf(a.stderr, "%sError: %s is not a valid or accessible git repository. Skipping...%s\n", a.ui.Red, r.display, a.ui.Reset)
 			status = 1
 			continue
 		}
-		matchedPatterns := []string{}
-		matchedFiles := []string{}
-		scanFailed := false
-		for _, pattern := range patterns {
-			files, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--all", "--format=", "--name-only", "--", pattern)
-			if err != nil {
-				fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-				status = 1
-				scanFailed = true
-				continue
-			}
-			if strings.TrimSpace(files) == "" {
-				continue
-			}
-			matchedPatterns = append(matchedPatterns, pattern)
-			matchedFiles = append(matchedFiles, splitLines(files)...)
-		}
-		if scanFailed {
+		if scan.err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
+			status = 1
 			continue
 		}
-		matchedFiles = sortedUnique(matchedFiles)
+		matchedPatterns := scan.matchedPatterns
+		matchedFiles := scan.matchedFiles
 		if len(matchedPatterns) == 0 {
 			fmt.Fprintf(a.stdout, "%sNo target patterns found in history. Skipping %s cleanly...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
@@ -99,6 +110,34 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		}
 	}
 	return status
+}
+
+func matchedSecretPatterns(patterns, files []string) []string {
+	matched := []string{}
+	for _, pattern := range patterns {
+		for _, file := range files {
+			if secretPatternMatches(pattern, file) {
+				matched = append(matched, pattern)
+				break
+			}
+		}
+	}
+	return matched
+}
+
+func secretPatternMatches(pattern, file string) bool {
+	if pattern == file {
+		return true
+	}
+	if ok, _ := path.Match(pattern, file); ok {
+		return true
+	}
+	if !strings.Contains(pattern, "/") {
+		if ok, _ := path.Match(pattern, path.Base(file)); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func runFilterRepo(a *app, dir string, filterCmd []string, args []string, env []string) (string, error) {
