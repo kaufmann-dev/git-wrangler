@@ -253,6 +253,8 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 	results := make([]repoResult, len(repositories))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
+	completedRepos := 0
+	var completedMu sync.Mutex
 	for i := 0; i < aiScanWorkerCount(len(repositories)); i++ {
 		wg.Add(1)
 		go func() {
@@ -261,6 +263,11 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 				repo := repositories[repoIndex]
 				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional, progress)
 				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
+				completedMu.Lock()
+				completedRepos++
+				current := completedRepos
+				completedMu.Unlock()
+				progress(ProgressEvent{Phase: "Scanning repositories", RepoName: repo.Name, Current: current, Total: len(repositories)})
 			}
 		}()
 	}
@@ -330,7 +337,7 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 }
 
 func shouldReportAIProgress(current, total int) bool {
-	return total > 1 && (current == total || current%100 == 0)
+	return total >= 100 && current%100 == 0
 }
 
 type commitMessage struct {
