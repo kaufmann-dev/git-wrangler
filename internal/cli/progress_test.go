@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/ai"
 )
 
 func TestProgressWritesPlainLinesForNonTTY(t *testing.T) {
@@ -93,5 +95,37 @@ func TestProgressLogClearsAndRedrawsInteractiveLine(t *testing.T) {
 	}
 	if strings.Contains(out, "1/3 Retrying") {
 		t.Fatalf("retry log was mixed into progress line:\n%q", out)
+	}
+}
+
+func TestAIRequestProgressWritesInlineColoredRetryDetail(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+
+	apiProgress := (*progress)(nil)
+	updateAIRequestProgress(a, &apiProgress, ai.ProgressEvent{
+		Phase:   "Sending API requests",
+		Current: 0,
+		Total:   2,
+		Detail:  "Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.",
+		Error:   true,
+	})
+	updateAIRequestProgress(a, &apiProgress, ai.ProgressEvent{
+		Phase:   "Sending API requests",
+		Current: 1,
+		Total:   2,
+		Detail:  "batch 1 completed",
+	})
+	apiProgress.done()
+
+	out := stderr.String()
+	if !strings.Contains(out, "Sending API requests: 0/2 \033[31mRetrying 1 commit(s)") {
+		t.Fatalf("retry detail was not inline and red:\n%q", out)
+	}
+	if !strings.Contains(out, "Sending API requests: 1/2 batch 1 completed") {
+		t.Fatalf("completion detail was not inline:\n%q", out)
 	}
 }
