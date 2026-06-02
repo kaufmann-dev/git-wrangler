@@ -22,6 +22,7 @@ git-wrangler rewrite-commits-ai [options]
 
 - `--batch-size <number>` defaults to `10` and must be between `1` and `50`.
 - `--max-chars-per-commit <number>` defaults to `3000`.
+- `--requests-per-minute <number>` defaults to `60` and controls how quickly API requests are started.
 - `--timeout <seconds>` defaults to `90`.
 - `--skip-conventional` skips messages that already use Conventional Commits.
 - `--body` generates a subject and body instead of subject only.
@@ -35,7 +36,7 @@ The command sends repository name, short commit id, file status, numstat, and re
 
 It does not send API keys in commit context and does not include old commit messages in model context.
 
-Sensitive file contents are hidden, including `.env`, private keys, credential or secret config files, and certificate/key bundles. Common secret-like tokens are redacted from diff text.
+Sensitive file contents are hidden, including `.env`, private keys, credential or secret config files, and certificate/key bundles. Diff bodies for common generated, vendor, cache, build, and upload paths are also hidden while file names and stats remain visible. Common secret-like tokens are redacted from diff text.
 
 ## Confirmation flow
 
