@@ -15,7 +15,7 @@ type commitAIChange struct {
 
 func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
-	requestsPerMinute, _ := cmd.Flags().GetInt("requests-per-minute")
+	rpm, _ := cmd.Flags().GetInt("rpm")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
@@ -24,8 +24,8 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
 		return 1
 	}
-	if requestsPerMinute <= 0 {
-		a.plainErrorf("--requests-per-minute must be a positive integer.")
+	if rpm <= 0 {
+		a.plainErrorf("--rpm must be a positive integer.")
 		return 1
 	}
 	if timeoutInt <= 0 {
@@ -86,16 +86,23 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 		APIKey:            settings.APIKey,
 		BatchSize:         4,
 		MaxCharsPerCommit: maxCharsInt,
-		RequestsPerMinute: requestsPerMinute,
+		RPM:               rpm,
 		Timeout:           time.Duration(timeoutInt) * time.Second,
 		Body:              body,
 		Git:               a.git,
 		Progress: func(event ai.ProgressEvent) {
-			if event.Phase != "Sending API requests" || event.Total <= 1 || event.Current == 0 {
+			if event.Phase != "Sending API requests" || event.Total <= 1 {
 				return
 			}
 			if apiProgress == nil {
 				apiProgress = newProgress(a, event.Phase, event.Total)
+			}
+			if event.Detail != "" {
+				apiProgress.message(event.Detail)
+				return
+			}
+			if event.Current == 0 {
+				return
 			}
 			apiProgress.advance("")
 		},

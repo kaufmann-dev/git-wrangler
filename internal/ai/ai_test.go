@@ -567,12 +567,12 @@ func TestProcessItemsPacesRequestStartsAndKeepsResults(t *testing.T) {
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
 		{ID: "c000003", RepoName: "repo", Hash: "333333333333", Context: "context"},
 	}, Config{
-		BaseURL:           server.URL,
-		Model:             "test-model",
-		APIKey:            "test-key",
-		BatchSize:         1,
-		RequestsPerMinute: 3000,
-		Timeout:           time.Second,
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       3000,
+		Timeout:   time.Second,
 	}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -623,12 +623,12 @@ func TestProcessItemsReportsProgressWithoutBatchSpam(t *testing.T) {
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
 	}, Config{
-		BaseURL:           server.URL,
-		Model:             "test-model",
-		APIKey:            "test-key",
-		BatchSize:         1,
-		RequestsPerMinute: 60000,
-		Timeout:           time.Second,
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
 		Progress: func(event ProgressEvent) {
 			events = append(events, event)
 		},
@@ -652,6 +652,50 @@ func TestProcessItemsReportsProgressWithoutBatchSpam(t *testing.T) {
 	}
 }
 
+func TestProcessItemsReportsRetryDetailThroughProgress(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if requests == 1 {
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"not conventional\"}]}"}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	var details []string
+	results, failures, err := processItems(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+	}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
+		Progress: func(event ProgressEvent) {
+			if event.Detail != "" {
+				details = append(details, event.Detail)
+			}
+		},
+	}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || len(results) != 1 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if strings.Contains(out.String(), "Retrying") {
+		t.Fatalf("retry output should use progress detail:\n%s", out.String())
+	}
+	if len(details) != 1 || !strings.Contains(details[0], "Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.") {
+		t.Fatalf("details = %#v", details)
+	}
+}
+
 func TestProcessItemsCancellationSuppressesRetryOutput(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -665,12 +709,12 @@ func TestProcessItemsCancellationSuppressesRetryOutput(t *testing.T) {
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
 	}, Config{
-		BaseURL:           server.URL,
-		Model:             "test-model",
-		APIKey:            "test-key",
-		BatchSize:         1,
-		RequestsPerMinute: 60000,
-		Timeout:           time.Second,
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
 	}, &out)
 	if !errors.Is(err, ErrAPICancelled) {
 		t.Fatalf("err = %v, want ErrAPICancelled", err)

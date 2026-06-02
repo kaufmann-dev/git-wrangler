@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
@@ -13,7 +14,7 @@ import (
 func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	batch, _ := cmd.Flags().GetInt("batch-size")
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
-	requestsPerMinute, _ := cmd.Flags().GetInt("requests-per-minute")
+	rpm, _ := cmd.Flags().GetInt("rpm")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
 	body, _ := cmd.Flags().GetBool("body")
@@ -31,8 +32,8 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
 		return 1
 	}
-	if requestsPerMinute <= 0 {
-		a.plainErrorf("--requests-per-minute must be a positive integer.")
+	if rpm <= 0 {
+		a.plainErrorf("--rpm must be a positive integer.")
 		return 1
 	}
 	if timeoutInt <= 0 {
@@ -80,27 +81,43 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		APIKey:            settings.APIKey,
 		BatchSize:         batch,
 		MaxCharsPerCommit: maxCharsInt,
-		RequestsPerMinute: requestsPerMinute,
+		RPM:               rpm,
 		Timeout:           time.Duration(timeoutInt) * time.Second,
 		SkipConventional:  skipConventional,
 		Body:              body,
 		WorkDir:           workDir,
 		Git:               a.git,
 		Progress: func(event ai.ProgressEvent) {
-			if event.Total <= 1 || event.Current == 0 {
+			if event.Total <= 1 {
 				return
 			}
 			switch event.Phase {
 			case "Scanning repositories":
+				if event.Current == 0 {
+					return
+				}
 				scanProgress.advance(event.RepoName)
 			case "Scanning commits":
+				if event.Current == 0 {
+					return
+				}
 				scanProgress.message(fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
 			case "Sending API requests":
 				if apiProgress == nil {
 					apiProgress = newProgress(a, event.Phase, event.Total)
 				}
+				if event.Detail != "" {
+					apiProgress.message(event.Detail)
+					return
+				}
+				if event.Current == 0 {
+					return
+				}
 				apiProgress.advance("")
 			default:
+				if event.Current == 0 {
+					return
+				}
 				scanProgress.message(fmt.Sprintf("%s %d/%d", event.Phase, event.Current, event.Total))
 			}
 		},
@@ -136,31 +153,70 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	return applyAIPlan(a, plan, filterCmd)
 }
 
+type aiApplyResult struct {
+	plan       ai.RepoPlan
+	output     string
+	err        error
+	restoreErr error
+}
+
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
-	hadError := false
 	progress := newProgress(a, "Applying AI rewrites", len(plan.Repos))
-	for _, repoPlan := range plan.Repos {
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
-		if err == nil {
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, restoreErr.Error(), a.ui.Reset)
+	results := make([]aiApplyResult, len(plan.Repos))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	workers := gitMutationWorkerCount(len(plan.Repos))
+	if workers < 1 {
+		workers = 1
+	}
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				repoPlan := plan.Repos[index]
+				out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+				results[index] = aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
+				progress.advance(aiApplyProgressDetail(results[index]))
+			}
+		}()
+	}
+	for index := range plan.Repos {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+	progress.done()
+
+	hadError := false
+	for _, result := range results {
+		if result.err == nil {
+			if result.restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
 				hadError = true
-				progress.advance(repoPlan.Name)
 				continue
 			}
-			fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) for %s%s\n", a.ui.Green, repoPlan.ChangedCount, repoPlan.Name, a.ui.Reset)
-		} else {
-			fmt.Fprintf(a.stderr, "%sError: Could not rewrite commit messages for %s:\n%s%s\n\n", a.ui.Red, repoPlan.Name, out, a.ui.Reset)
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, repoPlan.Name, restoreErr.Error(), a.ui.Reset)
-			}
-			hadError = true
+			fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) for %s%s\n", a.ui.Green, result.plan.ChangedCount, result.plan.Name, a.ui.Reset)
+			continue
 		}
-		progress.advance(repoPlan.Name)
+		fmt.Fprintf(a.stderr, "%sError: Could not rewrite commit messages for %s:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.output, a.ui.Reset)
+		if result.restoreErr != nil {
+			fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
+		}
+		hadError = true
 	}
-	progress.done()
 	if hadError {
 		return 1
 	}
 	return 0
+}
+
+func aiApplyProgressDetail(result aiApplyResult) string {
+	if result.err != nil {
+		return result.plan.Name + " failed"
+	}
+	if result.restoreErr != nil {
+		return result.plan.Name + " rewrite done, origin restore failed"
+	}
+	return fmt.Sprintf("%s rewrote %d commit message(s)", result.plan.Name, result.plan.ChangedCount)
 }

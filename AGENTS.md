@@ -8,7 +8,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `internal/cli` owns Cobra command registration, command groups, generated help, flags, `version`, `completion`, and command wiring. Use `SilenceUsage: true` and `SilenceErrors: true`, and print command errors once to stderr.
 
-Bulk per-repository work in `internal/cli` should use the shared ordered helpers in `parallel.go`: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and `git-filter-repo` history rewrite application remains sequential. Workers must return result structs; print only after collection so repository output order stays stable.
+Bulk per-repository work in `internal/cli` should use ordered worker patterns: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and history rewrites that are not explicitly parallelized remain sequential. Workers must return result structs; print only after collection so repository output order stays stable. AI rewrite application runs repositories in parallel with the independent Git mutation cap.
 
 Long-running bulk phases should report progress to stderr with the shared progress helper. Progress must not change ordered stdout summaries or interleave repository result blocks.
 
@@ -28,7 +28,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 `internal/ui` owns output streams, colors, plain output behavior, status vocabulary, prompts, and terminal detection.
 
-`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, RPM pacing, response validation, retry behavior, and callback generation. AI batch requests are paced by `--requests-per-minute`; do not add a separate in-flight concurrency cap unless explicitly requested.
+`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, RPM pacing, response validation, retry behavior, and callback generation. AI batch requests are paced by `--rpm`; do not add a separate in-flight concurrency cap unless explicitly requested.
 
 `internal/version` owns `Version`, `Commit`, and `Date`, defaulting to `dev`, `unknown`, and `unknown`. GoReleaser injects release values with ldflags.
 
