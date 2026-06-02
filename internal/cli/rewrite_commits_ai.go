@@ -67,6 +67,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 	for _, r := range repos {
 		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
 	}
+	scanProgress := newProgress(a, "Scanning repositories", len(repos))
 	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
 		BaseURL:           settings.Config.AI.BaseURL,
 		Model:             settings.Config.AI.Model,
@@ -82,10 +83,13 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 			if event.Total <= 1 || event.Current == 0 {
 				return
 			}
-			if event.RepoName != "" {
-				fmt.Fprintf(a.stderr, "%s %s: %d/%d\n", event.Phase, event.RepoName, event.Current, event.Total)
-			} else {
-				fmt.Fprintf(a.stderr, "%s: %d/%d\n", event.Phase, event.Current, event.Total)
+			switch event.Phase {
+			case "Scanning repositories":
+				scanProgress.advance(event.RepoName)
+			case "Scanning commits":
+				scanProgress.message(fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
+			default:
+				scanProgress.message(fmt.Sprintf("%s %d/%d", event.Phase, event.Current, event.Total))
 			}
 		},
 	}, a.stderr, func(question string) bool {
@@ -94,6 +98,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		}
 		return confirm(a, question)
 	})
+	scanProgress.done()
 	if errors.Is(err, ai.ErrCancelled) {
 		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
 		return 1
