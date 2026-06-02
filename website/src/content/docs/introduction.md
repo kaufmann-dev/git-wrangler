@@ -27,7 +27,7 @@ Bulk commands keep going after a per-repository failure, then exit nonzero if an
 
 Git Wrangler keeps repetitive multi-repository work in one focused CLI:
 
-1. Install through Homebrew or GitHub Release binaries.
+1. Install through a package manager or GitHub Release binary.
 2. Use `git-wrangler init` for GitHub and AI credential setup.
 3. Keep `gh` as the GitHub repository transport.
 4. Use `git-filter-repo` for history rewrite commands.
