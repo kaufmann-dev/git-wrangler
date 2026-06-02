@@ -52,7 +52,7 @@ func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 				return "M\tfile.txt\n", "", nil
 			case repoName == "dirty" && joined == "diff --cached --numstat":
 				return "1\t0\tfile.txt\n", "", nil
-			case repoName == "dirty" && joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3":
+			case repoName == "dirty" && joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3 -- file.txt":
 				return "diff --git a/file.txt b/file.txt\n+hello\n", "", nil
 			case repoName == "dirty" && joined == "commit -m feat(dirty): update file":
 				commits = append(commits, joined)
@@ -110,7 +110,7 @@ func TestCommitAIWithBodyUsesSecondCommitMessageFlag(t *testing.T) {
 				return "M\tfile.txt\n", "", nil
 			case joined == "diff --cached --numstat":
 				return "1\t0\tfile.txt\n", "", nil
-			case joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3":
+			case joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3 -- file.txt":
 				return "diff --git a/file.txt b/file.txt\n+hello\n", "", nil
 			case strings.HasPrefix(joined, "commit "):
 				commitArgs = append(commitArgs, joined)
@@ -169,7 +169,7 @@ func TestCommitAIInvalidOutputRetriesAndDoesNotCommit(t *testing.T) {
 				return "M\tfile.txt\n", "", nil
 			case joined == "diff --cached --numstat":
 				return "1\t0\tfile.txt\n", "", nil
-			case joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3":
+			case joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3 -- file.txt":
 				return "diff --git a/file.txt b/file.txt\n+hello\n", "", nil
 			case strings.HasPrefix(joined, "commit "):
 				committed = true
