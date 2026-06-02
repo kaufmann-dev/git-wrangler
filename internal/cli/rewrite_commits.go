@@ -29,19 +29,36 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	status := 0
-	for _, r := range repos {
+	type rewriteCommitScan struct {
+		repo      repo
+		mapping   map[string]string
+		err       error
+		hasHead   bool
+		noChanges bool
+	}
+	scans := parallelRepos(repos, func(r repo) rewriteCommitScan {
 		if !a.git.HasHead(a.ctx, r.dir) {
-			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+			return rewriteCommitScan{repo: r}
 		}
 		mapping, err := buildCommitMessageMapping(a, r.dir)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			return rewriteCommitScan{repo: r, err: err, hasHead: true}
+		}
+		return rewriteCommitScan{repo: r, mapping: mapping, hasHead: true, noChanges: len(mapping) == 0}
+	})
+	status := 0
+	for _, scan := range scans {
+		r := scan.repo
+		if !scan.hasHead {
+			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			continue
+		}
+		if scan.err != nil {
+			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
-		if len(mapping) == 0 {
+		if scan.noChanges {
 			fmt.Fprintf(a.stdout, "%sNo commits require rewriting in %s (already format compliant). Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
@@ -50,7 +67,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			continue
 		}
-		callback, err := writeCommitCallback(mapping)
+		callback, err := writeCommitCallback(scan.mapping)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not prepare commit callback for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
