@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -194,7 +195,7 @@ func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 	}
 }
 
-func TestApplyAIPlanRunsFilterRepoSerially(t *testing.T) {
+func TestApplyAIPlanRunsFilterRepoInParallelWithOrderedOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var mu sync.Mutex
 	activeFilters := 0
@@ -211,6 +212,9 @@ func TestApplyAIPlanRunsFilterRepoSerially(t *testing.T) {
 				maxActiveFilters = activeFilters
 			}
 			mu.Unlock()
+			if dir == "repo-a" {
+				time.Sleep(50 * time.Millisecond)
+			}
 			time.Sleep(25 * time.Millisecond)
 			mu.Lock()
 			activeFilters--
@@ -220,16 +224,23 @@ func TestApplyAIPlanRunsFilterRepoSerially(t *testing.T) {
 			return "", "", errors.New("unexpected command: " + joined)
 		}
 	}}
-	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+	var stdout bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, io.Discard)
 
 	status := applyAIPlan(a, &ai.Plan{Repos: []ai.RepoPlan{
 		{Dir: "repo-a", Name: "repo-a", CallbackFile: "callback-a.py", ChangedCount: 1},
-		{Dir: "repo-b", Name: "repo-b", CallbackFile: "callback-b.py", ChangedCount: 1},
+		{Dir: "repo-b", Name: "repo-b", CallbackFile: "callback-b.py", ChangedCount: 2},
 	}}, []string{"git-filter-repo"})
 	if status != 0 {
 		t.Fatalf("status = %d, want 0", status)
 	}
-	if maxActiveFilters != 1 {
-		t.Fatalf("git-filter-repo runs overlapped; max active = %d", maxActiveFilters)
+	if maxActiveFilters < 2 {
+		t.Fatalf("git-filter-repo runs did not overlap; max active = %d", maxActiveFilters)
+	}
+	out := stdout.String()
+	repoA := "Rewrote 1 commit message(s) for repo-a"
+	repoB := "Rewrote 2 commit message(s) for repo-b"
+	if !strings.Contains(out, repoA) || !strings.Contains(out, repoB) || strings.Index(out, repoA) > strings.Index(out, repoB) {
+		t.Fatalf("output is not ordered by plan:\n%s", out)
 	}
 }
