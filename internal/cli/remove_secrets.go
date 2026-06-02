@@ -42,7 +42,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		matchedPatterns []string
 		matchedFiles    []string
 	}
-	scans := parallelRepos(repos, func(r repo) secretScan {
+	scans := parallelReposProgress(repos, newProgress(a, "Scanning history for secrets", len(repos)), func(r repo) secretScan {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			return secretScan{repo: r, err: err, invalidRepo: true}
 		}
@@ -59,22 +59,26 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		}
 	})
 	status := 0
+	rewriteProgress := newProgress(a, "Removing secrets", len(scans))
 	for _, scan := range scans {
 		r := scan.repo
 		if scan.invalidRepo {
 			fmt.Fprintf(a.stderr, "%sError: %s is not a valid or accessible git repository. Skipping...%s\n", a.ui.Red, r.display, a.ui.Reset)
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		matchedPatterns := scan.matchedPatterns
 		matchedFiles := scan.matchedFiles
 		if len(matchedPatterns) == 0 {
 			fmt.Fprintf(a.stdout, "%sNo target patterns found in history. Skipping %s cleanly...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%sFound %d sensitive file(s) matching %d pattern(s) in %s:%s\n", a.ui.Yellow, len(matchedFiles), len(matchedPatterns), r.display, a.ui.Reset)
@@ -85,6 +89,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		if !yes && !confirm(a, "Purge these files from history for "+r.display+"?") {
 			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
@@ -102,13 +107,16 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 				fmt.Fprintf(a.stderr, "%sWarning: Rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 			}
 			status = 1
+			rewriteProgress.advance(r.display)
 			continue
 		}
 		if restoreErr != nil {
 			fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
 			status = 1
 		}
+		rewriteProgress.advance(r.display)
 	}
+	rewriteProgress.done()
 	return status
 }
 
