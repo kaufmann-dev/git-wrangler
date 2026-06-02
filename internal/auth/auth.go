@@ -37,6 +37,7 @@ func (a GitHubDeviceAuthenticator) AuthenticateGitHub(ctx context.Context, host 
 	if a.ClientID == "" {
 		return GitHubResult{}, errors.New("GitHub OAuth client ID is not configured")
 	}
+	httpClient := a.httpClient()
 	oaHost, err := oauth.NewGitHubHost("https://" + host)
 	if err != nil {
 		return GitHubResult{}, err
@@ -45,7 +46,7 @@ func (a GitHubDeviceAuthenticator) AuthenticateGitHub(ctx context.Context, host 
 		Host:       oaHost,
 		Scopes:     []string{"repo", "read:org"},
 		ClientID:   a.ClientID,
-		HTTPClient: a.HTTPClient,
+		HTTPClient: httpClient,
 		Stdin:      stdin,
 		Stdout:     stdout,
 		BrowseURL:  a.BrowseURL,
@@ -54,11 +55,18 @@ func (a GitHubDeviceAuthenticator) AuthenticateGitHub(ctx context.Context, host 
 	if err != nil {
 		return GitHubResult{}, err
 	}
-	username, err := fetchGitHubUsername(ctx, host, token.Token, a.HTTPClient)
+	username, err := fetchGitHubUsername(ctx, host, token.Token, httpClient)
 	if err != nil {
 		return GitHubResult{}, err
 	}
 	return GitHubResult{Token: token.Token, Username: username}, nil
+}
+
+func (a GitHubDeviceAuthenticator) httpClient() *http.Client {
+	if a.HTTPClient != nil {
+		return a.HTTPClient
+	}
+	return http.DefaultClient
 }
 
 func fetchGitHubUsername(ctx context.Context, host, token string, client *http.Client) (string, error) {
