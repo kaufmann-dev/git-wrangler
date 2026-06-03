@@ -53,13 +53,11 @@ scoop install kaufmann-dev/git-wrangler
 ```
 
 > [!TIP]
-> Prefer Homebrew or Scoop when possible. They install the `git-wrangler`
-> binary, shell completions, and required dependencies automatically.
->
-> You can also download a standalone binary from GitHub Releases, extract it,
-> and place it on your `PATH`. With a manual install, you need to install shell
-> completions yourself, and make sure the dependencies `git`, `gh`, and
-> `git-filter-repo` are installed. See [Shell Completions](#shell-completions) below.
+> You can also install manually by downloading a standalone binary from
+> GitHub Releases, extracting it, and adding it to your `PATH`. Unlike Scoop or
+> Homebrew, this method does not install dependencies or shell completions
+> automatically. You will need to install `git`, `gh`, and `git-filter-repo` yourself, and
+> set up shell completions manually (see [Shell Completions](#shell-completions)).
 
 ### Update
 
@@ -114,15 +112,15 @@ git-wrangler help
 
 ### Local Operations
 
-| Command         | What it does                                              |
-| --------------- | --------------------------------------------------------- |
-| `commit`        | Stage all changes and create a commit in each dirty repo. |
+| Command         | What it does                                                |
+| --------------- | ----------------------------------------------------------- |
+| `commit`        | Stage all changes and create a commit in each dirty repo.   |
 | `fix-gitignore` | Add missing common generated-file patterns to `.gitignore`. |
-| `license`       | Add or replace MIT license files.                         |
-| `rename-branch` | Rename a branch across repositories.                      |
-| `reset`         | Reset current branches to their origin counterparts.      |
-| `review`        | Review unpushed changes across repositories.              |
-| `untrack`       | Stop tracking files already covered by `.gitignore`.      |
+| `license`       | Add or replace MIT license files.                           |
+| `rename-branch` | Rename a branch across repositories.                        |
+| `reset`         | Reset current branches to their origin counterparts.        |
+| `review`        | Review unpushed changes across repositories.                |
+| `untrack`       | Stop tracking files already covered by `.gitignore`.        |
 
 ### AI Commands
 
@@ -133,24 +131,25 @@ git-wrangler help
 
 ### History Rewriting
 
-| Command           | What it does                                   |
-| ----------------- | ---------------------------------------------- |
-| `remove-secrets`  | Purge sensitive files from Git history.         |
-| `rewrite-authors` | Rewrite author and committer identity.          |
+| Command           | What it does                                     |
+| ----------------- | ------------------------------------------------ |
+| `remove-secrets`  | Purge sensitive files from Git history.          |
+| `rewrite-authors` | Rewrite author and committer identity.           |
 | `rewrite-commits` | Rewrite commit messages to Conventional Commits. |
-| `rewrite-dates`   | Redistribute commit timestamps.                |
+| `rewrite-dates`   | Redistribute commit timestamps.                  |
 
 ### Utility
 
 | Command      | What it does                                        |
 | ------------ | --------------------------------------------------- |
-| `config`     | Show and edit Git Wrangler configuration.            |
+| `config`     | Show and edit Git Wrangler configuration.           |
 | `doctor`     | Check runtime dependencies and local configuration. |
 | `info`       | Show detailed repository information.               |
 | `init`       | Set up GitHub and AI credentials.                   |
 | `status`     | Show clean, dirty, ahead, behind, and remote state. |
 | `version`    | Print version metadata.                             |
 | `completion` | Generate shell completion scripts.                  |
+| `help`       | Show help for Git Wrangler or a specific command.   |
 
 ## AI-Powered Workflows
 
@@ -189,10 +188,10 @@ and designed to fail safely.
 
 ### Runtime dependencies
 
-| Tool               | Required for                                    |
-| ------------------ | ----------------------------------------------- |
-| `git`              | All repository operations (required).           |
-| `gh`               | GitHub operations: `clone`, `rename-repo`.      |
+| Tool               | Required for                                     |
+| ------------------ | ------------------------------------------------ |
+| `git`              | All repository operations (required).            |
+| `gh`               | GitHub operations: `clone`, `rename-repo`.       |
 | `git-filter-repo`  | History rewrites: `remove-secrets`, `rewrite-*`. |
 
 Run `git-wrangler doctor` to check what's available on your system.
