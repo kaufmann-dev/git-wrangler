@@ -22,13 +22,6 @@ func TestGitMutationWorkerCountIsBounded(t *testing.T) {
 	}
 }
 
-func TestHistoryRewriteWorkerCountIsSequential(t *testing.T) {
-	t.Parallel()
-	if got := historyRewriteWorkerCount(1000); got != 1 {
-		t.Fatalf("history rewrite worker count = %d, want 1", got)
-	}
-}
-
 func TestParallelReposPreservesOrder(t *testing.T) {
 	t.Parallel()
 	repos := []repo{{display: "a"}, {display: "b"}, {display: "c"}}

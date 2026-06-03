@@ -13,10 +13,6 @@ func gitMutationWorkerCount(repoCount int) int {
 	return cappedWorkerCount(repoCount, 4)
 }
 
-func historyRewriteWorkerCount(repoCount int) int {
-	return cappedWorkerCount(repoCount, 1)
-}
-
 func cappedWorkerCount(repoCount, cap int) int {
 	workers := runtime.NumCPU()
 	if workers > cap {
@@ -45,10 +41,6 @@ func parallelGitMutations[T any](repos []repo, mutate func(repo) T) []T {
 
 func parallelGitMutationsProgress[T any](repos []repo, progress *progress, mutate func(repo) T) []T {
 	return parallelReposWithWorkersProgress(repos, gitMutationWorkerCount(len(repos)), progress, mutate)
-}
-
-func parallelHistoryRewrites[T any](repos []repo, rewrite func(repo) T) []T {
-	return parallelReposWithWorkers(repos, historyRewriteWorkerCount(len(repos)), rewrite)
 }
 
 func parallelReposWithWorkers[T any](repos []repo, workers int, inspect func(repo) T) []T {
