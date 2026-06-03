@@ -15,7 +15,7 @@ Cross-platform Go CLI for coordinating dozens of Git repositories in parallel, e
 ## Navigation
 
 - [Why Git Wrangler?](#why-git-wrangler)
-- [Installation](#installation)
+- [Installation & Maintenance](#installation-&-maintenance)
 - [Quick Start](#quick-start)
 - [Commands](#commands)
 - [AI-Powered Workflows](#ai-powered-workflows)
