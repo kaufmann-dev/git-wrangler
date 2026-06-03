@@ -76,6 +76,7 @@ type Plan struct {
 type RepoPlan struct {
 	Dir          string
 	Name         string
+	GitDir       string
 	CallbackFile string
 	ChangedCount int
 }
@@ -113,6 +114,7 @@ type item struct {
 	RepoIndex  int
 	RepoDir    string
 	RepoName   string
+	RepoGitDir string
 	Hash       string
 	OldMessage string
 	Context    string
@@ -364,6 +366,7 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 			RepoIndex:  repoIndex,
 			RepoDir:    repo.Dir,
 			RepoName:   repo.Name,
+			RepoGitDir: repo.GitDir,
 			Hash:       commit.hash,
 			OldMessage: strings.TrimSpace(commit.message),
 			Context:    contextText,
@@ -1076,9 +1079,10 @@ func FormatMessage(message Message) string {
 
 func buildPlan(items []item, results map[string]Message, stats Stats, workDir string) (*Plan, error) {
 	type key struct {
-		index int
-		dir   string
-		name  string
+		index  int
+		dir    string
+		name   string
+		gitDir string
 	}
 	byRepo := map[key][]mapping{}
 	var samples []string
@@ -1093,7 +1097,7 @@ func buildPlan(items []item, results map[string]Message, stats Stats, workDir st
 			unchanged++
 			continue
 		}
-		k := key{index: item.RepoIndex, dir: item.RepoDir, name: item.RepoName}
+		k := key{index: item.RepoIndex, dir: item.RepoDir, name: item.RepoName, gitDir: item.RepoGitDir}
 		byRepo[k] = append(byRepo[k], mapping{hash: item.Hash, message: message})
 		if len(samples) < 12 {
 			samples = append(samples, fmt.Sprintf("  %s %s: %s", item.RepoName, shortHash(item.Hash, 8), message))
@@ -1115,7 +1119,7 @@ func buildPlan(items []item, results map[string]Message, stats Stats, workDir st
 		if err := writeCommitCallback(callbackFile, byRepo[k]); err != nil {
 			return nil, err
 		}
-		plan.Repos = append(plan.Repos, RepoPlan{Dir: k.dir, Name: k.name, CallbackFile: callbackFile, ChangedCount: len(byRepo[k])})
+		plan.Repos = append(plan.Repos, RepoPlan{Dir: k.dir, Name: k.name, GitDir: k.gitDir, CallbackFile: callbackFile, ChangedCount: len(byRepo[k])})
 		plan.GeneratedCount += len(byRepo[k])
 	}
 	lines := []string{
