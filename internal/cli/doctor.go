@@ -13,6 +13,9 @@ import (
 )
 
 func runDoctor(a *app, cmd *cobra.Command, args []string) int {
+	if a.json {
+		return runDoctorJSON(a)
+	}
 	fmt.Fprintln(a.stdout, "Git Wrangler Doctor")
 	fmt.Fprintln(a.stdout)
 	fmt.Fprintf(a.stdout, "Version:    %s\n", firstLine(version.Full()))
@@ -45,6 +48,78 @@ func runDoctor(a *app, cmd *cobra.Command, args []string) int {
 	if !doctorConfig(a) {
 		status = 1
 	}
+	return status
+}
+
+func runDoctorJSON(a *app) int {
+	type dependency struct {
+		Name     string `json:"name"`
+		OK       bool   `json:"ok"`
+		Critical bool   `json:"critical"`
+		Path     string `json:"path,omitempty"`
+		Version  string `json:"version,omitempty"`
+		Message  string `json:"message,omitempty"`
+	}
+	dependencies := []dependency{}
+	status := 0
+	missing := 0
+	addCommand := func(name string, critical bool, args ...string) {
+		path, err := a.runner.LookPath(name)
+		if err != nil {
+			dependencies = append(dependencies, dependency{Name: name, Critical: critical, Message: "not found"})
+			missing++
+			if critical {
+				status = 1
+			}
+			return
+		}
+		dependencies = append(dependencies, dependency{Name: name, OK: true, Critical: critical, Path: path, Version: doctorVersion(a, path, args...)})
+	}
+	addCommand("git", true, "--version")
+	addCommand("gh", false, "--version")
+	if filterRepo, ok := a.git.FilterRepoCommand(a.ctx); ok {
+		dependencies = append(dependencies, dependency{Name: "git-filter-repo", OK: true, Path: strings.Join(filterRepo, " "), Version: doctorVersion(a, filterRepo[0], append(filterRepo[1:], "--version")...)})
+	} else {
+		dependencies = append(dependencies, dependency{Name: "git-filter-repo", Message: "not found"})
+		missing++
+	}
+
+	configInfo := map[string]any{}
+	path, err := config.Path()
+	if err != nil {
+		status = 1
+		configInfo["error"] = jsonError{Message: err.Error()}
+	} else {
+		configInfo["path"] = path
+		cfg, err := config.Load()
+		if err != nil {
+			status = 1
+			configInfo["error"] = jsonError{Message: err.Error()}
+		} else {
+			github := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
+			aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
+			configInfo["github"] = map[string]any{
+				"host":       cfg.GitHub.Host,
+				"username":   cfg.GitHub.Username,
+				"authSource": string(github.Source),
+				"authSet":    github.Value != "",
+			}
+			configInfo["ai"] = map[string]any{
+				"provider":     cfg.AI.Provider,
+				"baseURL":      cfg.AI.BaseURL,
+				"model":        cfg.AI.Model,
+				"apiKeySource": string(aiKey.Source),
+				"apiKeySet":    aiKey.Value != "",
+			}
+			configInfo["keyringAvailable"] = credentials.KeyringAvailable(a.creds)
+		}
+	}
+	_ = writeJSON(a, map[string]any{
+		"ok":           status == 0,
+		"summary":      map[string]int{"dependencies": len(dependencies), "missing": missing},
+		"dependencies": dependencies,
+		"config":       configInfo,
+	})
 	return status
 }
 

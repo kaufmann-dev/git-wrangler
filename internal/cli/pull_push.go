@@ -13,7 +13,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "pull") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -65,7 +65,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "fetch") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -114,7 +114,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "push") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -158,13 +158,16 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
 		return status
 	}
-	for _, r := range repos {
-		pushArgs := []string{"push", "origin", "HEAD"}
-		if !yesFlag(cmd) && !confirm(a, "Raw force push "+r.display+" with --force?") {
+	if !confirmOrSkip(a, yesFlag(cmd), fmt.Sprintf("Raw force push %d repositories with --force?", len(repos))) {
+		for _, r := range repos {
 			a.skip(r.display, "Skipping unsafe force push.")
 			skipped++
-			continue
 		}
+		fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
+		return status
+	}
+	for _, r := range repos {
+		pushArgs := []string{"push", "origin", "HEAD"}
 		pushArgs = []string{"push", "--force", "origin", "HEAD"}
 		out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
 		if err == nil {

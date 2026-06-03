@@ -312,8 +312,8 @@ func TestCommitCancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
 	cmd.SetErr(&stderr)
 	t.Chdir(root)
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected cancellation failure")
+	if err != nil {
+		t.Fatalf("declined confirmation should be a successful no-op: %v", err)
 	}
 	if realAdd {
 		t.Fatal("real index should not be staged before API-send confirmation")

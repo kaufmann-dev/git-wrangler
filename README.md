@@ -31,6 +31,8 @@ mess up. Git Wrangler turns that workspace into one coordinated unit.
 
 It finds repositories below your current directory and runs Git workflows across
 them in one pass, with parallel execution, stable output, and safe defaults.
+Use `--repo PATH` on repository commands when you want to target exactly one
+repository instead of discovering everything below the current directory.
 
 ### What it gives you
 
@@ -158,9 +160,9 @@ API to generate Conventional Commit messages from your diffs.
 git-wrangler init
 
 # Or configure directly
-git-wrangler config set ai-base-url https://api.openai.com/v1
-git-wrangler config set ai-model gpt-4o
-git-wrangler config set ai-api-key
+git-wrangler config set ai.base-url https://api.openai.com/v1
+git-wrangler config set ai.model gpt-4o
+git-wrangler config set ai.api-key
 ```
 
 ## Safety & Guardrails
@@ -227,6 +229,13 @@ The script installs `git-wrangler` with `go install` and defaults `GOBIN` to
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+Run local checks before opening changes:
+
+```bash
+scripts/test
+scripts/check
 ```
 
 After making changes, run the script again and test the command normally:

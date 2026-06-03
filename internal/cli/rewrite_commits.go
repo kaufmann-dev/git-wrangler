@@ -54,7 +54,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -128,11 +128,11 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	apiProgress.done()
 	if errors.Is(err, ai.ErrCancelled) {
 		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
-		return 1
+		return 0
 	}
 	if errors.Is(err, ai.ErrAPICancelled) {
 		fmt.Fprintf(a.stdout, "%sStopped while sending API requests. No history was changed.%s\n", a.ui.Yellow, a.ui.Reset)
-		return 1
+		return 0
 	}
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
@@ -144,9 +144,9 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	fmt.Fprintln(a.stderr)
 	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update remotes.%s\n", a.ui.Red, a.ui.Reset)
-	if !yes && !confirm(a, "Apply these generated commit messages to all listed repositories?") {
+	if !confirmOrSkip(a, yes, "Apply these generated commit messages to all listed repositories?") {
 		fmt.Fprintf(a.stdout, "%sRewrite cancelled. Generated AI messages were temporary and have been discarded.%s\n", a.ui.Yellow, a.ui.Reset)
-		return 1
+		return 0
 	}
 	return applyAIPlan(a, plan, filterCmd)
 }

@@ -13,10 +13,13 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		a.errorf("Unknown option: %s", args[0])
 		return 1
 	}
+	if a.json {
+		return runStatusJSON(a, cmd)
+	}
 	if !requireGit(a, "status") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -71,6 +74,75 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	return status
 }
 
+func runStatusJSON(a *app, cmd *cobra.Command) int {
+	if _, err := a.runner.LookPath("git"); err != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": 0, "failed": 1},
+			"error":   jsonError{Message: "'git' is required for status. Install it and make sure it is on PATH."},
+		}, 1)
+	}
+	repos, err := commandRepositoryTargets(cmd)
+	if err != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": 0, "failed": 1},
+			"error":   jsonError{Message: err.Error()},
+		}, 1)
+	}
+	type statusJSONRepo struct {
+		Name     string     `json:"name"`
+		Path     string     `json:"path"`
+		State    string     `json:"state"`
+		Tracking string     `json:"tracking"`
+		Ahead    int        `json:"ahead"`
+		Behind   int        `json:"behind"`
+		Error    *jsonError `json:"error,omitempty"`
+	}
+	rows := []statusJSONRepo{}
+	summary := map[string]int{"repositories": len(repos), "clean": 0, "dirty": 0, "behind": 0, "noRemote": 0, "failed": 0}
+	for _, r := range repos {
+		detail, err := statusDetails(a, r)
+		row := statusJSONRepo{Name: r.display, Path: r.dir, State: "clean", Tracking: "up to date", Ahead: detail.ahead, Behind: detail.behind}
+		if err != nil {
+			row.Error = &jsonError{Message: err.Error()}
+			summary["failed"]++
+			rows = append(rows, row)
+			continue
+		}
+		if detail.dirty {
+			row.State = "dirty"
+			summary["dirty"]++
+		} else {
+			summary["clean"]++
+		}
+		switch {
+		case !detail.hasUpstream:
+			row.Tracking = "no remote"
+			summary["noRemote"]++
+		case detail.ahead > 0 && detail.behind > 0:
+			row.Tracking = "ahead and behind"
+			summary["behind"]++
+		case detail.ahead > 0:
+			row.Tracking = "ahead"
+		case detail.behind > 0:
+			row.Tracking = "behind"
+			summary["behind"]++
+		}
+		rows = append(rows, row)
+	}
+	code := 0
+	if summary["failed"] > 0 {
+		code = 1
+	}
+	_ = writeJSON(a, map[string]any{
+		"ok":           code == 0,
+		"summary":      summary,
+		"repositories": rows,
+	})
+	return code
+}
+
 type statusTableRow struct {
 	name     string
 	state    string
@@ -80,29 +152,41 @@ type statusTableRow struct {
 	noRemote int
 }
 
-func statusRow(a *app, r repo) (statusTableRow, error) {
+type statusDetail struct {
+	dirty       bool
+	hasUpstream bool
+	ahead       int
+	behind      int
+}
+
+func statusDetails(a *app, r repo) (statusDetail, error) {
 	out, err := a.git.StatusPorcelainBranch(a.ctx, r.dir)
 	if err != nil {
-		return statusTableRow{}, err
+		return statusDetail{}, err
 	}
-	isDirty := false
-	hasUpstream := false
-	aheadCount := 0
-	behindCount := 0
+	detail := statusDetail{}
 	for _, line := range splitLines(out) {
 		switch {
 		case strings.HasPrefix(line, "# branch.upstream "):
-			hasUpstream = true
+			detail.hasUpstream = true
 		case strings.HasPrefix(line, "# branch.ab "):
 			fields := strings.Fields(line)
 			if len(fields) >= 4 {
-				aheadCount, _ = strconv.Atoi(strings.TrimPrefix(fields[2], "+"))
-				behindCount, _ = strconv.Atoi(strings.TrimPrefix(fields[3], "-"))
+				detail.ahead, _ = strconv.Atoi(strings.TrimPrefix(fields[2], "+"))
+				detail.behind, _ = strconv.Atoi(strings.TrimPrefix(fields[3], "-"))
 			}
 		case strings.HasPrefix(line, "#"), line == "":
 		default:
-			isDirty = true
+			detail.dirty = true
 		}
+	}
+	return detail, nil
+}
+
+func statusRow(a *app, r repo) (statusTableRow, error) {
+	detail, err := statusDetails(a, r)
+	if err != nil {
+		return statusTableRow{}, err
 	}
 
 	name := r.display
@@ -111,7 +195,7 @@ func statusRow(a *app, r repo) (statusTableRow, error) {
 	}
 	state := a.ui.Green + "clean" + a.ui.Reset
 	dirty := 0
-	if isDirty {
+	if detail.dirty {
 		state = a.ui.Yellow + "dirty" + a.ui.Reset
 		dirty = 1
 	}
@@ -119,16 +203,16 @@ func statusRow(a *app, r repo) (statusTableRow, error) {
 	tracking := "up to date"
 	behind := 0
 	noRemote := 0
-	if !hasUpstream {
+	if !detail.hasUpstream {
 		tracking = a.ui.Muted + "no remote" + a.ui.Reset
 		noRemote = 1
-	} else if aheadCount > 0 && behindCount > 0 {
-		tracking = fmt.Sprintf("%sahead %d%s, %sbehind %d%s", a.ui.Cyan, aheadCount, a.ui.Reset, a.ui.Red, behindCount, a.ui.Reset)
+	} else if detail.ahead > 0 && detail.behind > 0 {
+		tracking = fmt.Sprintf("%sahead %d%s, %sbehind %d%s", a.ui.Cyan, detail.ahead, a.ui.Reset, a.ui.Red, detail.behind, a.ui.Reset)
 		behind = 1
-	} else if aheadCount > 0 {
-		tracking = fmt.Sprintf("%sahead %d%s", a.ui.Cyan, aheadCount, a.ui.Reset)
-	} else if behindCount > 0 {
-		tracking = fmt.Sprintf("%sbehind %d%s", a.ui.Red, behindCount, a.ui.Reset)
+	} else if detail.ahead > 0 {
+		tracking = fmt.Sprintf("%sahead %d%s", a.ui.Cyan, detail.ahead, a.ui.Reset)
+	} else if detail.behind > 0 {
+		tracking = fmt.Sprintf("%sbehind %d%s", a.ui.Red, detail.behind, a.ui.Reset)
 		behind = 1
 	}
 

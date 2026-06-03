@@ -28,7 +28,7 @@ type progress struct {
 var termGetSize = term.GetSize
 
 func newProgress(a *app, label string, total int) *progress {
-	if total <= 1 {
+	if total <= 1 || a.json {
 		return nil
 	}
 	return &progress{
