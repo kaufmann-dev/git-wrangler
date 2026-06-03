@@ -79,6 +79,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		BaseURL:           settings.Config.AI.BaseURL,
 		Model:             settings.Config.AI.Model,
 		APIKey:            settings.APIKey,
+		Headers:           settings.Headers,
 		BatchSize:         batch,
 		MaxCharsPerCommit: maxCharsInt,
 		RPM:               rpm,
@@ -160,12 +161,15 @@ type aiApplyResult struct {
 
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	progress := newProgress(a, "Applying AI rewrites", len(plan.Repos))
-	results := parallelItemsWithWorkersProgress(plan.Repos, gitMutationWorkerCount(len(plan.Repos)), progress, func(repoPlan ai.RepoPlan) (string, string) {
+	results := parallelItemsWithWorkersProgress(a.ctx, plan.Repos, gitMutationWorkerCount(len(plan.Repos)), progress, func(repoPlan ai.RepoPlan) (string, string) {
 		return repoPlan.Name, repoPlan.Name
 	}, func(repoPlan ai.RepoPlan) aiApplyResult {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, repoPlan.GitDir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 		return aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
 	})
+	if interrupted(a) {
+		return 1
+	}
 
 	hadError := false
 	succeededRepos := 0
