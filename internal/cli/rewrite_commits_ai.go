@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
+	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -96,10 +96,10 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 					return
 				}
 				if event.Current == 0 {
-					scanProgress.start(event.RepoName)
+					scanProgress.startWork(progressEventKey(event), progressEventDetail(event))
 					return
 				}
-				scanProgress.finish(event.RepoName, event.RepoName)
+				scanProgress.finish(progressEventKey(event), progressEventDetail(event))
 			case "Scanning commits":
 				if event.Total <= 1 {
 					return
@@ -107,7 +107,7 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 				if event.Current == 0 {
 					return
 				}
-				scanProgress.update(event.RepoName, fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
+				scanProgress.update(progressEventKey(event), progressEventDetail(event))
 			default:
 				if event.Total <= 1 {
 					return
@@ -160,36 +160,12 @@ type aiApplyResult struct {
 
 func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	progress := newProgress(a, "Applying AI rewrites", len(plan.Repos))
-	results := make([]aiApplyResult, len(plan.Repos))
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	workers := gitMutationWorkerCount(len(plan.Repos))
-	if workers < 1 {
-		workers = 1
-	}
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range jobs {
-				repoPlan := plan.Repos[index]
-				if progress != nil {
-					progress.start(repoPlan.Name)
-				}
-				out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
-				results[index] = aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
-				if progress != nil {
-					progress.finish(repoPlan.Name, aiApplyProgressDetail(results[index]))
-				}
-			}
-		}()
-	}
-	for index := range plan.Repos {
-		jobs <- index
-	}
-	close(jobs)
-	wg.Wait()
-	progress.done()
+	results := parallelItemsWithWorkersProgress(plan.Repos, gitMutationWorkerCount(len(plan.Repos)), progress, func(repoPlan ai.RepoPlan) (string, string) {
+		return repoPlan.Name, repoPlan.Name
+	}, func(repoPlan ai.RepoPlan) aiApplyResult {
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+		return aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
+	})
 
 	hadError := false
 	succeededRepos := 0
@@ -220,16 +196,6 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	return 0
 }
 
-func aiApplyProgressDetail(result aiApplyResult) string {
-	if result.err != nil {
-		return result.plan.Name + " failed"
-	}
-	if result.restoreErr != nil {
-		return result.plan.Name + " rewrite done, origin restore failed"
-	}
-	return result.plan.Name
-}
-
 func updateAIRequestProgress(a *app, apiProgress **progress, event ai.ProgressEvent) {
 	if event.Total <= 1 {
 		if event.Error && event.Detail != "" {
@@ -247,11 +213,11 @@ func updateAIRequestProgress(a *app, apiProgress **progress, event ai.ProgressEv
 	}
 	if event.Current == 0 {
 		if detail != "" {
-			(*apiProgress).log(detail)
+			(*apiProgress).startWork(progressEventKey(event), detail)
 		}
 		return
 	}
-	(*apiProgress).advance(detail)
+	(*apiProgress).finish(progressEventKey(event), detail)
 }
 
 func aiProgressDetail(a *app, event ai.ProgressEvent) string {
@@ -259,7 +225,25 @@ func aiProgressDetail(a *app, event ai.ProgressEvent) string {
 		return ""
 	}
 	if event.Error {
-		return a.ui.Red + event.Detail + a.ui.Reset
+		theme := ui.New(a.stderr)
+		return theme.Red + event.Detail + theme.Reset
 	}
 	return event.Detail
+}
+
+func progressEventKey(event ai.ProgressEvent) string {
+	if event.Key != "" {
+		return event.Key
+	}
+	if event.RepoName != "" {
+		return event.RepoName
+	}
+	return event.Detail
+}
+
+func progressEventDetail(event ai.ProgressEvent) string {
+	if event.Detail != "" {
+		return event.Detail
+	}
+	return event.RepoName
 }
