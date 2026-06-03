@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/spf13/cobra"
 )
+
+var timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
 
 func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	startDate, _ := cmd.Flags().GetString("start-date")
