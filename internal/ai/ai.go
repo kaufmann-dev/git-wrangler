@@ -444,9 +444,9 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 }
 
 func hiddenDiffMarker(nameStatus string) string {
-	paths := changedPaths(nameStatus)
-	for _, path := range paths {
-		if !IsSensitivePath(path) && IsExcludedDiffPath(path) {
+	for _, paths := range changedPathGroups(nameStatus) {
+		sensitive, excluded := pathGroupSafety(paths)
+		if !sensitive && excluded {
 			return "[EXCLUDED OR SENSITIVE FILE CONTENT HIDDEN]"
 		}
 	}
@@ -455,9 +455,10 @@ func hiddenDiffMarker(nameStatus string) string {
 
 func visibleDiffPaths(nameStatus string) []string {
 	paths := []string{}
-	for _, path := range changedPaths(nameStatus) {
-		if !IsSensitivePath(path) && !IsExcludedDiffPath(path) {
-			paths = append(paths, path)
+	for _, group := range changedPathGroups(nameStatus) {
+		sensitive, excluded := pathGroupSafety(group)
+		if !sensitive && !excluded && len(group) > 0 {
+			paths = append(paths, group[len(group)-1])
 		}
 	}
 	return paths
@@ -465,22 +466,46 @@ func visibleDiffPaths(nameStatus string) []string {
 
 func changedPaths(nameStatus string) []string {
 	paths := []string{}
+	for _, group := range changedPathGroups(nameStatus) {
+		paths = append(paths, group...)
+	}
+	return paths
+}
+
+func changedPathGroups(nameStatus string) [][]string {
+	groups := [][]string{}
 	for _, line := range splitLines(nameStatus) {
 		fields := strings.Split(line, "\t")
 		if len(fields) < 2 {
 			continue
 		}
-		paths = append(paths, fields[len(fields)-1])
+		groups = append(groups, fields[1:])
 	}
-	return paths
+	return groups
+}
+
+func pathGroupSafety(paths []string) (sensitive bool, excluded bool) {
+	for _, path := range paths {
+		if IsSensitivePath(path) {
+			sensitive = true
+		}
+		if IsExcludedDiffPath(path) {
+			excluded = true
+		}
+	}
+	return sensitive, excluded
 }
 
 func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repoName string, charBudget int) (string, error) {
-	nameStatus, err := gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--name-status")
+	return BuildStagedContextWithEnv(ctx, gitClient, repoDir, repoName, charBudget, nil)
+}
+
+func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDir, repoName string, charBudget int, env []string) (string, error) {
+	nameStatus, err := gitClient.Stdout(ctx, repoDir, env, "diff", "--cached", "--name-status")
 	if err != nil {
 		return "", fmt.Errorf("read changed files: %w", err)
 	}
-	numstat, err := gitClient.Stdout(ctx, repoDir, nil, "diff", "--cached", "--numstat")
+	numstat, err := gitClient.Stdout(ctx, repoDir, env, "diff", "--cached", "--numstat")
 	if err != nil {
 		return "", fmt.Errorf("read change stats: %w", err)
 	}
@@ -491,7 +516,7 @@ func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repo
 	paths := visibleDiffPaths(nameStatus)
 	if len(paths) > 0 {
 		args := append([]string{"diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", "--"}, paths...)
-		diffText, err = gitClient.Stdout(ctx, repoDir, nil, args...)
+		diffText, err = gitClient.Stdout(ctx, repoDir, env, args...)
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
 		}
@@ -582,11 +607,12 @@ func RedactDiff(diffText string) string {
 	hiding := false
 	for _, line := range strings.Split(diffText, "\n") {
 		if strings.HasPrefix(line, "diff --git ") {
-			path, ok := diffPath(line)
-			hiding = !ok || IsSensitivePath(path) || IsExcludedDiffPath(path)
+			paths, ok := diffPaths(line)
+			sensitive, excluded := pathGroupSafety(paths)
+			hiding = !ok || sensitive || excluded
 			lines = append(lines, RedactLine(line))
 			if hiding {
-				if ok && IsExcludedDiffPath(path) && !IsSensitivePath(path) {
+				if ok && excluded && !sensitive {
 					lines = append(lines, "[EXCLUDED FILE CONTENT HIDDEN]")
 				} else {
 					lines = append(lines, "[SENSITIVE FILE CONTENT HIDDEN]")
@@ -631,7 +657,7 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	var completedMu sync.Mutex
 	output := &lockedWriter{writer: out}
 	progress := progressFunc(cfg, output)
-	interval := requestInterval(cfg.RPM)
+	pacer := newRequestPacer(cfg.RPM)
 	for batchIndex, start := 0, 0; start < len(items); batchIndex, start = batchIndex+1, start+cfg.BatchSize {
 		end := start + cfg.BatchSize
 		if end > len(items) {
@@ -640,9 +666,6 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		tasks = append(tasks, batchTask{index: batchIndex, items: items[start:end]})
 	}
 	for _, task := range tasks {
-		if task.index > 0 && !sleepContext(ctx, interval) {
-			break
-		}
 		if ctx.Err() != nil {
 			break
 		}
@@ -654,7 +677,7 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 				progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: message, Error: true})
 				completedMu.Unlock()
 			}
-			accepted, batchFailures := processBatchWithProgress(ctx, task.items, cfg, output, reportRetry)
+			accepted, batchFailures := processBatchWithProgress(ctx, task.items, cfg, output, reportRetry, pacer)
 			batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
 			completedMu.Lock()
 			completedBatches++
@@ -685,6 +708,35 @@ func requestInterval(requestsPerMinute int) time.Duration {
 	return time.Minute / time.Duration(requestsPerMinute)
 }
 
+type requestPacer struct {
+	mu       sync.Mutex
+	interval time.Duration
+	last     time.Time
+}
+
+func newRequestPacer(requestsPerMinute int) *requestPacer {
+	return &requestPacer{interval: requestInterval(requestsPerMinute)}
+}
+
+func (p *requestPacer) wait(ctx context.Context) bool {
+	if p == nil {
+		return true
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.last.IsZero() {
+		delay := p.last.Add(p.interval).Sub(time.Now())
+		if delay > 0 && !sleepContext(ctx, delay) {
+			return false
+		}
+	}
+	if ctx.Err() != nil {
+		return false
+	}
+	p.last = time.Now()
+	return true
+}
+
 type lockedWriter struct {
 	mu     sync.Mutex
 	writer io.Writer
@@ -697,14 +749,17 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 }
 
 func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
-	return processBatchWithProgress(ctx, batch, cfg, out, nil)
+	return processBatchWithProgress(ctx, batch, cfg, out, nil, nil)
 }
 
-func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out io.Writer, reportRetry func(string)) (map[string]Message, []failure) {
+func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	pending := append([]item(nil), batch...)
 	errorsByID := map[string]string{}
 	for attempt := 1; attempt <= 3 && len(pending) > 0; attempt++ {
+		if !pacer.wait(ctx) {
+			break
+		}
 		returned, err := requestBatch(ctx, pending, cfg, attempt)
 		nextPending := []item{}
 		if err != nil {
@@ -739,7 +794,7 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 			return accepted, failuresForPending(pending, errorsByID)
 		}
 		reportRetryMessage(out, reportRetry, fmt.Sprintf("Retrying %d commit(s) individually after failed batch generation.", len(pending)))
-		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out, reportRetry)
+		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out, reportRetry, pacer)
 		for id, message := range recovered {
 			accepted[id] = message
 		}
@@ -816,11 +871,11 @@ func retryReason(pending []item, errorsByID map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
-func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer, reportRetry func(string)) (map[string]Message, []failure) {
+func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	var failures []failure
 	for _, pendingItem := range pending {
-		itemAccepted, itemFailures := processBatchWithProgress(ctx, []item{pendingItem}, cfg, out, reportRetry)
+		itemAccepted, itemFailures := processBatchWithProgress(ctx, []item{pendingItem}, cfg, out, reportRetry, pacer)
 		for id, message := range itemAccepted {
 			accepted[id] = message
 		}
@@ -1095,35 +1150,40 @@ func writeCommitCallback(path string, mappings []mapping) error {
 	return nil
 }
 
-func diffPath(line string) (string, bool) {
+func diffPaths(line string) ([]string, bool) {
 	rest, ok := strings.CutPrefix(line, "diff --git ")
 	if !ok {
-		return "", false
+		return nil, false
 	}
 	if strings.HasPrefix(rest, `"`) {
 		first, remaining, ok := nextDiffToken(rest)
 		if !ok {
-			return "", false
+			return nil, false
 		}
 		second, remaining, ok := nextDiffToken(strings.TrimSpace(remaining))
 		if !ok || strings.TrimSpace(remaining) != "" {
-			return "", false
+			return nil, false
 		}
-		_ = first
-		return trimDiffPrefix(second), trimDiffPrefix(second) != ""
+		first = trimDiffPrefix(first)
+		second = trimDiffPrefix(second)
+		return []string{first, second}, first != "" && second != ""
 	}
 	if strings.HasPrefix(rest, "a/") {
 		idx := strings.LastIndex(rest, " b/")
 		if idx < 0 {
-			return "", false
+			return nil, false
 		}
-		return rest[idx+3:], rest[idx+3:] != ""
+		first := trimDiffPrefix(rest[:idx])
+		second := trimDiffPrefix(rest[idx+1:])
+		return []string{first, second}, first != "" && second != ""
 	}
 	fields := strings.Fields(rest)
 	if len(fields) != 2 {
-		return "", false
+		return nil, false
 	}
-	return trimDiffPrefix(fields[1]), trimDiffPrefix(fields[1]) != ""
+	first := trimDiffPrefix(fields[0])
+	second := trimDiffPrefix(fields[1])
+	return []string{first, second}, first != "" && second != ""
 }
 
 func nextDiffToken(s string) (token string, rest string, ok bool) {

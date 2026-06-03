@@ -177,6 +177,9 @@ and designed to fail safely.
 - **Privacy by default** — AI commands redact diff content before sending it to
   the API, including sensitive file contents and common secret patterns. Old
   commit messages are not sent as context.
+- **AI confirmation before staging** — `commit-ai` prepares context with a
+  temporary index and stages the real index only after valid AI messages are
+  available.
 - **Confirmation before mutation** — history rewrite commands ask before making
   destructive changes. Use `--yes` only for intentional noninteractive runs.
 - **Safer force pushes** — `push --force` uses `--force-with-lease`. Raw force

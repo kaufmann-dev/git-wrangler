@@ -88,24 +88,30 @@ func runRewriteCommitsAI(a *app, cmd *cobra.Command, args []string) int {
 		WorkDir:           workDir,
 		Git:               a.git,
 		Progress: func(event ai.ProgressEvent) {
-			if event.Total <= 1 {
-				return
-			}
 			switch event.Phase {
+			case "Sending API requests":
+				updateAIRequestProgress(a, &apiProgress, event)
 			case "Scanning repositories":
+				if event.Total <= 1 {
+					return
+				}
 				if event.Current == 0 {
 					scanProgress.start(event.RepoName)
 					return
 				}
 				scanProgress.finish(event.RepoName, event.RepoName)
 			case "Scanning commits":
+				if event.Total <= 1 {
+					return
+				}
 				if event.Current == 0 {
 					return
 				}
 				scanProgress.update(event.RepoName, fmt.Sprintf("%s %d/%d", event.RepoName, event.Current, event.Total))
-			case "Sending API requests":
-				updateAIRequestProgress(a, &apiProgress, event)
 			default:
+				if event.Total <= 1 {
+					return
+				}
 				if event.Current == 0 {
 					return
 				}
@@ -226,6 +232,9 @@ func aiApplyProgressDetail(result aiApplyResult) string {
 
 func updateAIRequestProgress(a *app, apiProgress **progress, event ai.ProgressEvent) {
 	if event.Total <= 1 {
+		if event.Error && event.Detail != "" {
+			fmt.Fprintln(a.stderr, aiProgressDetail(a, event))
+		}
 		return
 	}
 	if *apiProgress == nil {
@@ -233,12 +242,12 @@ func updateAIRequestProgress(a *app, apiProgress **progress, event ai.ProgressEv
 	}
 	detail := aiProgressDetail(a, event)
 	if event.Error {
-		(*apiProgress).message(detail)
+		(*apiProgress).log(detail)
 		return
 	}
 	if event.Current == 0 {
 		if detail != "" {
-			(*apiProgress).message(detail)
+			(*apiProgress).log(detail)
 		}
 		return
 	}
