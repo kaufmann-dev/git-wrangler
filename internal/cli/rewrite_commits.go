@@ -47,57 +47,69 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return rewriteCommitScan{repo: r, mapping: mapping, hasHead: true, noChanges: len(mapping) == 0}
 	})
 	status := 0
-	rewriteProgress := newProgress(a, "Rewriting commit messages", len(scans))
+	type rewriteCommitApply struct {
+		repo     repo
+		callback string
+	}
+	type rewriteCommitResult struct {
+		apply      rewriteCommitApply
+		output     string
+		err        error
+		restoreErr error
+	}
+	applies := []rewriteCommitApply{}
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasHead {
 			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.noChanges {
 			fmt.Fprintf(a.stdout, "%sNo commits require rewriting in %s (already format compliant). Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			rewriteProgress.advance(r.display)
 			continue
 		}
+		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
 		if !yes && !confirm(a, "Rewrite commit messages for "+r.display+"?") {
 			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		callback, err := writeCommitCallback(scan.mapping)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not prepare commit callback for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
-		_ = os.Remove(callback)
-		if err == nil {
+		applies = append(applies, rewriteCommitApply{repo: r, callback: callback})
+	}
+	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit messages", len(applies)), func(apply rewriteCommitApply) (string, string) {
+		return apply.repo.display, apply.repo.display
+	}, func(apply rewriteCommitApply) rewriteCommitResult {
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, []string{"--partial", "--commit-callback", apply.callback, "--force"}, nil)
+		_ = os.Remove(apply.callback)
+		return rewriteCommitResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
+	})
+	for _, result := range results {
+		r := result.apply.repo
+		if result.err == nil {
 			fmt.Fprintf(a.stdout, "%sRewrote commit messages for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+			if result.restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
 				status = 1
 			}
-		} else {
-			fmt.Fprintf(a.stderr, "%sError: Could not update commit messages for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
-			}
-			status = 1
+			continue
 		}
-		rewriteProgress.advance(r.display)
+		fmt.Fprintf(a.stderr, "%sError: Could not update commit messages for %s:\n%s%s\n\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		if result.restoreErr != nil {
+			fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+		}
+		status = 1
 	}
-	rewriteProgress.done()
 	return status
 }
 

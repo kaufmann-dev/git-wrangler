@@ -821,10 +821,25 @@ func TestProcessItemsReportsProgressWithoutBatchSpam(t *testing.T) {
 	if strings.Contains(out.String(), "Generating batch") {
 		t.Fatalf("old batch spam was printed:\n%s", out.String())
 	}
-	if len(events) != 2 {
-		t.Fatalf("events = %#v, want 2", events)
+	started := 0
+	var completed []ProgressEvent
+	for _, event := range events {
+		if event.Current == 0 {
+			started++
+			if event.Key == "" || !strings.HasPrefix(event.Detail, "batch ") {
+				t.Fatalf("start event missing key/detail: %#v", event)
+			}
+			continue
+		}
+		completed = append(completed, event)
 	}
-	for i, event := range events {
+	if started != 2 {
+		t.Fatalf("started = %d, want 2; events = %#v", started, events)
+	}
+	if len(completed) != 2 {
+		t.Fatalf("completed events = %#v, want 2", completed)
+	}
+	for i, event := range completed {
 		if event.Phase != "Sending API requests" || event.Current != i+1 || event.Total != 2 {
 			t.Fatalf("event[%d] = %#v", i, event)
 		}

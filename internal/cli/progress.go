@@ -40,6 +40,10 @@ func newProgress(a *app, label string, total int) *progress {
 }
 
 func (p *progress) start(detail string) {
+	p.startWork(detail, detail)
+}
+
+func (p *progress) startWork(key, detail string) {
 	if p == nil || detail == "" {
 		return
 	}
@@ -51,10 +55,13 @@ func (p *progress) start(detail string) {
 	if p.activeMap == nil {
 		p.activeMap = make(map[string]string)
 	}
-	if _, exists := p.activeMap[detail]; !exists {
-		p.activeKeys = append(p.activeKeys, detail)
+	if key == "" {
+		key = detail
 	}
-	p.activeMap[detail] = detail
+	if _, exists := p.activeMap[key]; !exists {
+		p.activeKeys = append(p.activeKeys, key)
+	}
+	p.activeMap[key] = detail
 	if p.interactive {
 		p.write(p.currentDetailLocked())
 	}

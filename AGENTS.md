@@ -8,7 +8,7 @@ Git Wrangler is a standard compiled Go CLI. Keep changes small, direct, and alig
 
 `internal/cli` owns Cobra command registration, command groups, generated help, flags, `version`, `completion`, and command wiring. Use `SilenceUsage: true` and `SilenceErrors: true`, and print command errors once to stderr.
 
-Bulk per-repository work in `internal/cli` should use ordered worker patterns: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and history rewrites that are not explicitly parallelized remain sequential. Workers must return result structs; print only after collection so repository output order stays stable. AI rewrite application runs repositories in parallel with the independent Git mutation cap.
+Bulk per-repository work in `internal/cli` should use ordered worker patterns: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and history rewrites that are not explicitly parallelized remain sequential. Workers must return result structs; print only after collection so repository output order stays stable. Confirmed AI and non-AI rewrite applications run repositories in parallel with the independent Git mutation cap.
 
 Long-running bulk phases should report progress to stderr with the shared progress helper. Progress must not change ordered stdout summaries or interleave repository result blocks.
 
