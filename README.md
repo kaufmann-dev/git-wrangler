@@ -20,6 +20,7 @@ Cross-platform Go CLI for coordinating dozens of Git repositories in parallel, e
 - [Commands](#commands)
 - [AI-Powered Workflows](#ai-powered-workflows)
 - [Safety & Guardrails](#safety--guardrails)
+- [Runtime Dependencies](#runtime-dependencies)
 - [Shell Completions](#shell-completions)
 
 ## Why Git Wrangler?
@@ -55,9 +56,9 @@ scoop install kaufmann-dev/git-wrangler
 > [!TIP]
 > You can also install manually by downloading a standalone binary from
 > GitHub Releases, extracting it, and adding it to your `PATH`.
-> You will need to manually install git, gh, and git-filter-repo and set up shell
-> completions (see [Shell Completions](#shell-completions)), as these are not
-> automatically handled like with Scoop or Homebrew.
+> You will need to manually install runtime dependencies and set up shell
+> completions, as these are not automatically handled like with Scoop or Homebrew
+> (see [Shell Completions](#shell-completions) and [Runtime Dependencies](#runtime-dependencies)).
 
 ### Update
 
@@ -186,7 +187,7 @@ and designed to fail safely.
 - **Warnings on stderr** — destructive operations warn clearly without polluting
   normal command output.
 
-### Runtime dependencies
+## Runtime Dependencies
 
 | Tool               | Required for                                     |
 | ------------------ | ------------------------------------------------ |
