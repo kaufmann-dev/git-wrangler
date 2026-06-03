@@ -30,6 +30,7 @@ func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	makeGitDir(t, root, "dirty")
 	makeGitDir(t, root, "clean")
 	var commits []string
+	var countMu sync.Mutex
 	realAdds := 0
 	tempAdds := 0
 	runner := fakeRunner{
@@ -52,10 +53,14 @@ func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 			case tempIndex && joined == "read-tree HEAD":
 				return "", "", nil
 			case tempIndex && joined == "add -A":
+				countMu.Lock()
 				tempAdds++
+				countMu.Unlock()
 				return "", "", nil
 			case !tempIndex && joined == "add -A":
+				countMu.Lock()
 				realAdds++
+				countMu.Unlock()
 				return "", "", nil
 			case tempIndex && repoName == "clean" && joined == "diff --cached --quiet":
 				return "", "", nil
@@ -90,11 +95,15 @@ func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	if len(commits) != 1 {
 		t.Fatalf("commits = %#v", commits)
 	}
-	if tempAdds != 2 {
-		t.Fatalf("temp-index adds = %d, want 2", tempAdds)
+	countMu.Lock()
+	gotTempAdds := tempAdds
+	gotRealAdds := realAdds
+	countMu.Unlock()
+	if gotTempAdds != 2 {
+		t.Fatalf("temp-index adds = %d, want 2", gotTempAdds)
 	}
-	if realAdds != 1 {
-		t.Fatalf("real-index adds = %d, want 1", realAdds)
+	if gotRealAdds != 1 {
+		t.Fatalf("real-index adds = %d, want 1", gotRealAdds)
 	}
 	if !strings.Contains(stdout.String(), "Summary: 1 committed, 1 skipped, 0 failed") {
 		t.Fatalf("missing summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
