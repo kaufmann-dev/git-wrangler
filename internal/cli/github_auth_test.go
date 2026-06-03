@@ -105,7 +105,7 @@ func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	}
 }
 
-func TestRewriteCommitsAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
+func TestRewriteCommitsFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cfg := config.Defaults()
@@ -124,7 +124,7 @@ func TestRewriteCommitsAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"rewrite-commits-ai"})
+	cmd.SetArgs([]string{"rewrite-commits"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -133,14 +133,14 @@ func TestRewriteCommitsAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 		t.Fatal("expected missing model failure")
 	}
 	if lookedUp {
-		t.Fatal("rewrite-commits-ai checked dependencies before config credentials")
+		t.Fatal("rewrite-commits checked dependencies before config credentials")
 	}
 	if !strings.Contains(stderr.String(), "AI API key is required") {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())
 	}
 }
 
-func TestCommitAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
+func TestCommitFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cfg := config.Defaults()
@@ -159,7 +159,7 @@ func TestCommitAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"commit-ai"})
+	cmd.SetArgs([]string{"commit"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -168,7 +168,7 @@ func TestCommitAIFailsBeforeRepositoryScanWhenKeyMissing(t *testing.T) {
 		t.Fatal("expected missing key failure")
 	}
 	if lookedUp {
-		t.Fatal("commit-ai checked dependencies before config credentials")
+		t.Fatal("commit checked dependencies before config credentials")
 	}
 	if !strings.Contains(stderr.String(), "AI API key is required") {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())

@@ -19,7 +19,7 @@ import (
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 )
 
-func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
+func TestCommitStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	server := aiResponseServer(t, `{"messages":[{"id":"c000001","subject":"feat(dirty): update file"}]}`)
@@ -84,13 +84,13 @@ func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{values: map[string]string{credentials.AIAccount("openai"): "test-key"}}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"commit-ai", "--yes"})
+	cmd.SetArgs([]string{"commit", "--yes"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	t.Chdir(root)
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("commit-ai returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		t.Fatalf("commit returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	if len(commits) != 1 {
 		t.Fatalf("commits = %#v", commits)
@@ -110,7 +110,7 @@ func TestCommitAIStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	}
 }
 
-func TestCommitAIWithBodyUsesSecondCommitMessageFlag(t *testing.T) {
+func TestCommitWithBodyUsesSecondCommitMessageFlag(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	server := aiResponseServer(t, `{"messages":[{"id":"c000001","subject":"feat(dirty): update file","body":"Explain why this change was made."}]}`)
@@ -161,13 +161,13 @@ func TestCommitAIWithBodyUsesSecondCommitMessageFlag(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{values: map[string]string{credentials.AIAccount("openai"): "test-key"}}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"commit-ai", "--yes", "--body"})
+	cmd.SetArgs([]string{"commit", "--yes", "--body"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	t.Chdir(root)
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("commit-ai returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		t.Fatalf("commit returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	if len(commitArgs) != 1 || commitArgs[0] != "commit -m feat(dirty): update file -m Explain why this change was made." {
 		t.Fatalf("commit args = %#v", commitArgs)
@@ -177,7 +177,7 @@ func TestCommitAIWithBodyUsesSecondCommitMessageFlag(t *testing.T) {
 	}
 }
 
-func TestCommitAIInvalidOutputRetriesAndDoesNotCommit(t *testing.T) {
+func TestCommitInvalidOutputRetriesAndDoesNotCommit(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	requests := 0
@@ -232,7 +232,7 @@ func TestCommitAIInvalidOutputRetriesAndDoesNotCommit(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{values: map[string]string{credentials.AIAccount("openai"): "test-key"}}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"commit-ai", "--yes"})
+	cmd.SetArgs([]string{"commit", "--yes"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -255,7 +255,7 @@ func TestCommitAIInvalidOutputRetriesAndDoesNotCommit(t *testing.T) {
 	}
 }
 
-func TestCommitAICancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
+func TestCommitCancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	server := aiResponseServer(t, `{"messages":[{"id":"c000001","subject":"feat(dirty): update file"}]}`)
@@ -306,7 +306,7 @@ func TestCommitAICancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader("n\n"), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{values: map[string]string{credentials.AIAccount("openai"): "test-key"}}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"commit-ai"})
+	cmd.SetArgs([]string{"commit"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -326,7 +326,7 @@ func TestCommitAICancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
 	}
 }
 
-func TestCommitAIPreparationUsesMutationWorkerCap(t *testing.T) {
+func TestCommitPreparationUsesMutationWorkerCap(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := t.TempDir()
 	repos := make([]repo, 8)
@@ -368,7 +368,7 @@ func TestCommitAIPreparationUsesMutationWorkerCap(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 
-	changes, skipped, failed := collectCommitAIChanges(a, repos, 3000)
+	changes, skipped, failed := collectCommitChanges(a, repos, 3000)
 	if len(changes) != 0 || skipped != len(repos) || failed != 0 {
 		t.Fatalf("changes=%d skipped=%d failed=%d", len(changes), skipped, failed)
 	}

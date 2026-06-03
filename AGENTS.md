@@ -36,7 +36,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`clone`, `commit`, `commit-ai`, `config`, `doctor`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-commits-ai`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
@@ -88,4 +88,4 @@ git diff --check
 
 History rewrite commands must require explicit confirmation before mutation, with `--yes` as the standard noninteractive confirmation flag. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations. Bulk commands must return nonzero if any repository operation fails; no-op skips remain successful.
 
-`rewrite-commits-ai` must fail before scanning repositories when no API key is available. It must not save plaintext API keys, must not send old commit messages as model context, and must redact sensitive file contents and common secret patterns before API calls.
+`rewrite-commits` must fail before scanning repositories when no API key is available. It must not save plaintext API keys, must not send old commit messages as model context, and must redact sensitive file contents and common secret patterns before API calls.
