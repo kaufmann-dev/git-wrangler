@@ -54,10 +54,10 @@ scoop install kaufmann-dev/git-wrangler
 
 > [!TIP]
 > You can also install manually by downloading a standalone binary from
-> GitHub Releases, extracting it, and adding it to your `PATH`. Unlike Scoop or
-> Homebrew, this method does not install dependencies or shell completions
-> automatically. You will need to install `git`, `gh`, and `git-filter-repo` yourself, and
-> set up shell completions manually (see [Shell Completions](#shell-completions)).
+> GitHub Releases, extracting it, and adding it to your `PATH`.
+> You will need to manually install git, gh, and git-filter-repo and set up shell
+> completions (see [Shell Completions](#shell-completions)), as these are not
+> automatically handled like with Scoop or Homebrew.
 
 ### Update
 
