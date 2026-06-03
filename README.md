@@ -163,6 +163,10 @@ git-wrangler init
 git-wrangler config set ai.base-url https://api.openai.com/v1
 git-wrangler config set ai.model gpt-4o
 git-wrangler config set ai.api-key
+
+# Optional gateway headers
+git-wrangler config set ai.headers.X-Project-ID corp-dev-99
+git-wrangler config set ai.headers.api-key
 ```
 
 ## Safety & Guardrails

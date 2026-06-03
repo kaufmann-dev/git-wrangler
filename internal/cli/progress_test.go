@@ -230,7 +230,10 @@ func TestVisibleWidth(t *testing.T) {
 		want  int
 	}{
 		{"hello", 5},
+		{"café", 4},
+		{"привет", 6},
 		{"\x1b[31mred\x1b[0m", 3},
+		{"\x1b[31mcafé\x1b[0m", 4},
 		{"\x1b[1m\x1b[34mbold blue\x1b[0m", 9},
 		{"", 0},
 	}
@@ -251,7 +254,10 @@ func TestTruncateToVisibleWidth(t *testing.T) {
 	}{
 		{"hello", 10, "\x1b[0m", "hello"},
 		{"hello", 3, "\x1b[0m", "hel"},
+		{"café", 3, "\x1b[0m", "caf"},
+		{"привет", 3, "\x1b[0m", "при"},
 		{"\x1b[31mred\x1b[0m", 2, "\x1b[0m", "\x1b[31mre\x1b[0m"},
+		{"\x1b[31mcafé\x1b[0m", 3, "\x1b[0m", "\x1b[31mcaf\x1b[0m"},
 		{"\x1b[31mred\x1b[0m", 5, "\x1b[0m", "\x1b[31mred\x1b[0m"},
 		{"\x1b[31mred\x1b[0m", 0, "\x1b[0m", ""},
 	}

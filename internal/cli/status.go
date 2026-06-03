@@ -41,10 +41,13 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		row  statusTableRow
 		err  error
 	}
-	results := parallelReposProgress(repos, newProgress(a, "Checking status", len(repos)), func(r repo) statusResult {
+	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Checking status", len(repos)), func(r repo) statusResult {
 		row, err := statusRow(a, r)
 		return statusResult{repo: r, row: row, err: err}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	for _, result := range results {
 		if result.err != nil {
 			renderErrorBlock(a, fmt.Sprintf("%s: could not inspect status", result.repo.display), result.err.Error())

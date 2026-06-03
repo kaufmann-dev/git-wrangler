@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"golang.org/x/term"
@@ -256,18 +257,22 @@ func (p *progress) bar(width int) string {
 func visibleWidth(s string) int {
 	inSeq := false
 	width := 0
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		if s[i] == '\x1b' {
 			inSeq = true
+			i++
 			continue
 		}
 		if inSeq {
 			if (s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') {
 				inSeq = false
 			}
+			i++
 			continue
 		}
+		_, size := utf8.DecodeRuneInString(s[i:])
 		width++
+		i += size
 	}
 	return width
 }
@@ -280,11 +285,12 @@ func truncateToVisibleWidth(s string, maxW int, resetCode string) string {
 	hasSeq := false
 	width := 0
 	var sb strings.Builder
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		if s[i] == '\x1b' {
 			inSeq = true
 			hasSeq = true
 			sb.WriteByte(s[i])
+			i++
 			continue
 		}
 		if inSeq {
@@ -292,6 +298,7 @@ func truncateToVisibleWidth(s string, maxW int, resetCode string) string {
 			if (s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') {
 				inSeq = false
 			}
+			i++
 			continue
 		}
 		if width >= maxW {
@@ -300,8 +307,10 @@ func truncateToVisibleWidth(s string, maxW int, resetCode string) string {
 			}
 			break
 		}
-		sb.WriteByte(s[i])
+		_, size := utf8.DecodeRuneInString(s[i:])
+		sb.WriteString(s[i : i+size])
 		width++
+		i += size
 	}
 	return sb.String()
 }
