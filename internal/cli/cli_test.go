@@ -17,7 +17,7 @@ func TestRootCommandShowsLanding(t *testing.T) {
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		"____ _ _",
+		"██████╗ ██╗████████╗",
 		"Orchestrate Git operations across many repositories.",
 		"Common commands:",
 		"git-wrangler status",
@@ -29,6 +29,23 @@ func TestRootCommandShowsLanding(t *testing.T) {
 	}
 	if strings.Contains(out, "Remote Operations:") || strings.Contains(out, "History Rewriting:") {
 		t.Fatalf("landing should not include Cobra command groups:\n%s", out)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRootCommandUsesGradientWhenColorEnabled(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithIO([]string{}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("root command returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "\033[38;2;0;245;255m") {
+		t.Fatalf("landing missing banner gradient:\n%q", stdout.String())
 	}
 	if stderr.String() != "" {
 		t.Fatalf("stderr = %q", stderr.String())
