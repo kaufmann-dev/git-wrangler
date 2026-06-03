@@ -146,7 +146,7 @@ func TestRewriteAuthorsDeclineSkipsSuccessfully(t *testing.T) {
 	if strings.Count(stderr.String(), "Rewrite author and committer identity") != 1 {
 		t.Fatalf("expected one confirmation prompt:\n%s", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Skipping history rewrite.") {
+	if !strings.Contains(stdout.String(), "Summary: 0 rewritten, 2 skipped, 0 failed") {
 		t.Fatalf("missing skip output:\n%s", stdout.String())
 	}
 }

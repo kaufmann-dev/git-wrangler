@@ -321,7 +321,7 @@ func TestCommitCancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
 	if committed {
 		t.Fatal("commit should not run before API-send confirmation")
 	}
-	if !strings.Contains(stdout.String(), "Stopped before sending any data.") {
+	if !strings.Contains(stdout.String(), "SKIP stopped before sending any data") {
 		t.Fatalf("missing cancellation output:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 	}
 }

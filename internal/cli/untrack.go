@@ -36,40 +36,63 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 	})
 	status := 0
 	applies := []untrackScan{}
+	unchanged := 0
+	failed := 0
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasGitignore {
-			fmt.Fprintf(a.stdout, "%sNo .gitignore file found for %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			unchanged++
 			continue
 		}
 		if scan.err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not list ignored tracked files for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": could not list ignored tracked files", scan.err.Error())
 			status = 1
+			failed++
 			continue
 		}
 		if strings.TrimSpace(scan.out) == "" {
-			fmt.Fprintf(a.stdout, "%sNo currently tracked files match .gitignore in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			unchanged++
 			continue
 		}
-		fmt.Fprintf(a.stdout, "%s%s:%s %d tracked ignored file(s) will be removed from the index.\n", a.ui.RepoColor, r.display, a.ui.Reset, lineCount(scan.out))
+		renderRepoHeader(a, r.display)
+		fmt.Fprintf(a.stdout, "  %sTracked ignored files:%s %d\n", a.ui.Yellow, a.ui.Reset, lineCount(scan.out))
+		fmt.Fprintln(a.stdout)
 		applies = append(applies, scan)
 	}
+	renderSummary(a,
+		summaryCount{label: "with tracked ignored files", value: len(applies), color: a.ui.Yellow},
+		summaryCount{label: "unchanged", value: unchanged, color: a.ui.Green},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	if len(applies) == 0 {
 		return status
 	}
-	fmt.Fprintf(a.stderr, "%sWARNING: This operation will stop tracking ignored files and create commits in %d repositories.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+	renderWarning(a, fmt.Sprintf("This operation will stop tracking ignored files and create commits in %d repositories.", len(applies)))
 	if !confirmOrSkip(a, yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies))) {
-		for _, apply := range applies {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, apply.repo.display, a.ui.Reset)
-		}
+		renderSummary(a,
+			summaryCount{label: "updated", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: len(applies), color: a.ui.Yellow},
+			summaryCount{label: "failed", value: 0, color: a.ui.Red},
+		)
 		return status
 	}
+	updated := 0
+	applyFailed := 0
+	type applyError struct {
+		subject string
+		output  string
+	}
+	applyErrors := []applyError{}
+	progress := newProgress(a, "Untracking ignored files", len(applies))
 	for _, apply := range applies {
 		r := apply.repo
+		progress.start(r.display)
 		zout, err := a.git.Stdout(a.ctx, r.dir, nil, "ls-files", "--ignored", "--cached", "--exclude-standard", "-z")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not list ignored tracked files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not list ignored tracked files", output: err.Error()})
 			status = 1
+			applyFailed++
+			progress.advance(r.display)
 			continue
 		}
 		files := strings.Split(strings.TrimRight(zout, "\x00"), "\x00")
@@ -77,22 +100,35 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		for _, chunk := range chunkStrings(files, 100) {
 			rmArgs := append([]string{"rm", "--cached", "-q", "--"}, chunk...)
 			if out, err := a.git.Capture(a.ctx, r.dir, nil, rmArgs...); err != nil {
-				fmt.Fprintf(a.stderr, "%sError: Could not untrack files for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+				applyErrors = append(applyErrors, applyError{subject: r.display + ": could not untrack files", output: out})
 				status = 1
+				applyFailed++
 				failed = true
 				break
 			}
 		}
 		if failed {
+			progress.advance(r.display)
 			continue
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-q", "-m", "Stop tracking files defined in .gitignore"); err == nil {
-			fmt.Fprintf(a.stdout, "%sStopped tracking and committed ignored files for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
+			updated++
 		} else {
-			fmt.Fprintf(a.stderr, "%sError: Could not commit changes for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit changes", output: out})
 			status = 1
+			applyFailed++
 		}
+		progress.advance(r.display)
 	}
+	finishProgressBeforeOutput(progress)
+	for _, err := range applyErrors {
+		renderErrorBlock(a, err.subject, err.output)
+	}
+	renderSummary(a,
+		summaryCount{label: "updated", value: updated, color: a.ui.Green},
+		summaryCount{label: "skipped", value: 0, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: applyFailed, color: a.ui.Red},
+	)
 	return status
 }
 

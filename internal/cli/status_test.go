@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -135,6 +136,43 @@ func TestStatusRow(t *testing.T) {
 				t.Errorf("noRemote: got %d, expected %d", row.noRemote, tc.expectedNoRemote)
 			}
 		})
+	}
+}
+
+func TestStatusProgressCompletesBeforeTableOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "one", "two")
+	t.Chdir(root)
+
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "git" || strings.Join(args, " ") != "status --porcelain=v2 --branch" {
+				return "", "", errors.New("unexpected command")
+			}
+			return "# branch.upstream origin/main\n# branch.ab +0 -0\n", "", nil
+		},
+	}
+
+	var combined bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), runner, []string{"status"}, strings.NewReader(""), &combined, &combined)
+	if err != nil {
+		t.Fatalf("status returned error: %v\n%s", err, combined.String())
+	}
+	out := combined.String()
+	lastProgress := strings.LastIndex(out, "Checking status")
+	table := strings.Index(out, "Repository")
+	if lastProgress < 0 {
+		t.Fatalf("missing progress output:\n%s", out)
+	}
+	if table < 0 {
+		t.Fatalf("missing status table:\n%s", out)
+	}
+	if lastProgress > table {
+		t.Fatalf("progress appeared after table started:\n%s", out)
+	}
+	if strings.Contains(out[table:], "Checking status") {
+		t.Fatalf("progress appeared inside durable table output:\n%s", out)
 	}
 }
 

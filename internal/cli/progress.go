@@ -119,6 +119,9 @@ func (p *progress) currentDetailLocked() string {
 }
 
 func (p *progress) detailLocked(fallback string) string {
+	if !p.interactive && fallback != "" {
+		return fallback
+	}
 	if len(p.activeKeys) > 0 {
 		key := p.activeKeys[len(p.activeKeys)-1]
 		if val, ok := p.activeMap[key]; ok {
