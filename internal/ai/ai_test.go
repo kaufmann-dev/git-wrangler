@@ -324,8 +324,8 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 	}})
 
 	items, stats, err := collectItems(context.Background(), []Repository{
-		{Dir: "repo-a", Name: "repo-a"},
-		{Dir: "repo-b", Name: "repo-b"},
+		{Dir: "repo-a", Name: "repo-a", GitDir: "repo-a/.git"},
+		{Dir: "repo-b", Name: "repo-b", GitDir: "repo-b/.git"},
 	}, gitClient, 3000, true, func(ProgressEvent) {})
 	if err != nil {
 		t.Fatal(err)
@@ -340,17 +340,28 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 		t.Fatalf("items = %d, want 2", len(items))
 	}
 	wants := []struct {
-		id   string
-		repo string
-		hash string
+		id     string
+		repo   string
+		gitDir string
+		hash   string
 	}{
-		{"c000001", "repo-a", "a2"},
-		{"c000002", "repo-b", "b1"},
+		{"c000001", "repo-a", "repo-a/.git", "a2"},
+		{"c000002", "repo-b", "repo-b/.git", "b1"},
 	}
 	for i, want := range wants {
-		if items[i].ID != want.id || items[i].RepoName != want.repo || items[i].Hash != want.hash {
-			t.Fatalf("item[%d] = id=%q repo=%q hash=%q, want %#v", i, items[i].ID, items[i].RepoName, items[i].Hash, want)
+		if items[i].ID != want.id || items[i].RepoName != want.repo || items[i].RepoGitDir != want.gitDir || items[i].Hash != want.hash {
+			t.Fatalf("item[%d] = id=%q repo=%q gitDir=%q hash=%q, want %#v", i, items[i].ID, items[i].RepoName, items[i].RepoGitDir, items[i].Hash, want)
 		}
+	}
+	plan, err := buildPlan(items, map[string]Message{
+		"c000001": {Subject: "feat: rewrite repo a"},
+		"c000002": {Subject: "fix: rewrite repo b"},
+	}, stats, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Repos[0].GitDir != "repo-a/.git" || plan.Repos[1].GitDir != "repo-b/.git" {
+		t.Fatalf("plan git dirs = %q, %q", plan.Repos[0].GitDir, plan.Repos[1].GitDir)
 	}
 }
 

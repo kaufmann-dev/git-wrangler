@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +17,14 @@ import (
 
 func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
+	gitDir := filepath.Join(t.TempDir(), ".git")
+	marker := filepath.Join(gitDir, "filter-repo", "already_ran")
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("old run"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	remoteGetCalls := 0
 	restored := false
 	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
@@ -30,6 +40,9 @@ func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 			}
 			return "", "", errors.New("origin removed")
 		case "git-filter-repo --force":
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				return "", "", errors.New("stale git-filter-repo marker was not removed")
+			}
 			return "partial rewrite output", "", errors.New("filter failed")
 		case "git remote add origin https://example.test/repo.git":
 			restored = true
@@ -40,7 +53,7 @@ func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 	}}
 	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
 
-	out, runErr, restoreErr := runFilterRepoRestoringOrigin(a, "repo", []string{"git-filter-repo"}, []string{"--force"}, nil)
+	out, runErr, restoreErr := runFilterRepoRestoringOrigin(a, "repo", gitDir, []string{"git-filter-repo"}, []string{"--force"}, nil)
 	if runErr == nil {
 		t.Fatal("expected filter failure")
 	}
@@ -52,6 +65,33 @@ func TestRunFilterRepoRestoresOriginAfterFailure(t *testing.T) {
 	}
 	if !restored {
 		t.Fatal("expected origin restore after filter failure")
+	}
+}
+
+func TestRemoveFilterRepoAlreadyRanResolvesLinkedWorktreeGitDir(t *testing.T) {
+	root := t.TempDir()
+	metadataDir := filepath.Join(root, "metadata")
+	marker := filepath.Join(metadataDir, "filter-repo", "already_ran")
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("old run"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	worktreeDir := filepath.Join(root, "worktree")
+	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitFile := filepath.Join(worktreeDir, ".git")
+	if err := os.WriteFile(gitFile, []byte("gitdir: ../metadata\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := removeFilterRepoAlreadyRan(gitFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("marker still exists: %v", err)
 	}
 }
 
