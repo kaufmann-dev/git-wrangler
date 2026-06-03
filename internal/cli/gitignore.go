@@ -30,7 +30,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		covered    []string
 		notPresent []string
 	}
-	scans := parallelReposProgress(repos, newProgress(a, "Scanning .gitignore candidates", len(repos)), func(r repo) gitignoreScan {
+	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Scanning .gitignore candidates", len(repos)), func(r repo) gitignoreScan {
 		scan := gitignoreScan{repo: r}
 		for _, entry := range candidates {
 			match := findExistingMatch(r.dir, entry)
@@ -50,6 +50,9 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		}
 		return scan
 	})
+	if interrupted(a) {
+		return 1
+	}
 	status := 0
 	applies := []gitignoreScan{}
 	unchanged := 0

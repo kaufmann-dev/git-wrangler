@@ -25,11 +25,11 @@ var (
 	ErrCancelled    = errors.New("cancelled")
 	ErrAPICancelled = errors.New("api generation cancelled")
 	conventionalRe  = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+$`)
+	secretAssignRe  = regexp.MustCompile("(?i)\\b(password|passwd|pwd|secret|api_key|apikey|auth_token|access_token|private_key)\\b(\\s*(?::=|:|==|=)\\s*)('[^']{8,}'|\\\"[^\\\"]{8,}\\\"|\\x60[^\\x60]{8,}\\x60|[^'\\\"\\s]{8,})")
 	secretPatterns  = []*regexp.Regexp{
 		regexp.MustCompile(`(['"]?)(sk-[a-zA-Z0-9_-]{20,}|sk_[a-zA-Z0-9_-]{20,})(['"]?)`),
 		regexp.MustCompile(`(['"]?)(gh[pousr]_[a-zA-Z0-9_]{20,})(['"]?)`),
 		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
-		regexp.MustCompile(`(?i)(password|passwd|pwd|secret|api_key|apikey|auth_token|access_token|private_key)\s*[:=]\s*['"][^'"]{8,}['"]`),
 		regexp.MustCompile(`(?i)(mongodb(\+srv)?|postgres(ql)?|mysql|redis)://[^@\s]+@[^\s]+`),
 		regexp.MustCompile(`(?i)Bearer\s+[a-zA-Z0-9_.-]+`),
 	}
@@ -46,6 +46,7 @@ type Config struct {
 	BaseURL           string
 	Model             string
 	APIKey            string
+	Headers           map[string]string
 	BatchSize         int
 	MaxCharsPerCommit int
 	RPM               int
@@ -642,7 +643,7 @@ func RedactDiff(diffText string) string {
 }
 
 func RedactLine(line string) string {
-	redacted := line
+	redacted := secretAssignRe.ReplaceAllString(line, "${1}${2}[REDACTED]")
 	for _, pattern := range secretPatterns {
 		redacted = pattern.ReplaceAllString(redacted, "[REDACTED]")
 	}
@@ -947,8 +948,13 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (m
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	if cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
+	for name, value := range cfg.Headers {
+		req.Header.Set(name, value)
+	}
 	client := &http.Client{Timeout: cfg.Timeout}
 	resp, err := client.Do(req)
 	if err != nil {
