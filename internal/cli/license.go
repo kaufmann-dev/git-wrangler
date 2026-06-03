@@ -39,28 +39,40 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 		overwriteConfirmed = confirmOrSkip(a, yes, fmt.Sprintf("Overwrite existing LICENSE files in %d repositories?", overwriteCount))
 	}
 	status := 0
+	created := 0
+	overwritten := 0
+	skipped := 0
+	failed := 0
 	for _, r := range repos {
 		path := filepath.Join(r.dir, "LICENSE")
 		if fileExists(path) && !overwrite {
-			fmt.Fprintf(a.stdout, "%sLICENSE file already exists in repository: %s (use --overwrite to replace it)%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			renderStatusLine(a, a.stdout, statusSkip, r.display, "LICENSE already exists; use --overwrite to replace it")
+			skipped++
 			continue
 		}
 		existed := fileExists(path)
 		if existed && overwrite && !overwriteConfirmed {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			skipped++
 			continue
 		}
 		if err := os.WriteFile(path, []byte(mitLicense(holder)), 0o644); err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not write LICENSE for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": could not write LICENSE", err.Error())
 			status = 1
+			failed++
 			continue
 		}
 		if existed && overwrite {
-			fmt.Fprintf(a.stdout, "%sLICENSE file overwritten in repository: %s%s\n", a.ui.Green, r.display, a.ui.Reset)
+			overwritten++
 		} else {
-			fmt.Fprintf(a.stdout, "%sLICENSE file created in repository: %s%s\n", a.ui.Green, r.display, a.ui.Reset)
+			created++
 		}
 	}
+	renderSummary(a,
+		summaryCount{label: "created", value: created, color: a.ui.Green},
+		summaryCount{label: "overwritten", value: overwritten, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 

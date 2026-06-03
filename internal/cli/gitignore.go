@@ -52,57 +52,79 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 	})
 	status := 0
 	applies := []gitignoreScan{}
+	unchanged := 0
 	for _, scan := range scans {
 		r := scan.repo
 		added := scan.added
-		covered := scan.covered
-		notPresent := scan.notPresent
-		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
 		if len(added) > 0 {
+			renderRepoHeader(a, r.display)
 			fmt.Fprintf(a.stdout, "  %sWill add:%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(added, ", "))
+			fmt.Fprintln(a.stdout)
 			applies = append(applies, scan)
-		}
-		if len(covered) > 0 {
-			fmt.Fprintf(a.stdout, "  %sSkipped (already covered):%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(covered, ", "))
-		}
-		if len(notPresent) > 0 {
-			fmt.Fprintf(a.stdout, "  %sSkipped (not present on disk):%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(notPresent, ", "))
-		}
-		if len(added) == 0 && len(covered) == 0 && len(notPresent) == 0 {
-			fmt.Fprintf(a.stdout, "  %sNo changes needed.%s\n", a.ui.Yellow, a.ui.Reset)
+		} else {
+			unchanged++
 		}
 	}
+	renderSummary(a,
+		summaryCount{label: "with changes", value: len(applies), color: a.ui.Yellow},
+		summaryCount{label: "unchanged", value: unchanged, color: a.ui.Green},
+		summaryCount{label: "failed", value: 0, color: a.ui.Red},
+	)
 	if len(applies) == 0 {
 		return status
 	}
-	fmt.Fprintf(a.stderr, "%sWARNING: This operation will modify .gitignore and create commits in %d repositories.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+	renderWarning(a, fmt.Sprintf("This operation will modify .gitignore and create commits in %d repositories.", len(applies)))
 	if !confirmOrSkip(a, yes, fmt.Sprintf("Apply and commit .gitignore updates for %d repositories?", len(applies))) {
-		for _, apply := range applies {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, apply.repo.display, a.ui.Reset)
-		}
+		renderSummary(a,
+			summaryCount{label: "updated", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: len(applies), color: a.ui.Yellow},
+			summaryCount{label: "failed", value: 0, color: a.ui.Red},
+		)
 		return status
 	}
+	updated := 0
+	failed := 0
+	progress := newProgress(a, "Applying .gitignore updates", len(applies))
+	type applyError struct {
+		subject string
+		output  string
+	}
+	applyErrors := []applyError{}
 	for _, apply := range applies {
 		r := apply.repo
+		progress.start(r.display)
 		if err := appendGitignoreEntries(filepath.Join(r.dir, ".gitignore"), apply.added); err != nil {
-			fmt.Fprintf(a.stderr, "  %sError: Could not update .gitignore for %s:\n%s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			progress.advance(r.display)
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not update .gitignore", output: err.Error()})
 			status = 1
+			failed++
 			continue
 		}
-		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
-		fmt.Fprintf(a.stdout, "  %sAdded:%s %s\n", a.ui.Green, a.ui.Reset, strings.Join(apply.added, ", "))
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "add", ".gitignore"); err != nil {
-			fmt.Fprintf(a.stderr, "  %sError: Could not stage .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
+			progress.advance(r.display)
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not stage .gitignore", output: out})
 			status = 1
+			failed++
 			continue
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", "Update .gitignore with missing entries"); err == nil {
-			fmt.Fprintf(a.stdout, "  %sCommitted .gitignore updates%s\n", a.ui.Green, a.ui.Reset)
+			updated++
 		} else {
-			fmt.Fprintf(a.stderr, "  %sError: Could not commit .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit .gitignore", output: out})
 			status = 1
+			failed++
 		}
+		progress.advance(r.display)
 	}
+	finishProgressBeforeOutput(progress)
+	for _, err := range applyErrors {
+		renderErrorBlock(a, err.subject, err.output)
+	}
+	renderSummary(a,
+		summaryCount{label: "updated", value: updated, color: a.ui.Green},
+		summaryCount{label: "skipped", value: 0, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 

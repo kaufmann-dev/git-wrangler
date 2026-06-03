@@ -20,6 +20,7 @@ Use fake-runner command tests for subprocess orchestration:
 - `--yes` skipping prompts without filling required values.
 - stdout/stderr separation.
 - Ordered output under concurrency.
+- durable output printed only after progress closes.
 - Exit code 1 when any per-repo operation fails.
 
 Use temp-repository tests for real Git behavior only when fake runners would hide the risk. Destructive tests must operate only in `t.TempDir()`.
@@ -43,7 +44,18 @@ Each JSON command should have focused coverage that verifies:
 
 ## Concurrency Ordering
 
-Concurrency tests should prove overlap when worker caps matter and prove ordered output after collection. Keep sleeps short and use channels/mutexes instead of time-only assumptions where possible.
+Concurrency tests should prove overlap when worker caps matter. Prove ordered output after collection only for commands that still print per-repo result blocks or actionable per-repo skips/failures. Commands that suppress routine success spam should assert summaries and the absence of success chatter instead.
+
+## Human Output Assertions
+
+Human output tests should verify:
+
+- progress stays on stderr and never appears inside stdout tables or repo blocks.
+- durable tables, previews, summaries, and repo blocks print after progress closes.
+- routine bulk success is summarized rather than printed once per repository.
+- actionable skips and failures still identify the repository.
+- color-disabled output remains readable with state text such as `OK`, `WARN`, `ERROR`, and `SKIP`.
+- destructive commands warn and prompt exactly once for the candidate set.
 
 ## Local Checks
 
