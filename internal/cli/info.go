@@ -31,9 +31,12 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	}
 	statusCode := 0
 	failed := 0
-	results := parallelReposProgress(repos, newProgress(a, "Inspecting repositories", len(repos)), func(r repo) infoResult {
+	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Inspecting repositories", len(repos)), func(r repo) infoResult {
 		return collectInfo(a, r)
 	})
+	if interrupted(a) {
+		return 1
+	}
 	for _, result := range results {
 		fmt.Fprint(a.stdout, result.stdout)
 		if result.stderr != "" {
@@ -83,7 +86,7 @@ func runInfoJSON(a *app, cmd *cobra.Command) int {
 		Remotes       []string   `json:"remotes,omitempty"`
 		Error         *jsonError `json:"error,omitempty"`
 	}
-	results := parallelRepos(repos, func(r repo) infoJSONRepo {
+	results := parallelRepos(a.ctx, repos, func(r repo) infoJSONRepo {
 		row := infoJSONRepo{Name: r.display, Path: r.dir, HasLicense: fileExists(filepath.Join(r.dir, "LICENSE"))}
 		status, err := a.git.StatusPorcelain(a.ctx, r.dir)
 		if err != nil {
@@ -128,6 +131,13 @@ func runInfoJSON(a *app, cmd *cobra.Command) int {
 		}
 		return row
 	})
+	if a.ctx.Err() != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
+			"error":   jsonError{Message: "operation cancelled"},
+		}, 1)
+	}
 	failed := 0
 	for _, result := range results {
 		if result.Error != nil {
