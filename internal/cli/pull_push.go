@@ -60,6 +60,50 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	return status
 }
 
+func runFetch(a *app, cmd *cobra.Command, args []string) int {
+	prune, _ := cmd.Flags().GetBool("prune")
+	if !requireGit(a, "fetch") {
+		return 1
+	}
+	repos, err := resolveRepositoryTargets("")
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
+	if len(repos) == 0 {
+		return noRepos(a)
+	}
+	type fetchResult struct {
+		repo repo
+		out  string
+		err  error
+	}
+	status := 0
+	fetched := 0
+	failed := 0
+	results := parallelGitMutationsProgress(repos, newProgress(a, "Fetching repositories", len(repos)), func(r repo) fetchResult {
+		fetchArgs := []string{"fetch", "origin"}
+		if prune {
+			fetchArgs = []string{"fetch", "--prune", "origin"}
+		}
+		out, err := a.git.Capture(a.ctx, r.dir, nil, fetchArgs...)
+		return fetchResult{repo: r, out: out, err: err}
+	})
+	for _, result := range results {
+		if result.err != nil {
+			a.error(result.repo.display, "Git fetch failed:")
+			fmt.Fprintf(a.stderr, "%s\n\n", result.out)
+			status = 1
+			failed++
+			continue
+		}
+		a.ok(result.repo.display, "Git fetch completed")
+		fetched++
+	}
+	fmt.Fprintf(a.stdout, "Summary: %d fetched, %d failed\n", fetched, failed)
+	return status
+}
+
 func runPush(a *app, cmd *cobra.Command, args []string) int {
 	force, _ := cmd.Flags().GetBool("force")
 	forceUnsafe, _ := cmd.Flags().GetBool("force-unsafe")

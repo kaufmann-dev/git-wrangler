@@ -1,19 +1,51 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"regexp"
-	"sort"
-	"strings"
+	"time"
 
-	"github.com/kaufmann-dev/git-wrangler/internal/git"
+	"github.com/kaufmann-dev/git-wrangler/internal/ai"
+	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
+	batch, _ := cmd.Flags().GetInt("batch-size")
+	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
+	rpm, _ := cmd.Flags().GetInt("rpm")
+	timeoutInt, _ := cmd.Flags().GetInt("timeout")
+	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
+	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
+
+	if batch <= 0 {
+		a.plainErrorf("--batch-size must be a positive integer.")
+		return 1
+	}
+	if batch > 50 {
+		a.plainErrorf("--batch-size must be 50 or less.")
+		return 1
+	}
+	if maxCharsInt <= 0 {
+		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
+		return 1
+	}
+	if rpm <= 0 {
+		a.plainErrorf("--rpm must be a positive integer.")
+		return 1
+	}
+	if timeoutInt <= 0 {
+		a.plainErrorf("--timeout must be a positive integer.")
+		return 1
+	}
+
+	settings, ok := loadAISettings(a)
+	if !ok {
+		return 1
+	}
+
 	if !requireGit(a, "rewrite-commits") {
 		return 1
 	}
@@ -21,6 +53,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
+
 	repos, err := resolveRepositoryTargets("")
 	if err != nil {
 		a.error(err.Error())
@@ -29,234 +62,188 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	type rewriteCommitScan struct {
-		repo      repo
-		mapping   map[string]string
-		err       error
-		hasHead   bool
-		noChanges bool
+	workDir, err := os.MkdirTemp("", "git-wrangler-ai-*")
+	if err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
 	}
-	scans := parallelReposProgress(repos, newProgress(a, "Scanning commits", len(repos)), func(r repo) rewriteCommitScan {
-		if !a.git.HasHead(a.ctx, r.dir) {
-			return rewriteCommitScan{repo: r}
-		}
-		mapping, err := buildCommitMessageMapping(a, r.dir)
-		if err != nil {
-			return rewriteCommitScan{repo: r, err: err, hasHead: true}
-		}
-		return rewriteCommitScan{repo: r, mapping: mapping, hasHead: true, noChanges: len(mapping) == 0}
-	})
-	status := 0
-	type rewriteCommitApply struct {
-		repo     repo
-		callback string
+	defer os.RemoveAll(workDir)
+
+	aiRepos := make([]ai.Repository, 0, len(repos))
+	for _, r := range repos {
+		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
 	}
-	type rewriteCommitResult struct {
-		apply      rewriteCommitApply
-		output     string
-		err        error
-		restoreErr error
-	}
-	applies := []rewriteCommitApply{}
-	for _, scan := range scans {
-		r := scan.repo
-		if !scan.hasHead {
-			fmt.Fprintf(a.stdout, "%sRepository has no commits in %s. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
-		}
-		if scan.err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect commits for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
-			status = 1
-			continue
-		}
-		if scan.noChanges {
-			fmt.Fprintf(a.stdout, "%sNo commits require rewriting in %s (already format compliant). Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
-		}
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		if !yes && !confirm(a, "Rewrite commit messages for "+r.display+"?") {
-			a.error(r.display, "Refusing to rewrite history without confirmation.")
-			status = 1
-			continue
-		}
-		callback, err := writeCommitCallback(scan.mapping)
-		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not prepare commit callback for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
-			status = 1
-			continue
-		}
-		applies = append(applies, rewriteCommitApply{repo: r, callback: callback})
-	}
-	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit messages", len(applies)), func(apply rewriteCommitApply) (string, string) {
-		return apply.repo.display, apply.repo.display
-	}, func(apply rewriteCommitApply) rewriteCommitResult {
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, []string{"--partial", "--commit-callback", apply.callback, "--force"}, nil)
-		_ = os.Remove(apply.callback)
-		return rewriteCommitResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
-	})
-	for _, result := range results {
-		r := result.apply.repo
-		if result.err == nil {
-			fmt.Fprintf(a.stdout, "%sRewrote commit messages for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if result.restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
-				status = 1
+	scanProgress := newProgress(a, "Scanning repositories", len(repos))
+	apiProgress := (*progress)(nil)
+	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
+		BaseURL:           settings.Config.AI.BaseURL,
+		Model:             settings.Config.AI.Model,
+		APIKey:            settings.APIKey,
+		BatchSize:         batch,
+		MaxCharsPerCommit: maxCharsInt,
+		RPM:               rpm,
+		Timeout:           time.Duration(timeoutInt) * time.Second,
+		SkipConventional:  skipConventional,
+		Body:              body,
+		WorkDir:           workDir,
+		Git:               a.git,
+		Progress: func(event ai.ProgressEvent) {
+			switch event.Phase {
+			case "Sending API requests":
+				updateAIRequestProgress(a, &apiProgress, event)
+			case "Scanning repositories":
+				if event.Total <= 1 {
+					return
+				}
+				if event.Current == 0 {
+					scanProgress.startWork(progressEventKey(event), progressEventDetail(event))
+					return
+				}
+				scanProgress.finish(progressEventKey(event), progressEventDetail(event))
+			case "Scanning commits":
+				if event.Total <= 1 {
+					return
+				}
+				if event.Current == 0 {
+					return
+				}
+				scanProgress.update(progressEventKey(event), progressEventDetail(event))
+			default:
+				if event.Total <= 1 {
+					return
+				}
+				if event.Current == 0 {
+					return
+				}
+				scanProgress.message(fmt.Sprintf("%s %d/%d", event.Phase, event.Current, event.Total))
 			}
+		},
+	}, a.stderr, func(question string) bool {
+		if yes {
+			return true
+		}
+		return confirm(a, question)
+	})
+	scanProgress.done()
+	apiProgress.done()
+	if errors.Is(err, ai.ErrCancelled) {
+		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
+		return 1
+	}
+	if errors.Is(err, ai.ErrAPICancelled) {
+		fmt.Fprintf(a.stdout, "%sStopped while sending API requests. No history was changed.%s\n", a.ui.Yellow, a.ui.Reset)
+		return 1
+	}
+	if err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	fmt.Fprint(a.stdout, plan.Summary)
+	if plan.GeneratedCount == 0 {
+		return 0
+	}
+	fmt.Fprintln(a.stderr)
+	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update remotes.%s\n", a.ui.Red, a.ui.Reset)
+	if !yes && !confirm(a, "Apply these generated commit messages to all listed repositories?") {
+		fmt.Fprintf(a.stdout, "%sRewrite cancelled. Generated AI messages were temporary and have been discarded.%s\n", a.ui.Yellow, a.ui.Reset)
+		return 1
+	}
+	return applyAIPlan(a, plan, filterCmd)
+}
+
+type aiApplyResult struct {
+	plan       ai.RepoPlan
+	output     string
+	err        error
+	restoreErr error
+}
+
+func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
+	progress := newProgress(a, "Applying AI rewrites", len(plan.Repos))
+	results := parallelItemsWithWorkersProgress(plan.Repos, gitMutationWorkerCount(len(plan.Repos)), progress, func(repoPlan ai.RepoPlan) (string, string) {
+		return repoPlan.Name, repoPlan.Name
+	}, func(repoPlan ai.RepoPlan) aiApplyResult {
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+		return aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
+	})
+
+	hadError := false
+	succeededRepos := 0
+	succeededCommits := 0
+	for _, result := range results {
+		if result.err == nil {
+			if result.restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
+				hadError = true
+				continue
+			}
+			succeededRepos++
+			succeededCommits += result.plan.ChangedCount
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sError: Could not update commit messages for %s:\n%s%s\n\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		fmt.Fprintf(a.stderr, "%sError: Could not rewrite commit messages for %s:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.output, a.ui.Reset)
 		if result.restoreErr != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+			fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
 		}
-		status = 1
+		hadError = true
 	}
-	return status
+	if succeededRepos > 0 {
+		fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) across %d repositories.%s\n", a.ui.Green, succeededCommits, succeededRepos, a.ui.Reset)
+	}
+	if hadError {
+		return 1
+	}
+	return 0
 }
 
-var (
-	conventionalRe   = regexp.MustCompile(`^(feat|fix|docs|chore|test|build|ci|perf|refactor|style)(\(.*\))?: `)
-	docsRe           = regexp.MustCompile(`(\.md$|\.txt$|\.rst$|^LICENSE|^docs/)`)
-	testsRe          = regexp.MustCompile(`(^test/|^spec/|_test\.|spec\.|\.test\.)`)
-	configRe         = regexp.MustCompile(`(^\.github/|^Makefile$|^Dockerfile$|\.yml$|^\w+\.json$)`)
-	timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
-)
-
-func buildCommitMessageMapping(a *app, dir string) (map[string]string, error) {
-	commits, err := readCommitMessages(a, dir)
-	if err != nil {
-		return nil, err
+func updateAIRequestProgress(a *app, apiProgress **progress, event ai.ProgressEvent) {
+	if event.Total <= 1 {
+		if event.Error && event.Detail != "" {
+			fmt.Fprintln(a.stderr, aiProgressDetail(a, event))
+		}
+		return
 	}
-	mapping := map[string]string{}
-	for _, commit := range commits {
-		msg := commit.message
-		if conventionalRe.MatchString(firstLine(msg)) {
-			continue
-		}
-		diff, err := a.git.Stdout(a.ctx, dir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit.hash)
-		if err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(diff) == "" {
-			continue
-		}
-		newMsg := categorizeCommit(diff)
-		if newMsg != "" && newMsg != strings.TrimRight(msg, "\n") {
-			mapping[commit.hash] = newMsg
-		}
+	if *apiProgress == nil {
+		*apiProgress = newProgress(a, event.Phase, event.Total)
 	}
-	return mapping, nil
+	detail := aiProgressDetail(a, event)
+	if event.Error {
+		(*apiProgress).log(detail)
+		return
+	}
+	if event.Current == 0 {
+		if detail != "" {
+			(*apiProgress).startWork(progressEventKey(event), detail)
+		}
+		return
+	}
+	(*apiProgress).finish(progressEventKey(event), detail)
 }
 
-type cliCommitMessage struct {
-	hash    string
-	message string
-}
-
-func readCommitMessages(a *app, dir string) ([]cliCommitMessage, error) {
-	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--reverse", "--all", "--format=%H%x1f%B%x1e")
-	if err != nil {
-		return nil, err
-	}
-	commits := []cliCommitMessage{}
-	for _, record := range strings.Split(out, "\x1e") {
-		record = strings.Trim(record, "\n")
-		if record == "" {
-			continue
-		}
-		hash, message, ok := strings.Cut(record, "\x1f")
-		if !ok || strings.TrimSpace(hash) == "" {
-			return nil, fmt.Errorf("malformed commit log record")
-		}
-		commits = append(commits, cliCommitMessage{hash: strings.TrimSpace(hash), message: message})
-	}
-	return commits, nil
-}
-
-func categorizeCommit(diff string) string {
-	firstFile := ""
-	hasDocs, hasTests, hasConfig, hasSrc := false, false, false, false
-	additions, deletions, modifications := 0, 0, 0
-	for _, line := range splitLines(diff) {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		status := fields[0][0]
-		file := fields[1]
-		if firstFile == "" {
-			firstFile = file
-		}
-		switch status {
-		case 'A':
-			additions++
-		case 'D':
-			deletions++
-		default:
-			modifications++
-		}
-		switch {
-		case docsRe.MatchString(file):
-			hasDocs = true
-		case testsRe.MatchString(file):
-			hasTests = true
-		case configRe.MatchString(file):
-			hasConfig = true
-		default:
-			hasSrc = true
-		}
-	}
-	total := additions + deletions + modifications
-	if total == 0 {
+func aiProgressDetail(a *app, event ai.ProgressEvent) string {
+	if event.Detail == "" {
 		return ""
 	}
-	typ := "chore"
-	switch {
-	case !hasSrc && !hasConfig && !hasTests && hasDocs:
-		typ = "docs"
-	case !hasSrc && !hasConfig && !hasDocs && hasTests:
-		typ = "test"
-	case !hasSrc && !hasTests && !hasDocs && hasConfig:
-		typ = "chore"
-	case additions > 0 && deletions == 0 && hasSrc:
-		typ = "feat"
-	case deletions > 0 && additions == 0 && modifications == 0:
-		typ = "chore"
-	case hasSrc && (modifications > 0 || (additions > 0 && deletions > 0)):
-		typ = "fix"
+	if event.Error {
+		theme := ui.New(a.stderr)
+		return theme.Red + event.Detail + theme.Reset
 	}
-	target := firstFile
-	if total > 1 {
-		if strings.Contains(firstFile, "/") {
-			target = firstFile[:strings.LastIndex(firstFile, "/")+1]
-		} else {
-			target = filepath.Base(firstFile)
-		}
-	}
-	action := "update"
-	if additions > 0 && deletions == 0 && modifications == 0 {
-		action = "add"
-	} else if deletions > 0 && additions == 0 && modifications == 0 {
-		action = "remove"
-	}
-	return fmt.Sprintf("%s: %s %s", typ, action, target)
+	return event.Detail
 }
 
-func writeCommitCallback(mapping map[string]string) (string, error) {
-	f, err := os.CreateTemp("", "git-wrangler-commit-callback-*")
-	if err != nil {
-		return "", err
+func progressEventKey(event ai.ProgressEvent) string {
+	if event.Key != "" {
+		return event.Key
 	}
-	defer f.Close()
-	fmt.Fprintln(f, "mapping = {}")
-	keys := make([]string, 0, len(mapping))
-	for key := range mapping {
-		keys = append(keys, key)
+	if event.RepoName != "" {
+		return event.RepoName
 	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		fmt.Fprintf(f, "mapping[%s] = %s\n", git.PythonBytesLiteral(key), git.PythonBytesLiteral(mapping[key]+"\n"))
+	return event.Detail
+}
+
+func progressEventDetail(event ai.ProgressEvent) string {
+	if event.Detail != "" {
+		return event.Detail
 	}
-	fmt.Fprintln(f, "if commit.original_id in mapping:")
-	fmt.Fprintln(f, "    commit.message = mapping[commit.original_id]")
-	return f.Name(), nil
+	return event.RepoName
 }
