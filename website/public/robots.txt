@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://wrangler.kaufmann.dev/sitemap-index.xml
