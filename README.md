@@ -3,7 +3,7 @@
 [![CI](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml)
 [![Release](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-wrangler.kaufmann.dev-blue)](https://wrangler.kaufmann.dev/docs/introduction)
+[![Documentation](https://img.shields.io/badge/docs-online-blue)](https://wrangler.kaufmann.dev/docs/introduction)
 [![GitHub Releases](https://img.shields.io/badge/releases-GitHub-blue)](https://github.com/kaufmann-dev/git-wrangler/releases)
 
 **Git operations, orchestrated at scale.**
@@ -55,10 +55,11 @@ scoop install kaufmann-dev/git-wrangler
 
 > [!TIP]
 > You can also install manually by downloading a standalone binary from
-> GitHub Releases, extracting it, and adding it to your `PATH`.
+> [GitHub Releases](https://github.com/kaufmann-dev/git-wrangler/releases),
+> extracting it, and adding it to your `PATH`.
 > You will need to manually install runtime dependencies and set up shell
 > completions, as these are not automatically handled like with Scoop or Homebrew
-> (see [Shell Completions](#shell-completions) and [Runtime Dependencies](#runtime-dependencies)).
+> (see [Runtime Dependencies](#runtime-dependencies) and [Shell Completions](#shell-completions)).
 
 ### Update
 
