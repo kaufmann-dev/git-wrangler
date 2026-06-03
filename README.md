@@ -41,7 +41,7 @@ repository instead of discovering everything below the current directory.
 - **AI-assisted commits** — generate Conventional Commit messages from diffs.
 - **Safer history rewrites** — rewrite metadata or remove secrets with confirmations.
 - **GitHub workflows** — clone, rename, and manage repositories through `gh`.
-- **Single binary** — portable Go executable with no runtime dependencies beyond `git`.
+- **Single binary** — portable Go executable; GitHub and history workflows use standard tools like `gh` and `git-filter-repo`.
 
 ## Installation & Maintenance
 

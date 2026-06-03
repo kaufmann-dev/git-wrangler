@@ -54,11 +54,18 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	for _, r := range repos {
 		applies = append(applies, authorApply{repo: r})
 	}
-	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history in %d repositories. A force push will be required to update any remote.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+	renderNotice(a, "Author Rewrite", []keyValueRow{
+		{key: "Repositories", value: fmt.Sprintf("%d", len(applies))},
+		{key: "New name", value: newName},
+		{key: "New email", value: newEmail},
+	}, nil)
+	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
 	if !confirmOrSkip(a, yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies))) {
-		for _, apply := range applies {
-			a.skip(apply.repo.display, "Skipping history rewrite.")
-		}
+		renderSummary(a,
+			summaryCount{label: "rewritten", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: len(applies), color: a.ui.Yellow},
+			summaryCount{label: "failed", value: 0, color: a.ui.Red},
+		)
 		return status
 	}
 	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting authors", len(applies)), func(apply authorApply) (string, string) {
@@ -67,22 +74,31 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
 		return authorApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
+	rewritten := 0
+	failed := 0
 	for _, result := range results {
 		r := result.apply.repo
 		if result.err == nil {
 			if result.restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Author rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+				renderErrorBlock(a, r.display+": author rewrite completed, but origin could not be restored", result.restoreErr.Error())
 				status = 1
+				failed++
 				continue
 			}
-			fmt.Fprintf(a.stdout, "%sAuthor and committer information updated for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
+			rewritten++
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sError: Could not update git author and committer information for %s:\n%s%s\n\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		renderErrorBlock(a, r.display+": could not update git author and committer information", result.output)
 		if result.restoreErr != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Author rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": author rewrite failed, and origin could not be restored", result.restoreErr.Error())
 		}
 		status = 1
+		failed++
 	}
+	renderSummary(a,
+		summaryCount{label: "rewritten", value: rewritten, color: a.ui.Green},
+		summaryCount{label: "skipped", value: 0, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }

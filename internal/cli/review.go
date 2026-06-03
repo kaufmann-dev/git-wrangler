@@ -37,6 +37,9 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		individualDeleted []string
 	}
 	status := 0
+	changed := 0
+	clean := 0
+	failed := 0
 	results := parallelReposProgress(repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
@@ -65,15 +68,17 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	})
 	for _, result := range results {
 		if result.err != nil {
-			fmt.Fprintf(a.stderr, "%sError: %s for %s:\n%s%s\n\n", a.ui.Red, result.errMessage, result.repo.display, result.err.Error(), a.ui.Reset)
+			renderErrorBlock(a, fmt.Sprintf("%s: %s", result.repo.display, result.errMessage), result.err.Error())
 			status = 1
+			failed++
 			continue
 		}
 		if len(result.added) == 0 && len(result.modified) == 0 && len(result.deletedFolders) == 0 && len(result.individualDeleted) == 0 {
-			fmt.Fprintf(a.stdout, "%sNo unpushed changes for %s. Skipping...%s\n", a.ui.Yellow, result.repo.display, a.ui.Reset)
+			clean++
 			continue
 		}
-		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, result.repo.display, a.ui.Reset)
+		changed++
+		renderRepoHeader(a, result.repo.display)
 		for _, f := range result.added {
 			fmt.Fprintf(a.stdout, "  %sAdded:%s    %s\n", a.ui.Green, a.ui.Reset, f)
 		}
@@ -81,13 +86,18 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %sEdited:%s   %s\n", a.ui.Yellow, a.ui.Reset, f)
 		}
 		for _, f := range result.deletedFolders {
-			fmt.Fprintf(a.stderr, "  %sRemoved:%s  %s/ (entire folder)\n", a.ui.Red, a.ui.Reset, f)
+			fmt.Fprintf(a.stdout, "  %sRemoved:%s  %s/ (entire folder)\n", a.ui.Red, a.ui.Reset, f)
 		}
 		for _, f := range result.individualDeleted {
-			fmt.Fprintf(a.stderr, "  %sRemoved:%s  %s\n", a.ui.Red, a.ui.Reset, f)
+			fmt.Fprintf(a.stdout, "  %sRemoved:%s  %s\n", a.ui.Red, a.ui.Reset, f)
 		}
 		fmt.Fprintln(a.stdout)
 	}
+	renderSummary(a,
+		summaryCount{label: "with unpushed changes", value: changed, color: a.ui.Yellow},
+		summaryCount{label: "clean", value: clean, color: a.ui.Green},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 

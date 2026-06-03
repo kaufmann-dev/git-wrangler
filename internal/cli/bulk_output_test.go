@@ -73,11 +73,8 @@ func TestPullRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	if maxActive < 2 {
 		t.Fatalf("pull did not run concurrently; max active = %d", maxActive)
 	}
-	out := stdout.String()
-	first := strings.Index(out, "a-slow")
-	second := strings.Index(out, "b-fast")
-	if first < 0 || second < 0 || first > second {
-		t.Fatalf("pull output not in repo order:\n%s", out)
+	if !strings.Contains(stdout.String(), "Summary: 2 updated, 0 skipped, 0 failed") {
+		t.Fatalf("missing pull summary:\n%s", stdout.String())
 	}
 }
 
@@ -164,11 +161,8 @@ func TestFetchRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	if maxActive < 2 {
 		t.Fatalf("fetch did not run concurrently; max active = %d", maxActive)
 	}
-	out := stdout.String()
-	first := strings.Index(out, "a-slow")
-	second := strings.Index(out, "b-fast")
-	if first < 0 || second < 0 || first > second {
-		t.Fatalf("fetch output not in repo order:\n%s", out)
+	if !strings.Contains(stdout.String(), "Summary: 2 fetched, 0 failed") {
+		t.Fatalf("missing fetch summary:\n%s", stdout.String())
 	}
 }
 
@@ -437,11 +431,8 @@ func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *test
 	if maxActiveFilters < 2 {
 		t.Fatalf("filter-repo runs did not overlap; max active = %d", maxActiveFilters)
 	}
-	out := stdout.String()
-	first := strings.Index(out, "a-slow")
-	second := strings.Index(out, "b-fast")
-	if first < 0 || second < 0 || first > second {
-		t.Fatalf("rewrite-authors output not in repo order:\n%s", out)
+	if !strings.Contains(stdout.String(), "Summary: 2 rewritten, 0 skipped, 0 failed") {
+		t.Fatalf("missing rewrite-authors summary:\n%s", stdout.String())
 	}
 }
 
