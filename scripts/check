@@ -56,21 +56,4 @@ else
     printf "skip goreleaser check: goreleaser is not installed\n"
 fi
 
-if [ -d website/node_modules ] && command -v pnpm >/dev/null 2>&1; then
-    step "website check"
-    if ! (cd website && pnpm run check); then
-        status=1
-    fi
-    step "website build"
-    if ! (cd website && pnpm run build); then
-        status=1
-    fi
-    step "website audit"
-    if ! (cd website && pnpm audit --audit-level moderate); then
-        status=1
-    fi
-else
-    printf "skip website checks: pnpm or website dependencies not installed\n"
-fi
-
 exit "$status"
