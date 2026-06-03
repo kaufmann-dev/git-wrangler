@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/auth"
@@ -45,12 +46,21 @@ type exitError struct {
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
-const rootBanner = `  ____ _ _     __        __                       _
- / ___(_) |_   \ \      / / __ __ _ _ __   __ _ | | ___ _ __
-| |  _| | __|   \ \ /\ / / '__/ _` + "`" + ` | '_ \ / _` + "`" + ` || |/ _ \ '__|
-| |_| | | |_     \ V  V /| | | (_| | | | | (_| || |  __/ |
- \____|_|\__|     \_/\_/ |_|  \__,_|_| |_|\__, ||_|\___|_|
-                                           |___/`
+const rootBanner = `  ██████╗ ██╗████████╗    ██╗    ██╗██████╗  █████╗ ███╗   ██╗ ██████╗ ██╗     ███████╗██████╗
+ ██╔════╝ ██║╚══██╔══╝    ██║    ██║██╔══██╗██╔══██╗████╗  ██║██╔════╝ ██║     ██╔════╝██╔══██╗
+ ██║  ███╗██║   ██║       ██║ █╗ ██║██████╔╝███████║██╔██╗ ██║██║  ███╗██║     █████╗  ██████╔╝
+ ██║   ██║██║   ██║       ██║███╗██║██╔══██╗██╔══██║██║╚██╗██║██║   ██║██║     ██╔══╝  ██╔══██╗
+ ╚██████╔╝██║   ██║       ╚███╔███╔╝██║  ██║██║  ██║██║ ╚████║╚██████╔╝███████╗███████╗██║  ██║
+  ╚═════╝ ╚═╝   ╚═╝        ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝`
+
+var rootBannerGradient = []string{
+	"\033[38;2;0;245;255m",
+	"\033[38;2;0;190;255m",
+	"\033[38;2;87;132;255m",
+	"\033[38;2;148;93;255m",
+	"\033[38;2;214;84;255m",
+	"\033[38;2;255;91;184m",
+}
 
 func Execute() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -216,7 +226,7 @@ func newRootCommand(a *app) *cobra.Command {
 }
 
 func printRootLanding(a *app) {
-	fmt.Fprintf(a.stdout, "%s%s%s\n\n", a.ui.Bold+a.ui.Cyan, rootBanner, a.ui.Reset)
+	printRootBanner(a)
 	fmt.Fprintln(a.stdout, "Orchestrate Git operations across many repositories.")
 	fmt.Fprintln(a.stdout)
 	fmt.Fprintln(a.stdout, "Common commands:")
@@ -224,6 +234,18 @@ func printRootLanding(a *app) {
 	fmt.Fprintln(a.stdout, "  git-wrangler pull --rebase   Refresh every repo")
 	fmt.Fprintln(a.stdout, "  git-wrangler review          Review unpushed work")
 	fmt.Fprintln(a.stdout, "  git-wrangler help            Show all commands")
+}
+
+func printRootBanner(a *app) {
+	if a.ui.Reset == "" {
+		fmt.Fprintf(a.stdout, "%s\n\n", rootBanner)
+		return
+	}
+	for i, line := range strings.Split(rootBanner, "\n") {
+		color := rootBannerGradient[i%len(rootBannerGradient)]
+		fmt.Fprintf(a.stdout, "%s%s%s%s\n", a.ui.Bold, color, line, a.ui.Reset)
+	}
+	fmt.Fprintln(a.stdout)
 }
 
 func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, []string) int, specs flags) *cobra.Command {
