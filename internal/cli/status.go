@@ -28,15 +28,13 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 
-	fmt.Fprintf(a.stdout, "%-30s | %-5s | %s\n", "REPOSITORY", "STATE", "TRACKING")
-	fmt.Fprintln(a.stdout, "-------------------------------+-------+------------------------")
-
 	totalClean := 0
 	totalDirty := 0
 	totalBehind := 0
 	totalNoRemote := 0
 	totalFailed := 0
 	status := 0
+	tableRows := [][]string{}
 
 	type statusResult struct {
 		repo repo
@@ -49,13 +47,14 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	})
 	for _, result := range results {
 		if result.err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not inspect status for %s:\n%s%s\n\n", a.ui.Red, result.repo.display, result.err.Error(), a.ui.Reset)
+			renderErrorBlock(a, fmt.Sprintf("%s: could not inspect status", result.repo.display), result.err.Error())
+			tableRows = append(tableRows, []string{result.repo.display, a.ui.Red + "ERROR" + a.ui.Reset, "failed"})
 			status = 1
 			totalFailed++
 			continue
 		}
 		row := result.row
-		fmt.Fprintf(a.stdout, "%-30s | %s | %s\n", row.name, row.state, row.tracking)
+		tableRows = append(tableRows, []string{row.name, row.state, row.tracking})
 		if row.dirty == 0 {
 			totalClean++
 		}
@@ -64,13 +63,15 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		totalNoRemote += row.noRemote
 	}
 
-	fmt.Fprintln(a.stdout, "-------------------------------+-------+------------------------")
-	fmt.Fprintf(a.stdout, "Summary: %s%d clean%s, %s%d dirty%s, %s%d behind%s, %s%d no remote%s, %s%d failed%s\n",
-		a.ui.Green, totalClean, a.ui.Reset,
-		a.ui.Yellow, totalDirty, a.ui.Reset,
-		a.ui.Red, totalBehind, a.ui.Reset,
-		a.ui.Muted, totalNoRemote, a.ui.Reset,
-		a.ui.Red, totalFailed, a.ui.Reset)
+	renderTable(a, []tableColumn{{header: "Repository", max: 30}, {header: "State"}, {header: "Tracking"}}, tableRows)
+	fmt.Fprintln(a.stdout)
+	renderSummary(a,
+		summaryCount{label: "clean", value: totalClean, color: a.ui.Green},
+		summaryCount{label: "dirty", value: totalDirty, color: a.ui.Yellow},
+		summaryCount{label: "behind", value: totalBehind, color: a.ui.Red},
+		summaryCount{label: "no remote", value: totalNoRemote, color: a.ui.Muted},
+		summaryCount{label: "failed", value: totalFailed, color: a.ui.Red},
+	)
 	return status
 }
 

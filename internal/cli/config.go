@@ -111,16 +111,23 @@ func runConfigShow(a *app) int {
 		})
 	}
 
-	fmt.Fprintf(a.stdout, "Config: %s\n", path)
-	fmt.Fprintln(a.stdout, "GitHub:")
-	fmt.Fprintf(a.stdout, "  Host: %s\n", cfg.GitHub.Host)
-	fmt.Fprintf(a.stdout, "  Username: %s\n", displayUnset(cfg.GitHub.Username))
-	fmt.Fprintf(a.stdout, "  Auth: %s\n", github.Source)
-	fmt.Fprintln(a.stdout, "AI:")
-	fmt.Fprintf(a.stdout, "  Provider: %s\n", displayUnset(cfg.AI.Provider))
-	fmt.Fprintf(a.stdout, "  Base URL: %s\n", displayUnset(cfg.AI.BaseURL))
-	fmt.Fprintf(a.stdout, "  Model: %s\n", displayUnset(cfg.AI.Model))
-	fmt.Fprintf(a.stdout, "  API key: %s\n", aiKey.Source)
+	fmt.Fprintln(a.stdout, "Config")
+	renderKeyValues(a, []keyValueRow{{key: "Path", value: path}})
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "GitHub")
+	renderKeyValues(a, []keyValueRow{
+		{key: "Host", value: cfg.GitHub.Host},
+		{key: "Username", value: displayUnsetStyled(a, cfg.GitHub.Username)},
+		{key: "Auth", value: string(github.Source)},
+	})
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "AI")
+	renderKeyValues(a, []keyValueRow{
+		{key: "Provider", value: displayUnsetStyled(a, cfg.AI.Provider)},
+		{key: "Base URL", value: displayUnsetStyled(a, cfg.AI.BaseURL)},
+		{key: "Model", value: displayUnsetStyled(a, cfg.AI.Model)},
+		{key: "API key", value: string(aiKey.Source)},
+	})
 	return 0
 }
 
@@ -255,6 +262,13 @@ func secretValue(a *app, args []string, prompt string) (string, bool) {
 func displayUnset(value string) string {
 	if value == "" {
 		return "<unset>"
+	}
+	return value
+}
+
+func displayUnsetStyled(a *app, value string) string {
+	if value == "" {
+		return a.ui.Muted + "<unset>" + a.ui.Reset
 	}
 	return value
 }

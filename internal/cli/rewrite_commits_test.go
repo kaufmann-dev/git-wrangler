@@ -98,7 +98,7 @@ func TestApplyAIPlanRunsFilterRepoInParallelWithOrderedOutput(t *testing.T) {
 		t.Fatalf("git-filter-repo runs did not overlap; max active = %d", maxActiveFilters)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "Rewrote 3 commit message(s) across 2 repositories.") {
+	if !strings.Contains(out, "Summary: 3 commit messages rewritten, 2 repositories updated, 0 failed") {
 		t.Fatalf("missing aggregate rewrite summary:\n%s", out)
 	}
 	if strings.Contains(out, "for repo-a") || strings.Contains(out, "for repo-b") {

@@ -127,11 +127,11 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	scanProgress.done()
 	apiProgress.done()
 	if errors.Is(err, ai.ErrCancelled) {
-		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
+		renderStatusLine(a, a.stdout, statusSkip, "stopped before sending any data", "")
 		return 0
 	}
 	if errors.Is(err, ai.ErrAPICancelled) {
-		fmt.Fprintf(a.stdout, "%sStopped while sending API requests. No history was changed.%s\n", a.ui.Yellow, a.ui.Reset)
+		renderStatusLine(a, a.stdout, statusSkip, "stopped while sending API requests", "no history was changed")
 		return 0
 	}
 	if err != nil {
@@ -143,9 +143,9 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return 0
 	}
 	fmt.Fprintln(a.stderr)
-	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update remotes.%s\n", a.ui.Red, a.ui.Reset)
+	renderWarning(a, "This operation rewrites Git history. A force push will be required to update remotes.")
 	if !confirmOrSkip(a, yes, "Apply these generated commit messages to all listed repositories?") {
-		fmt.Fprintf(a.stdout, "%sRewrite cancelled. Generated AI messages were temporary and have been discarded.%s\n", a.ui.Yellow, a.ui.Reset)
+		renderStatusLine(a, a.stdout, statusSkip, "rewrite cancelled", "generated AI messages were temporary and have been discarded")
 		return 0
 	}
 	return applyAIPlan(a, plan, filterCmd)
@@ -170,26 +170,31 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	hadError := false
 	succeededRepos := 0
 	succeededCommits := 0
+	failed := 0
 	for _, result := range results {
 		if result.err == nil {
 			if result.restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
+				renderErrorBlock(a, result.plan.Name+": commit rewrite completed, but origin could not be restored", result.restoreErr.Error())
 				hadError = true
+				failed++
 				continue
 			}
 			succeededRepos++
 			succeededCommits += result.plan.ChangedCount
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sError: Could not rewrite commit messages for %s:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.output, a.ui.Reset)
+		renderErrorBlock(a, result.plan.Name+": could not rewrite commit messages", result.output)
 		if result.restoreErr != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Commit rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, result.plan.Name, result.restoreErr.Error(), a.ui.Reset)
+			renderErrorBlock(a, result.plan.Name+": commit rewrite failed, and origin could not be restored", result.restoreErr.Error())
 		}
 		hadError = true
+		failed++
 	}
-	if succeededRepos > 0 {
-		fmt.Fprintf(a.stdout, "%sRewrote %d commit message(s) across %d repositories.%s\n", a.ui.Green, succeededCommits, succeededRepos, a.ui.Reset)
-	}
+	renderSummary(a,
+		summaryCount{label: "commit messages rewritten", value: succeededCommits, color: a.ui.Green},
+		summaryCount{label: "repositories updated", value: succeededRepos, color: a.ui.Green},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	if hadError {
 		return 1
 	}

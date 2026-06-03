@@ -1,64 +1,186 @@
 # CLI Design
 
-Git Wrangler is a human-first Go/Cobra CLI. Keep generated Cobra `help` and `completion`, command-local flags, and output that reads clearly during repeated multi-repository use.
+## North Star
 
-## Command Surface
+Git Wrangler is a human-first fleet console for many repositories. Output should feel calm, dense, and predictable when a user runs one command across a large workspace.
 
-Public commands are grouped as remote, local, history, and utility commands in `internal/cli/root.go`. Do not add global scriptability surfaces. JSON exists only on read-only/introspection commands: `status`, `info`, `review`, `doctor`, `config show`, and `version`.
+Default human output is the product surface. Do not add scriptability-first output, pagers, global verbosity flags, or machine contracts unless the command explicitly supports JSON or the user asks for that surface.
 
-Do not restore `update` or `uninstall`. Distribution tools own updates and removal.
+Keep Cobra-generated `help` and `completion`. Keep the root landing banner.
 
-## Repository Targeting
+## Command Rhythm
 
-Default repository targeting discovers worktrees below the current directory. `--repo PATH` is exact targeting: it resolves one normal or linked-worktree repository and does not recurse below it. Non-repository paths and bare repositories are errors.
+Use this rhythm for human commands:
 
-Exact targeting belongs in `internal/repos` and the shared helper in `internal/cli`. Command implementations should not hand-roll repository discovery.
+1. Validate flags, dependencies, config, and credentials.
+2. Discover targets.
+3. Show transient progress on stderr for long-running scan phases.
+4. Print durable previews or results on stdout after progress is closed.
+5. Print destructive warnings and prompts on stderr when needed.
+6. Mutate with transient progress on stderr.
+7. Print concise final summaries on stdout.
 
-## Confirmations
+Progress is never durable output. Tables, previews, summaries, and repo blocks must be printed only after active progress has been closed.
 
-`--yes` is command-local and skips confirmations only. It must not supply required values such as names, branches, config values, API keys, or secrets.
+## Streams
 
-Multi-repository commands must ask at most one confirmation for the whole candidate set. A confirmation must never be asked N times simply because there are N repositories.
+Stdout is for durable command results: tables, repo blocks, summaries, normal status lines, JSON documents, and non-secret setup/config recaps.
 
-A user-declined confirmation before mutation is a skip/no-op, not a failure. Validation errors, missing dependencies, failed per-repo operations, partial failures, and cleanup failures still return nonzero.
+Stderr is for progress, prompts, warnings, errors, and captured subprocess failure output.
 
-`license` creates missing `LICENSE` files without confirmation. `license --overwrite` prompts once before replacing all existing `LICENSE` files in the candidate set, and `--yes` skips only that overwrite prompt.
+JSON mode writes exactly one JSON document to stdout. It suppresses progress, colors, prompts, warnings, and human summaries. Stderr should stay empty except Cobra parse errors or unavoidable process-level failures.
 
-## Output Streams
+## Visual Language
 
-Use stdout for normal command results, per-repo result blocks, final summaries, and JSON documents.
+Use sentence-case human text and stable labels. Prefer `Repository`, `State`, `Tracking`, `Changed`, `Skipped`, `Failed`, `OK`, `WARN`, `ERROR`, `SKIP`, and `INFO`.
 
-Use stderr for prompts, warnings, progress, and errors.
+Color supports meaning but never carries meaning alone:
 
-JSON mode writes exactly one document to stdout. It suppresses progress, colors, prompts, and human summaries. Stderr should stay empty except for Cobra parse errors or unavoidable process-level failures.
+- Green: successful mutation or healthy check.
+- Yellow: skip, dirty state, warning, or user-declined no-op.
+- Red: error, failed check, behind state, or destructive warning.
+- Cyan: informational values such as ahead counts, auth source, current branch, or active target.
+- Muted gray: secondary or absent values such as `no remote`, `<unset>`, or `not configured`.
+- Bold blue: repository names in multi-line repo blocks when it improves scanning.
 
-## Status Vocabulary
+Symbols are optional and TTY-only through `internal/ui`. Plain output must remain readable as text.
 
-Use the shared helpers in `internal/cli/helpers.go` for status lines when possible:
+Do not use decorative boxes, emojis, gradients in command output, or heavy separators. Keep output grep-readable.
 
-- `OK` / success
-- `WARN` / warning
-- `ERROR` / failure
-- `SKIP` / no-op
-- `INFO` / context
+## Progress
 
-Avoid direct colored `fmt.Fprintf` in new repeated output paths. Existing direct output can stay unless changing it simplifies repeated behavior or fixes stream separation.
+Use `newProgress` for long-running bulk phases. Prefer one progress surface per phase, such as `Checking status`, `Pulling repositories`, `Sending API requests`, or `Applying AI rewrites`.
 
-## Progress And Ordering
+Interactive progress is transient. Non-TTY progress is line-oriented and throttled. JSON mode has no progress.
 
-Long-running bulk phases should report progress to stderr through `newProgress`. Progress must not interleave with ordered stdout summaries or per-repo result blocks.
+Call `finishProgressBeforeOutput` or rely on worker helpers that close progress before printing durable output. Do not print tables, previews, summaries, repo blocks, warnings, prompts, or error blocks while progress is active.
 
-Workers return result structs. Print only after collection so repository output order stays stable.
+## Tables
 
-Worker categories:
+Use tables only for comparable dense data: `status`, reset previews, and `doctor` checks.
 
-- Read-only scans cap at 32 workers.
-- Independent Git mutations cap at 4 workers.
-- Confirmed history rewrite apply phases use the mutation cap.
-- `clone`, `rename-repo`, `license`, and `push --force-unsafe` stay sequential.
+Tables must use ANSI-aware width calculation. Do not hard-code separator lines in command files. Avoid heavy borders unless the project explicitly chooses them.
 
-## Result Blocks
+Long repository names may be truncated with `...` when a command needs compact scan output.
 
-Per-repo blocks should be compact and separated by blank lines only when the command prints multi-line details. Summaries should be short count lines at the end of human output.
+## Repo Blocks
 
-Keep cosmetic changes narrow. Output changes should trace to readability, stream separation, JSON suppression, or consistent status wording.
+Use repo blocks for multi-line actionable detail: `review`, `fix-gitignore`, `untrack`, `remove-secrets`, and generated rewrite previews.
+
+Separate repo blocks with exactly one blank line. Do not print clean/no-change repositories one by one unless the command is explicitly a detailed report like `info`.
+
+## Warnings And Prompts
+
+Destructive warnings use one style through `renderWarning`. They go to stderr and describe the irreversible action concretely.
+
+Multi-repository commands ask at most one confirmation for the candidate set. `--yes` skips confirmations only; it must not fill required values such as names, branches, config values, API keys, or secrets.
+
+A declined confirmation before mutation is a successful skip/no-op. It should be counted in the summary, not treated as a failure.
+
+## Summaries
+
+Every bulk human command ends with `Summary:` on stdout. Use a consistent count order per command. Color numeric/state values, not punctuation.
+
+Preferred count orders:
+
+- `status`: clean, dirty, behind, no remote, failed.
+- `pull`: updated, skipped, failed.
+- `fetch`: fetched, failed.
+- `push`: pushed, skipped, failed.
+- `clone`: cloned, skipped, failed.
+- `commit`: committed, skipped, failed.
+- `fix-gitignore`: with changes, unchanged, failed; then updated, skipped, failed after apply.
+- `license`: created, overwritten, skipped, failed.
+- `rename-branch`: renamed, skipped, failed.
+- `reset`: reset, skipped, failed.
+- `review`: with unpushed changes, clean, failed.
+- `untrack`: with tracked ignored files, unchanged, failed; then updated, skipped, failed after apply.
+- `remove-secrets`: rewritten, clean, skipped, failed.
+- `rewrite-authors`: rewritten, skipped, failed.
+- `rewrite-commits`: commit messages rewritten, repositories updated, failed.
+- `rewrite-dates`: rewritten, skipped, failed.
+- `rename-repo`: renamed, description updated, skipped, failed.
+
+## Per-Command Output Contract
+
+### `status`
+
+Show progress while checking repositories. Then print one dense table with `Repository`, `State`, and `Tracking`, followed by the standard summary. Rows with failures should show `ERROR` where possible, with details on stderr.
+
+### `pull`, `fetch`, and `push`
+
+Show one progress line. Suppress routine per-repo success lines. Print actionable skips such as already up to date or nothing to push. Print failures as error blocks. End with a summary.
+
+`push --force-unsafe` remains sequential after one confirmation but uses the same summary style.
+
+### `clone`
+
+Show GitHub auth source once when auth is used. Clone sequentially. Print existing-directory skips and failures. Suppress routine cloned lines for large runs; one or two individual success lines are acceptable. End with `cloned`, `skipped`, and `failed`.
+
+### `commit`
+
+Prepare AI commit context with progress. Before network calls, print a data-send notice containing endpoint, model, repository count, context budget, content description, and secret handling. Prompt on stderr. Show API progress with inline retry/detail text, then commit creation progress. Print only failures/skips plus summary unless there is a single small success surface.
+
+### `fix-gitignore`
+
+Scan first. Print candidate repo blocks only for proposed additions. Count clean/no-change repositories in the scan summary. Prompt once, apply with progress, then print the apply summary.
+
+### `license`
+
+Print conflicts, skips, and failures. Suppress routine success lines. `--overwrite` prompts once for existing files. Summarize `created`, `overwritten`, `skipped`, and `failed`.
+
+### `rename-branch`
+
+Progress while checking and applying. Suppress successful rename spam. Print skips for missing source branches or existing targets, print failures, then summarize.
+
+### `reset`
+
+Preparation progress completes before any preview. Print a reset table with repository, branch, ahead, behind, and dirty state for candidates. Print one destructive warning and one prompt. Apply with progress and summarize. Detached HEAD, missing upstream, and already-up-to-date states are skips.
+
+### `review`
+
+Progress first. Print only repositories with unpushed changes or errors. Keep per-repo file-change blocks because they are the command result. Added, edited, and removed labels are aligned and printed to stdout. Summarize changed, clean, and failed counts.
+
+### `untrack`
+
+Scan first. Print candidate blocks only for repositories with tracked ignored files. Count missing `.gitignore` and no-match repositories. Prompt once, apply with progress, and summarize.
+
+### `remove-secrets`
+
+Scan history with progress. Always show matched files for affected repositories because this is safety-critical. Count clean repositories. Warn and prompt once. Apply with progress and summarize.
+
+### `rewrite-authors`
+
+Print a concise destructive notice with repository count and new identity. Warn and prompt once. Apply with progress. Suppress per-repo success lines, print origin-restore warnings and failures, and summarize.
+
+### `rewrite-commits`
+
+Use phases for repository scanning, commit scanning, API requests, generated preview, destructive warning/prompt, and applying rewrites. Retry details must stay inline or in clean progress logs, never interleaved with durable output. Keep the generated plan preview. Final success is aggregate.
+
+### `rewrite-dates`
+
+Preparation progress completes before preview. Print candidate repo blocks with commit count, range, timezone, and a compact sample of old-to-new timestamps. Warn and prompt once. Apply with progress and summarize.
+
+### `info`
+
+Keep the detailed multi-line report. Use aligned key/value rows. Separate repositories with exactly one blank line. Add a summary only for multi-repo runs with failures.
+
+### `doctor`
+
+Print `Git Wrangler Doctor`, a runtime key/value section, a dependency check table, and a config/auth check table. Use `ERROR` only for critical failures that make doctor exit nonzero. Warnings should not imply the CLI is broken.
+
+### `init`
+
+Keep prompts explicit. Use `GitHub` and `AI` sections. End with `OK Setup complete` and a short non-secret recap with sources.
+
+### `config`
+
+`config show` uses non-secret key/value sections. Secret values are never printed. `config set` and `config unset` use standard `OK Updated <key>` and `OK Unset <key>` lines. Errors should say whether a key is unknown, a value is missing, or plaintext secrets are not accepted.
+
+### `rename-repo`
+
+Keep sequential interaction. Show auth source once. Use a repo header and concise prompts for each repository. Print active interaction skips/failures inline. End with a summary.
+
+### `root`, `help`, `completion`, and `version`
+
+Keep the root landing banner. Keep Cobra-generated `help` and `completion`. `version` stays compact; `version --json` remains unchanged.
