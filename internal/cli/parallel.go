@@ -56,15 +56,21 @@ func parallelReposWithWorkers[T any](repos []repo, workers int, inspect func(rep
 }
 
 func parallelReposWithWorkersProgress[T any](repos []repo, workers int, progress *progress, inspect func(repo) T) []T {
-	results := make([]T, len(repos))
+	return parallelItemsWithWorkersProgress(repos, workers, progress, func(r repo) (string, string) {
+		return r.display, r.display
+	}, inspect)
+}
+
+func parallelItemsWithWorkersProgress[T any, R any](items []T, workers int, progress *progress, detail func(T) (string, string), work func(T) R) []R {
+	results := make([]R, len(items))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	defer progress.done()
 	if workers < 1 {
 		workers = 1
 	}
-	if workers > len(repos) && len(repos) > 0 {
-		workers = len(repos)
+	if workers > len(items) && len(items) > 0 {
+		workers = len(items)
 	}
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -72,16 +78,18 @@ func parallelReposWithWorkersProgress[T any](repos []repo, workers int, progress
 			defer wg.Done()
 			for index := range jobs {
 				if progress != nil {
-					progress.start(repos[index].display)
+					key, text := detail(items[index])
+					progress.startWork(key, text)
 				}
-				results[index] = inspect(repos[index])
+				results[index] = work(items[index])
 				if progress != nil {
-					progress.finish(repos[index].display, repos[index].display)
+					key, text := detail(items[index])
+					progress.finish(key, text)
 				}
 			}
 		}()
 	}
-	for index := range repos {
+	for index := range items {
 		jobs <- index
 	}
 	close(jobs)
