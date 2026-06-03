@@ -80,12 +80,9 @@ govulncheck ./...
 goreleaser check
 goreleaser release --snapshot --clean
 git diff --check
-cd website && pnpm run check
-cd website && pnpm run build
-cd website && pnpm audit --audit-level moderate
 ```
 
-`scripts/check` wraps `git diff --check`, Go tests, race tests, vet, optional `govulncheck`, GoReleaser v2 checks, and website check/build/audit when local website dependencies are installed. `scripts/test` runs `go test ./...`. `scripts/bench` builds a temporary CLI binary and times read-only status checks against temporary repositories.
+`scripts/check` wraps `git diff --check`, Go tests, race tests, vet, optional `govulncheck`, and GoReleaser v2 checks. `scripts/test` runs `go test ./...`. `scripts/bench` builds a temporary CLI binary and times read-only status checks against temporary repositories.
 
 ## History Rewrite Safety
 
