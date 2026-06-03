@@ -109,6 +109,7 @@ git-wrangler help
 | Command       | What it does                                              |
 | ------------- | --------------------------------------------------------- |
 | `clone`       | Clone multiple GitHub repositories for a user or org.     |
+| `fetch`       | Fetch origin updates. Use `--prune` to prune stale refs.  |
 | `pull`        | Pull latest changes for every discovered repository.      |
 | `push`        | Push local commits to origin. `--force` uses lease-based. |
 | `rename-repo` | Rename GitHub repositories through `gh`.                  |
@@ -117,7 +118,7 @@ git-wrangler help
 
 | Command         | What it does                                                |
 | --------------- | ----------------------------------------------------------- |
-| `commit`        | Stage all changes and create a commit in each dirty repo.   |
+| `commit`        | Generate and create one AI Conventional Commit per repo.    |
 | `fix-gitignore` | Add missing common generated-file patterns to `.gitignore`. |
 | `license`       | Add or replace MIT license files.                           |
 | `rename-branch` | Rename a branch across repositories.                        |
@@ -125,21 +126,14 @@ git-wrangler help
 | `review`        | Review unpushed changes across repositories.                |
 | `untrack`       | Stop tracking files already covered by `.gitignore`.        |
 
-### AI Commands
-
-| Command              | What it does                                                        |
-| -------------------- | ------------------------------------------------------------------- |
-| `commit-ai`          | Generate and create one AI Conventional Commit per changed repo.    |
-| `rewrite-commits-ai` | Generate AI Conventional Commit messages, then rewrite history.     |
-
 ### History Rewriting
 
-| Command           | What it does                                     |
-| ----------------- | ------------------------------------------------ |
-| `remove-secrets`  | Purge sensitive files from Git history.          |
-| `rewrite-authors` | Rewrite author and committer identity.           |
-| `rewrite-commits` | Rewrite commit messages to Conventional Commits. |
-| `rewrite-dates`   | Redistribute commit timestamps.                  |
+| Command           | What it does                                                    |
+| ----------------- | --------------------------------------------------------------- |
+| `remove-secrets`  | Purge sensitive files from Git history.                         |
+| `rewrite-authors` | Rewrite author and committer identity.                          |
+| `rewrite-commits` | Generate AI Conventional Commit messages, then rewrite history. |
+| `rewrite-dates`   | Redistribute commit timestamps.                                 |
 
 ### Utility
 
@@ -156,7 +150,7 @@ git-wrangler help
 
 ## AI-Powered Workflows
 
-`commit-ai` and `rewrite-commits-ai` use any OpenAI-compatible chat completions
+`commit` and `rewrite-commits` use any OpenAI-compatible chat completions
 API to generate Conventional Commit messages from your diffs.
 
 ```bash
@@ -178,7 +172,7 @@ and designed to fail safely.
 - **Privacy by default** — AI commands redact diff content before sending it to
   the API, including sensitive file contents and common secret patterns. Old
   commit messages are not sent as context.
-- **AI confirmation before staging** — `commit-ai` prepares context with a
+- **AI confirmation before staging** — `commit` prepares context with a
   temporary index and stages the real index only after valid AI messages are
   available.
 - **Confirmation before mutation** — history rewrite commands ask before making
@@ -194,11 +188,11 @@ and designed to fail safely.
 
 ## Runtime Dependencies
 
-| Tool               | Required for                                     |
-| ------------------ | ------------------------------------------------ |
-| `git`              | All repository operations (required).            |
-| `gh`               | GitHub operations: `clone`, `rename-repo`.       |
-| `git-filter-repo`  | History rewrites: `remove-secrets`, `rewrite-*`. |
+| Tool              | Required for                                     |
+| ----------------- | ------------------------------------------------ |
+| `git`             | All repository operations (required).            |
+| `gh`              | GitHub operations: `clone`, `rename-repo`.       |
+| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-*`. |
 
 Run `git-wrangler doctor` to check what's available on your system.
 
