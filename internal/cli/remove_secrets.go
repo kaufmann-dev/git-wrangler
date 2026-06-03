@@ -18,7 +18,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -94,18 +94,21 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %s\n", file)
 		}
 		fmt.Fprintln(a.stdout)
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		if !yes && !confirm(a, "Purge these files from history for "+r.display+"?") {
-			a.error(r.display, "Refusing to rewrite history without confirmation.")
-			status = 1
-			continue
-		}
 		filterArgs := []string{}
 		for _, pattern := range matchedPatterns {
 			filterArgs = append(filterArgs, "--path-glob", pattern)
 		}
 		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
 		applies = append(applies, secretApply{repo: r, filterArgs: filterArgs, matchedFiles: matchedFiles})
+	}
+	if len(applies) > 0 {
+		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history in %d repositories. A force push will be required to update any remote.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+		if !confirmOrSkip(a, yes, fmt.Sprintf("Purge these files from history in %d repositories?", len(applies))) {
+			for _, apply := range applies {
+				a.skip(apply.repo.display, "Skipping history rewrite.")
+			}
+			return status
+		}
 	}
 	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Removing secrets", len(applies)), func(apply secretApply) (string, string) {
 		return apply.repo.display, apply.repo.display

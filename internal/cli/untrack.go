@@ -13,7 +13,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "untrack") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -35,6 +35,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		return untrackScan{repo: r, out: out, err: err, hasGitignore: true}
 	})
 	status := 0
+	applies := []untrackScan{}
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasGitignore {
@@ -51,11 +52,20 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%s%s:%s %d tracked ignored file(s) will be removed from the index.\n", a.ui.RepoColor, r.display, a.ui.Reset, lineCount(scan.out))
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation will stop tracking ignored files and create a commit in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
-		if !yes && !confirm(a, "Stop tracking ignored files and commit for "+r.display+"?") {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+		applies = append(applies, scan)
+	}
+	if len(applies) == 0 {
+		return status
+	}
+	fmt.Fprintf(a.stderr, "%sWARNING: This operation will stop tracking ignored files and create commits in %d repositories.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+	if !confirmOrSkip(a, yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies))) {
+		for _, apply := range applies {
+			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, apply.repo.display, a.ui.Reset)
 		}
+		return status
+	}
+	for _, apply := range applies {
+		r := apply.repo
 		zout, err := a.git.Stdout(a.ctx, r.dir, nil, "ls-files", "--ignored", "--cached", "--exclude-standard", "-z")
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not list ignored tracked files for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)

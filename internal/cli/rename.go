@@ -20,7 +20,7 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "rename-branch") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -91,7 +91,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	a.info("Using GitHub auth from " + string(authSource))
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1

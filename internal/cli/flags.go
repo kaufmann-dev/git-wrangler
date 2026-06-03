@@ -21,3 +21,11 @@ func boolFlag(name, description string) flagSpec {
 func intFlag(name string, value int, description string) flagSpec {
 	return flagSpec{name: name, intValue: value, description: description, kind: "int"}
 }
+
+func repoFlag() flagSpec {
+	return stringFlag("repo", "", "Exact repository directory to target.")
+}
+
+func jsonFlag() flagSpec {
+	return boolFlag("json", "Emit one JSON document.")
+}

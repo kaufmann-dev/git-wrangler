@@ -9,22 +9,34 @@ import (
 )
 
 func runLicense(a *app, cmd *cobra.Command, args []string) int {
-	repoName, _ := cmd.Flags().GetString("repo")
 	holder, ok := requiredStringFlag(a, cmd, "name", "Copyright holder name: ")
 	overwrite, _ := cmd.Flags().GetBool("overwrite")
+	yes := yesFlag(cmd)
 	if !ok {
 		return 1
 	}
 	if !requireGit(a, "license") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets(repoName)
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
 	}
 	if len(repos) == 0 {
 		return noRepos(a)
+	}
+	overwriteCount := 0
+	if overwrite {
+		for _, r := range repos {
+			if fileExists(filepath.Join(r.dir, "LICENSE")) {
+				overwriteCount++
+			}
+		}
+	}
+	overwriteConfirmed := true
+	if overwriteCount > 0 {
+		overwriteConfirmed = confirmOrSkip(a, yes, fmt.Sprintf("Overwrite existing LICENSE files in %d repositories?", overwriteCount))
 	}
 	status := 0
 	for _, r := range repos {
@@ -33,12 +45,17 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "%sLICENSE file already exists in repository: %s (use --overwrite to replace it)%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 			continue
 		}
+		existed := fileExists(path)
+		if existed && overwrite && !overwriteConfirmed {
+			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			continue
+		}
 		if err := os.WriteFile(path, []byte(mitLicense(holder)), 0o644); err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not write LICENSE for %s:\n%s%s\n\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
-		if overwrite && fileExists(path) {
+		if existed && overwrite {
 			fmt.Fprintf(a.stdout, "%sLICENSE file overwritten in repository: %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stdout, "%sLICENSE file created in repository: %s%s\n", a.ui.Green, r.display, a.ui.Reset)

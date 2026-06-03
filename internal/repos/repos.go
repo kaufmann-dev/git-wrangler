@@ -1,6 +1,7 @@
 package repos
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,6 +53,30 @@ func Discover(root string) ([]Repository, error) {
 	return found, nil
 }
 
+func ResolveExact(path string) (Repository, error) {
+	if path == "" {
+		path = "."
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return Repository{}, err
+	}
+	if !info.IsDir() {
+		return Repository{}, fmt.Errorf("%s is not a Git repository", path)
+	}
+	if isBareRepository(path) {
+		return Repository{}, fmt.Errorf("%s is a bare Git repository; --repo requires a working tree", path)
+	}
+	gitPath := filepath.Join(path, ".git")
+	if info, err := os.Stat(gitPath); err == nil && info.IsDir() {
+		return Repository{GitDir: gitPath, Dir: path, Display: DisplayName(path)}, nil
+	}
+	if validGitFile(gitPath) {
+		return Repository{GitDir: gitPath, Dir: path, Display: DisplayName(path)}, nil
+	}
+	return Repository{}, fmt.Errorf("%s is not a Git repository", path)
+}
+
 func validGitFile(path string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -70,6 +95,19 @@ func validGitFile(path string) bool {
 	}
 	info, err := os.Stat(target)
 	return err == nil && info.IsDir()
+}
+
+func isBareRepository(path string) bool {
+	if info, err := os.Stat(filepath.Join(path, "HEAD")); err != nil || info.IsDir() {
+		return false
+	}
+	for _, dir := range []string{"objects", "refs"} {
+		info, err := os.Stat(filepath.Join(path, dir))
+		if err != nil || !info.IsDir() {
+			return false
+		}
+	}
+	return true
 }
 
 func DirFromGitDir(gitDir string) string {
