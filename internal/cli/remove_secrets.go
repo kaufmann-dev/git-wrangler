@@ -59,26 +59,34 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		}
 	})
 	status := 0
-	rewriteProgress := newProgress(a, "Removing secrets", len(scans))
+	type secretApply struct {
+		repo         repo
+		filterArgs   []string
+		matchedFiles []string
+	}
+	type secretApplyResult struct {
+		apply      secretApply
+		output     string
+		err        error
+		restoreErr error
+	}
+	applies := []secretApply{}
 	for _, scan := range scans {
 		r := scan.repo
 		if scan.invalidRepo {
 			fmt.Fprintf(a.stderr, "%sError: %s is not a valid or accessible git repository. Skipping...%s\n", a.ui.Red, r.display, a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.err != nil {
 			fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		matchedPatterns := scan.matchedPatterns
 		matchedFiles := scan.matchedFiles
 		if len(matchedPatterns) == 0 {
 			fmt.Fprintf(a.stdout, "%sNo target patterns found in history. Skipping %s cleanly...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%sFound %d sensitive file(s) matching %d pattern(s) in %s:%s\n", a.ui.Yellow, len(matchedFiles), len(matchedPatterns), r.display, a.ui.Reset)
@@ -86,37 +94,41 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stdout, "  %s\n", file)
 		}
 		fmt.Fprintln(a.stdout)
+		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
 		if !yes && !confirm(a, "Purge these files from history for "+r.display+"?") {
 			a.error(r.display, "Refusing to rewrite history without confirmation.")
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
 		filterArgs := []string{}
 		for _, pattern := range matchedPatterns {
 			filterArgs = append(filterArgs, "--path-glob", pattern)
 		}
 		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, filterArgs, nil)
-		if err == nil {
-			fmt.Fprintf(a.stdout, "%sSuccessfully purged %d sensitive file(s) from %s%s\n", a.ui.Green, len(matchedFiles), r.display, a.ui.Reset)
-		} else {
-			fmt.Fprintf(a.stderr, "%sError: Rewrite failed for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+		applies = append(applies, secretApply{repo: r, filterArgs: filterArgs, matchedFiles: matchedFiles})
+	}
+	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Removing secrets", len(applies)), func(apply secretApply) (string, string) {
+		return apply.repo.display, apply.repo.display
+	}, func(apply secretApply) secretApplyResult {
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, apply.filterArgs, nil)
+		return secretApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
+	})
+	for _, result := range results {
+		r := result.apply.repo
+		if result.err == nil {
+			fmt.Fprintf(a.stdout, "%sSuccessfully purged %d sensitive file(s) from %s%s\n", a.ui.Green, len(result.apply.matchedFiles), r.display, a.ui.Reset)
+			if result.restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+				status = 1
 			}
-			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
-		if restoreErr != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
-			status = 1
+		fmt.Fprintf(a.stderr, "%sError: Rewrite failed for %s:\n%s%s\n\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		if result.restoreErr != nil {
+			fmt.Fprintf(a.stderr, "%sWarning: Rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
 		}
-		rewriteProgress.advance(r.display)
+		status = 1
 	}
-	rewriteProgress.done()
 	return status
 }
 
