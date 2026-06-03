@@ -59,6 +59,9 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	}
 
 	changes, skipped, failed := collectCommitChanges(a, repos, maxCharsInt)
+	if a.ctx.Err() != nil {
+		return 1
+	}
 	if failed > 0 {
 		renderSummary(a,
 			summaryCount{label: "committed", value: 0, color: a.ui.Green},
@@ -103,6 +106,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		BaseURL:           settings.Config.AI.BaseURL,
 		Model:             settings.Config.AI.Model,
 		APIKey:            settings.APIKey,
+		Headers:           settings.Headers,
 		BatchSize:         4,
 		MaxCharsPerCommit: maxCharsInt,
 		RPM:               rpm,
@@ -133,7 +137,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	commitResults := parallelItemsWithWorkersProgress(changes, gitMutationWorkerCount(len(changes)), newProgress(a, "Creating AI commits", len(changes)), func(change commitAIChange) (string, string) {
+	commitResults := parallelItemsWithWorkersProgress(a.ctx, changes, gitMutationWorkerCount(len(changes)), newProgress(a, "Creating AI commits", len(changes)), func(change commitAIChange) (string, string) {
 		return change.repo.display, change.repo.display
 	}, func(change commitAIChange) commitAICommitResult {
 		message := messages[change.input.ID]
@@ -153,6 +157,9 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 			return commitAICommitResult{change: change, out: out, err: err}
 		}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	committed := 0
 	for _, result := range commitResults {
 		if result.err == nil {
@@ -199,7 +206,7 @@ func collectCommitChanges(a *app, repos []repo, maxChars int) ([]commitAIChange,
 		contextError bool
 		skipped      bool
 	}
-	results := parallelGitMutationsProgress(repos, newProgress(a, "Preparing AI commits", len(repos)), func(r repo) commitAICollectResult {
+	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Preparing AI commits", len(repos)), func(r repo) commitAICollectResult {
 		tempDir, err := os.MkdirTemp("", "git-wrangler-commit-index-*")
 		if err != nil {
 			return commitAICollectResult{repo: r, err: err, stageFailed: true}
@@ -237,6 +244,9 @@ func collectCommitChanges(a *app, repos []repo, maxChars int) ([]commitAIChange,
 			},
 		}
 	})
+	if interrupted(a) {
+		return nil, 0, 1
+	}
 	changes := []commitAIChange{}
 	skipped := 0
 	failed := 0

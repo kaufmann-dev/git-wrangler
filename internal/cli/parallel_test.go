@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"context"
+	"sync/atomic"
+	"testing"
+)
 
 func TestReadOnlyWorkerCountIsBounded(t *testing.T) {
 	t.Parallel()
@@ -25,7 +29,7 @@ func TestGitMutationWorkerCountIsBounded(t *testing.T) {
 func TestParallelReposPreservesOrder(t *testing.T) {
 	t.Parallel()
 	repos := []repo{{display: "a"}, {display: "b"}, {display: "c"}}
-	got := parallelRepos(repos, func(r repo) string {
+	got := parallelRepos(context.Background(), repos, func(r repo) string {
 		return r.display + "!"
 	})
 	want := []string{"a!", "b!", "c!"}
@@ -33,5 +37,21 @@ func TestParallelReposPreservesOrder(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("result[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestParallelReposStopsLaunchingAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	repos := []repo{{display: "a"}, {display: "b"}, {display: "c"}, {display: "d"}}
+	started := atomic.Int32{}
+
+	parallelReposWithWorkers(ctx, repos, 1, func(r repo) string {
+		started.Add(1)
+		cancel()
+		return r.display
+	})
+
+	if got := started.Load(); got != 1 {
+		t.Fatalf("started = %d, want 1", got)
 	}
 }

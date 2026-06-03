@@ -135,4 +135,4 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `config`
 
-`config show` prints non-secret key/value sections. `config set` accepts plaintext values for non-secret keys only. Secret keys (`github.auth`, `ai.api-key`) must be entered through the prompt and are stored through the credential store. `config unset` only removes stored secret values.
+`config show` prints non-secret key/value sections. `config set` accepts plaintext values for non-secret keys only. Secret keys (`github.auth`, `ai.api-key`) must be entered through the prompt and are stored through the credential store. AI gateway headers use `ai.headers.<name>`: inline values are stored in config, while omitted values prompt for a secret and store it in the credential store. `config unset` removes stored secrets and AI header values.

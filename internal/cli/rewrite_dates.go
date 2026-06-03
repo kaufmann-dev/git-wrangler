@@ -56,7 +56,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		startBad  bool
 		countText string
 	}
-	scans := parallelReposProgress(repos, newProgress(a, "Preparing date rewrites", len(repos)), func(r repo) dateRewriteScan {
+	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Preparing date rewrites", len(repos)), func(r repo) dateRewriteScan {
 		if !a.git.HasHead(a.ctx, r.dir) {
 			return dateRewriteScan{repo: r}
 		}
@@ -102,6 +102,9 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		}
 		return dateRewriteScan{repo: r, hasHead: true, commits: commits, mapping: distributeCommitTimes(commits, startEpoch, endEpoch), tzOffset: tzOffset}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	status := 0
 	type dateCandidate struct {
 		repo     repo
@@ -194,13 +197,16 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		}
 		applies = append(applies, dateApply{repo: candidate.repo, callback: callback})
 	}
-	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit dates", len(applies)), func(apply dateApply) (string, string) {
+	results := parallelItemsWithWorkersProgress(a.ctx, applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit dates", len(applies)), func(apply dateApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply dateApply) dateApplyResult {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, []string{"--partial", "--commit-callback", apply.callback, "--force"}, nil)
 		_ = os.Remove(apply.callback)
 		return dateApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	rewritten := 0
 	applyFailed := 0
 	for _, result := range results {
