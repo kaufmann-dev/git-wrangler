@@ -22,6 +22,7 @@ Cross-platform Go CLI for coordinating dozens of Git repositories in parallel, e
 - [Safety & Guardrails](#safety--guardrails)
 - [Runtime Dependencies](#runtime-dependencies)
 - [Shell Completions](#shell-completions)
+- [Development](#development)
 
 ## Why Git Wrangler?
 
@@ -217,4 +218,27 @@ git-wrangler completion fish > ~/.config/fish/completions/git-wrangler.fish
 
 # PowerShell
 git-wrangler completion powershell > git-wrangler.ps1
+```
+
+## Development
+
+Install the local development build without using Homebrew:
+
+```bash
+scripts/install-dev
+```
+
+The script installs `git-wrangler` with `go install` and defaults `GOBIN` to
+`~/.local/bin`. Put that directory before Homebrew on your `PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+After making changes, run the script again and test the command normally:
+
+```bash
+scripts/install-dev
+git-wrangler version
+scripts/test
 ```
