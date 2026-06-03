@@ -8,7 +8,7 @@
 
 **Git operations, orchestrated at scale.**
 
-A single, zero-dependency Go binary that coordinates dozens of Git repositories in parallel, eliminating the manual overhead of managing large developer workspaces.
+Cross-platform Go CLI for coordinating dozens of Git repositories in parallel, eliminating the manual overhead of managing large developer workspaces.
 
 ---
 
@@ -39,9 +39,9 @@ them in one pass, with parallel execution, stable output, and safe defaults.
 - **GitHub workflows** — clone, rename, and manage repositories through `gh`.
 - **Single binary** — portable Go executable with no runtime dependencies beyond `git`.
 
-## Installation
+## Installation & Maintenance
 
-### Package Managers
+### Install
 
 ```bash
 # macOS & Linux
@@ -52,14 +52,16 @@ scoop bucket add kaufmann-dev https://github.com/kaufmann-dev/scoop-bucket.git
 scoop install kaufmann-dev/git-wrangler
 ```
 
-### Standalone Binary
+> [!TIP]
+> Prefer Homebrew or Scoop when possible. They install the `git-wrangler`
+> binary, shell completions, and required dependencies automatically.
+>
+> You can also download a standalone binary from GitHub Releases, extract it,
+> and place it on your `PATH`. With a manual install, you need to install shell
+> completions yourself, and make sure the dependencies `git`, `gh`, and
+> `git-filter-repo` are installed. See [Shell Completions](#shell-completions) below.
 
-Download a release archive from
-[GitHub Releases](https://github.com/kaufmann-dev/git-wrangler/releases), extract
-the `git-wrangler` binary, and place it on your `PATH`. You'll need to install
-`git`, `gh`, and `git-filter-repo` yourself for the commands that require them.
-
-### Updating
+### Update
 
 ```bash
 # Homebrew
@@ -69,6 +71,18 @@ brew upgrade git-wrangler
 # Scoop
 scoop update
 scoop update git-wrangler
+```
+
+### Uninstall
+
+```bash
+# Homebrew
+brew uninstall git-wrangler
+brew untap kaufmann-dev/tap
+
+# Scoop
+scoop uninstall git-wrangler
+scoop bucket rm kaufmann-dev
 ```
 
 ## Quick Start
