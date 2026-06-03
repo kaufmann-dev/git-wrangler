@@ -59,6 +59,7 @@ type Config struct {
 
 type ProgressEvent struct {
 	Phase    string
+	Key      string
 	RepoName string
 	Current  int
 	Total    int
@@ -261,8 +262,10 @@ func progressFunc(cfg Config, out io.Writer) func(ProgressEvent) {
 		if event.Total <= 1 || event.Current == 0 {
 			return
 		}
-		if event.RepoName != "" {
-			fmt.Fprintf(out, "%s %s: %d/%d\n", event.Phase, event.RepoName, event.Current, event.Total)
+		if event.Detail != "" {
+			fmt.Fprintf(out, "%s: %d/%d %s\n", event.Phase, event.Current, event.Total, event.Detail)
+		} else if event.RepoName != "" {
+			fmt.Fprintf(out, "%s: %d/%d %s\n", event.Phase, event.Current, event.Total, event.RepoName)
 		} else {
 			fmt.Fprintf(out, "%s: %d/%d\n", event.Phase, event.Current, event.Total)
 		}
@@ -286,14 +289,14 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			defer wg.Done()
 			for repoIndex := range jobs {
 				repo := repositories[repoIndex]
-				progress(ProgressEvent{Phase: "Scanning repositories", RepoName: repo.Name, Current: 0, Total: len(repositories)})
+				progress(ProgressEvent{Phase: "Scanning repositories", Key: repo.Name, RepoName: repo.Name, Current: 0, Total: len(repositories), Detail: repo.Name})
 				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional, progress)
 				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
 				completedMu.Lock()
 				completedRepos++
 				current := completedRepos
 				completedMu.Unlock()
-				progress(ProgressEvent{Phase: "Scanning repositories", RepoName: repo.Name, Current: current, Total: len(repositories)})
+				progress(ProgressEvent{Phase: "Scanning repositories", Key: repo.Name, RepoName: repo.Name, Current: current, Total: len(repositories), Detail: repo.Name})
 			}
 		}()
 	}
@@ -336,7 +339,14 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 	items := []item{}
 	for commitIndex, commit := range commits {
 		if shouldReportAIProgress(commitIndex+1, len(commits)) {
-			progress(ProgressEvent{Phase: "Scanning commits", RepoName: repo.Name, Current: commitIndex + 1, Total: len(commits)})
+			progress(ProgressEvent{
+				Phase:    "Scanning commits",
+				Key:      repo.Name,
+				RepoName: repo.Name,
+				Current:  commitIndex + 1,
+				Total:    len(commits),
+				Detail:   fmt.Sprintf("%s %d/%d commits", repo.Name, commitIndex+1, len(commits)),
+			})
 		}
 		if skipConventional && IsConventional(commit.message) {
 			stats.SkippedFormatted++
@@ -672,16 +682,20 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		wg.Add(1)
 		go func(task batchTask) {
 			defer wg.Done()
+			batchKey := fmt.Sprintf("batch-%d", task.index+1)
+			completedMu.Lock()
+			progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: 0, Total: totalBatches, Detail: fmt.Sprintf("batch %d", task.index+1)})
+			completedMu.Unlock()
 			reportRetry := func(message string) {
 				completedMu.Lock()
-				progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: message, Error: true})
+				progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: completedBatches, Total: totalBatches, Detail: message, Error: true})
 				completedMu.Unlock()
 			}
 			accepted, batchFailures := processBatchWithProgress(ctx, task.items, cfg, output, reportRetry, pacer)
 			batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
 			completedMu.Lock()
 			completedBatches++
-			progress(ProgressEvent{Phase: "Sending API requests", Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("batch %d completed", task.index+1)})
+			progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("batch %d completed", task.index+1)})
 			completedMu.Unlock()
 		}(task)
 	}
