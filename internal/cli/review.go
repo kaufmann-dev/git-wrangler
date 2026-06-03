@@ -40,7 +40,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	changed := 0
 	clean := 0
 	failed := 0
-	results := parallelReposProgress(repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
+	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
 			return reviewResult{repo: r, err: err, errMessage: "Could not list unpushed commits"}
@@ -66,6 +66,9 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		deletedFolders, individualDeleted := groupDeletedFiles(a, r.dir, deleted)
 		return reviewResult{repo: r, added: added, modified: modified, deletedFolders: deletedFolders, individualDeleted: individualDeleted}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	for _, result := range results {
 		if result.err != nil {
 			renderErrorBlock(a, fmt.Sprintf("%s: %s", result.repo.display, result.errMessage), result.err.Error())
@@ -127,7 +130,7 @@ func runReviewJSON(a *app, cmd *cobra.Command) int {
 		UnpushedChanges bool       `json:"unpushedChanges"`
 		Error           *jsonError `json:"error,omitempty"`
 	}
-	results := parallelRepos(repos, func(r repo) reviewJSONRepo {
+	results := parallelRepos(a.ctx, repos, func(r repo) reviewJSONRepo {
 		row := reviewJSONRepo{Name: r.display, Path: r.dir}
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
@@ -158,6 +161,13 @@ func runReviewJSON(a *app, cmd *cobra.Command) int {
 		row.UnpushedChanges = len(added) > 0 || len(modified) > 0 || len(deletedFolders) > 0 || len(individualDeleted) > 0
 		return row
 	})
+	if a.ctx.Err() != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
+			"error":   jsonError{Message: "operation cancelled"},
+		}, 1)
+	}
 	failed := 0
 	changed := 0
 	for _, result := range results {

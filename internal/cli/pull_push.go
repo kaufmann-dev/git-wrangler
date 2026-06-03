@@ -31,7 +31,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	updated := 0
 	skipped := 0
 	failed := 0
-	results := parallelGitMutationsProgress(repos, newProgress(a, "Pulling repositories", len(repos)), func(r repo) pullResult {
+	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Pulling repositories", len(repos)), func(r repo) pullResult {
 		pullArgs := []string{"pull"}
 		if rebase {
 			pullArgs = append(pullArgs, "--rebase")
@@ -42,6 +42,9 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		out, err := a.git.Capture(a.ctx, r.dir, nil, pullArgs...)
 		return pullResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Already up to date")}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	for _, result := range results {
 		if result.err != nil {
 			renderErrorBlock(a, result.repo.display+": git pull failed", outputOrError(result.out, result.err))
@@ -83,7 +86,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 	status := 0
 	fetched := 0
 	failed := 0
-	results := parallelGitMutationsProgress(repos, newProgress(a, "Fetching repositories", len(repos)), func(r repo) fetchResult {
+	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Fetching repositories", len(repos)), func(r repo) fetchResult {
 		fetchArgs := []string{"fetch", "origin"}
 		if prune {
 			fetchArgs = []string{"fetch", "--prune", "origin"}
@@ -91,6 +94,9 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 		out, err := a.git.Capture(a.ctx, r.dir, nil, fetchArgs...)
 		return fetchResult{repo: r, out: out, err: err}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	for _, result := range results {
 		if result.err != nil {
 			renderErrorBlock(a, result.repo.display+": git fetch failed", outputOrError(result.out, result.err))
@@ -136,7 +142,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	skipped := 0
 	failed := 0
 	if !forceUnsafe {
-		results := parallelGitMutationsProgress(repos, newProgress(a, "Pushing repositories", len(repos)), func(r repo) pushResult {
+		results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Pushing repositories", len(repos)), func(r repo) pushResult {
 			pushArgs := []string{"push", "origin", "HEAD"}
 			if force {
 				pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}
@@ -144,6 +150,9 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 			out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
 			return pushResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Everything up-to-date")}
 		})
+		if interrupted(a) {
+			return 1
+		}
 		for _, result := range results {
 			if result.err != nil {
 				renderErrorBlock(a, result.repo.display+": git push failed", outputOrError(result.out, result.err))

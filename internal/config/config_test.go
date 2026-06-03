@@ -25,6 +25,8 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	want.GitHub.Host = "git.example.com"
 	want.GitHub.Username = "octo"
 	want.AI.Model = "gpt-test"
+	want.AI.Headers = map[string]string{"x-project-id": "corp-dev-99"}
+	want.AI.SecretHeaders = []string{"api-key", "Api-Key"}
 	if err := SavePath(path, want); err != nil {
 		t.Fatal(err)
 	}
@@ -35,12 +37,28 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if got.GitHub.Host != want.GitHub.Host || got.GitHub.Username != want.GitHub.Username || got.AI.Model != want.AI.Model {
 		t.Fatalf("config = %#v, want %#v", got, want)
 	}
+	if got.AI.Headers["X-Project-Id"] != "corp-dev-99" {
+		t.Fatalf("headers = %#v", got.AI.Headers)
+	}
+	if len(got.AI.SecretHeaders) != 1 || got.AI.SecretHeaders[0] != "Api-Key" {
+		t.Fatalf("secret headers = %#v", got.AI.SecretHeaders)
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestCanonicalHeaderName(t *testing.T) {
+	got, ok := CanonicalHeaderName("x-project-id")
+	if !ok || got != "X-Project-Id" {
+		t.Fatalf("canonical = %q/%v", got, ok)
+	}
+	if _, ok := CanonicalHeaderName("bad header"); ok {
+		t.Fatal("header with spaces should be invalid")
 	}
 }
 

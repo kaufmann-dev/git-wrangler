@@ -44,7 +44,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		matchedPatterns []string
 		matchedFiles    []string
 	}
-	scans := parallelReposProgress(repos, newProgress(a, "Scanning history for secrets", len(repos)), func(r repo) secretScan {
+	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Scanning history for secrets", len(repos)), func(r repo) secretScan {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			return secretScan{repo: r, err: err, invalidRepo: true}
 		}
@@ -60,6 +60,9 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			matchedPatterns: matchedSecretPatterns(patterns, matchedFiles),
 		}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	status := 0
 	type secretApply struct {
 		repo         repo
@@ -125,12 +128,15 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			return status
 		}
 	}
-	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Removing secrets", len(applies)), func(apply secretApply) (string, string) {
+	results := parallelItemsWithWorkersProgress(a.ctx, applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Removing secrets", len(applies)), func(apply secretApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply secretApply) secretApplyResult {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, apply.filterArgs, nil)
 		return secretApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	rewritten := 0
 	applyFailed := 0
 	for _, result := range results {

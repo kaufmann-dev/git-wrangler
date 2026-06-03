@@ -68,12 +68,15 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 		)
 		return status
 	}
-	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting authors", len(applies)), func(apply authorApply) (string, string) {
+	results := parallelItemsWithWorkersProgress(a.ctx, applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting authors", len(applies)), func(apply authorApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply authorApply) authorApplyResult {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
 		return authorApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
+	if interrupted(a) {
+		return 1
+	}
 	rewritten := 0
 	failed := 0
 	for _, result := range results {

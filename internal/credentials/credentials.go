@@ -83,6 +83,10 @@ func AIAccount(provider string) string {
 	return "ai:" + provider
 }
 
+func AIHeaderAccount(provider, header string) string {
+	return "ai-header:" + provider + ":" + header
+}
+
 func KeyringAvailable(store Store) bool {
 	if store == nil {
 		return false
