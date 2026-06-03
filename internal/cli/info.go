@@ -15,11 +15,13 @@ import (
 )
 
 func runInfo(a *app, cmd *cobra.Command, args []string) int {
-	repoName, _ := cmd.Flags().GetString("repo")
+	if a.json {
+		return runInfoJSON(a, cmd)
+	}
 	if !requireGit(a, "info") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets(repoName)
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -41,6 +43,99 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		}
 	}
 	return statusCode
+}
+
+func runInfoJSON(a *app, cmd *cobra.Command) int {
+	if _, err := a.runner.LookPath("git"); err != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": 0, "failed": 1},
+			"error":   jsonError{Message: "'git' is required for info. Install it and make sure it is on PATH."},
+		}, 1)
+	}
+	repos, err := commandRepositoryTargets(cmd)
+	if err != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": 0, "failed": 1},
+			"error":   jsonError{Message: err.Error()},
+		}, 1)
+	}
+	type infoJSONRepo struct {
+		Name          string     `json:"name"`
+		Path          string     `json:"path"`
+		Status        string     `json:"status,omitempty"`
+		Branch        string     `json:"branch,omitempty"`
+		Ahead         string     `json:"ahead,omitempty"`
+		Behind        string     `json:"behind,omitempty"`
+		HasLicense    bool       `json:"hasLicense"`
+		CommitCount   string     `json:"commitCount,omitempty"`
+		LastCommit    string     `json:"lastCommit,omitempty"`
+		InitialCommit string     `json:"initialCommit,omitempty"`
+		Remotes       []string   `json:"remotes,omitempty"`
+		Error         *jsonError `json:"error,omitempty"`
+	}
+	results := parallelRepos(repos, func(r repo) infoJSONRepo {
+		row := infoJSONRepo{Name: r.display, Path: r.dir, HasLicense: fileExists(filepath.Join(r.dir, "LICENSE"))}
+		status, err := a.git.StatusPorcelain(a.ctx, r.dir)
+		if err != nil {
+			row.Error = &jsonError{Message: "could not inspect status: " + err.Error()}
+			return row
+		}
+		if strings.TrimSpace(status) == "" {
+			row.Status = "clean"
+		} else {
+			row.Status = "dirty"
+		}
+		branch, err := a.git.CurrentBranch(a.ctx, r.dir)
+		if err != nil {
+			row.Error = &jsonError{Message: "could not inspect branch: " + err.Error()}
+			return row
+		}
+		row.Branch = strings.TrimSpace(branch)
+		if ab, _ := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--left-right", "--count", "HEAD...@{u}"); len(strings.Fields(ab)) >= 2 {
+			fields := strings.Fields(ab)
+			row.Ahead = fields[0]
+			row.Behind = fields[1]
+		}
+		hasCommits := a.git.HasHead(a.ctx, r.dir)
+		if count, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count"); err == nil {
+			row.CommitCount = strings.TrimSpace(count)
+		} else {
+			row.Error = &jsonError{Message: "could not count commits: " + err.Error()}
+			return row
+		}
+		if hasCommits {
+			if initial, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--reverse", "--format=%ci - %s"); err == nil {
+				row.InitialCommit = firstLine(strings.TrimSpace(initial))
+			}
+			if last, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "-1", "--format=%ci - %s"); err == nil {
+				row.LastCommit = strings.TrimSpace(last)
+			}
+		}
+		if remotes, err := infoRemotes(a, r.dir); err == nil {
+			row.Remotes = remotes
+		} else {
+			row.Error = &jsonError{Message: "could not inspect remotes: " + err.Error()}
+		}
+		return row
+	})
+	failed := 0
+	for _, result := range results {
+		if result.Error != nil {
+			failed++
+		}
+	}
+	code := 0
+	if failed > 0 {
+		code = 1
+	}
+	_ = writeJSON(a, map[string]any{
+		"ok":           code == 0,
+		"summary":      map[string]int{"repositories": len(results), "failed": failed},
+		"repositories": results,
+	})
+	return code
 }
 
 type infoResult struct {
@@ -180,20 +275,10 @@ func printRemotes(a *app, dir string) error {
 }
 
 func writeRemotes(w io.Writer, a *app, dir string) error {
-	out, err := a.git.Stdout(a.ctx, dir, nil, "remote", "-v")
+	remotes, err := infoRemotes(a, dir)
 	if err != nil {
 		return err
 	}
-	seen := map[string]bool{}
-	remotes := []string{}
-	for _, line := range splitLines(out) {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && !seen[fields[1]] {
-			seen[fields[1]] = true
-			remotes = append(remotes, fields[1])
-		}
-	}
-	sort.Strings(remotes)
 	if len(remotes) == 0 {
 		fmt.Fprintln(w, "Remotes:            None")
 		return nil
@@ -206,6 +291,24 @@ func writeRemotes(w io.Writer, a *app, dir string) error {
 		}
 	}
 	return nil
+}
+
+func infoRemotes(a *app, dir string) ([]string, error) {
+	out, err := a.git.Stdout(a.ctx, dir, nil, "remote", "-v")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	remotes := []string{}
+	for _, line := range splitLines(out) {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && !seen[fields[1]] {
+			seen[fields[1]] = true
+			remotes = append(remotes, fields[1])
+		}
+	}
+	sort.Strings(remotes)
+	return remotes, nil
 }
 
 func printTopAuthors(a *app, dir string) error {

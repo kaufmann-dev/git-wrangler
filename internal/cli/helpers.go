@@ -95,11 +95,22 @@ func findGitRepositories(root string) ([]repo, error) {
 }
 
 func resolveRepositoryTargets(repoName string) ([]repo, error) {
-	root := "."
-	if repoName != "" {
-		root = repoName
+	if repoName == "" {
+		return findGitRepositories(".")
 	}
-	return findGitRepositories(root)
+	r, err := repos.ResolveExact(repoName)
+	if err != nil {
+		return nil, err
+	}
+	return []repo{{gitDir: r.GitDir, dir: r.Dir, display: r.Display}}, nil
+}
+
+func commandRepositoryTargets(cmd *cobra.Command) ([]repo, error) {
+	repoName := ""
+	if cmd.Flags().Lookup("repo") != nil {
+		repoName, _ = cmd.Flags().GetString("repo")
+	}
+	return resolveRepositoryTargets(repoName)
 }
 
 func repoDirFromGitDir(gitDir string) string {
@@ -120,6 +131,10 @@ func confirm(a *app, question string) bool {
 	answer, _ := a.input.ReadString('\n')
 	answer = strings.TrimRight(answer, "\r\n")
 	return answer == "y" || answer == "Y"
+}
+
+func confirmOrSkip(a *app, yes bool, question string) bool {
+	return yes || confirm(a, question)
 }
 
 func promptRead(a *app, prompt string) (string, error) {
@@ -146,6 +161,14 @@ func interactive(a *app) bool {
 func yesFlag(cmd *cobra.Command) bool {
 	yes, _ := cmd.Flags().GetBool("yes")
 	return yes
+}
+
+func jsonFlagValue(cmd *cobra.Command) bool {
+	if cmd == nil || cmd.Flags().Lookup("json") == nil {
+		return false
+	}
+	value, _ := cmd.Flags().GetBool("json")
+	return value
 }
 
 func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string, bool) {

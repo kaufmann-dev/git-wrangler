@@ -36,7 +36,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -103,6 +103,11 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		return dateRewriteScan{repo: r, hasHead: true, commits: commits, mapping: distributeCommitTimes(commits, startEpoch, endEpoch), tzOffset: tzOffset}
 	})
 	status := 0
+	type dateCandidate struct {
+		repo     repo
+		mapping  map[string]int64
+		tzOffset string
+	}
 	type dateApply struct {
 		repo     repo
 		callback string
@@ -113,7 +118,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		err        error
 		restoreErr error
 	}
-	applies := []dateApply{}
+	candidates := []dateCandidate{}
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasHead {
@@ -145,18 +150,27 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		for _, c := range scan.commits {
 			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(c.hash, 8), formatEpoch(c.epoch, scan.tzOffset), formatEpoch(scan.mapping[c.hash], scan.tzOffset))
 		}
-		fmt.Fprintf(a.stderr, "%s\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n\n", a.ui.Red, a.ui.Reset)
-		if !yes && !confirm(a, "Proceed with rewrite for "+r.display+"?") {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			continue
+		candidates = append(candidates, dateCandidate{repo: r, mapping: scan.mapping, tzOffset: scan.tzOffset})
+	}
+	if len(candidates) == 0 {
+		return status
+	}
+	fmt.Fprintf(a.stderr, "%s\nWARNING: This operation rewrites Git history in %d repositories. A force push will be required to update any remote.%s\n\n", a.ui.Red, len(candidates), a.ui.Reset)
+	if !confirmOrSkip(a, yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(candidates))) {
+		for _, candidate := range candidates {
+			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, candidate.repo.display, a.ui.Reset)
 		}
-		callback, err := writeDateCallback(scan.mapping, scan.tzOffset)
+		return status
+	}
+	applies := []dateApply{}
+	for _, candidate := range candidates {
+		callback, err := writeDateCallback(candidate.mapping, candidate.tzOffset)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: timestamp generation failed for %s:\n%s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			fmt.Fprintf(a.stderr, "%sError: timestamp generation failed for %s:\n%s%s\n", a.ui.Red, candidate.repo.display, err.Error(), a.ui.Reset)
 			status = 1
 			continue
 		}
-		applies = append(applies, dateApply{repo: r, callback: callback})
+		applies = append(applies, dateApply{repo: candidate.repo, callback: callback})
 	}
 	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit dates", len(applies)), func(apply dateApply) (string, string) {
 		return apply.repo.display, apply.repo.display
