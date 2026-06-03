@@ -52,6 +52,27 @@ func TestProgressStartShowsActiveWorkAtZero(t *testing.T) {
 	}
 }
 
+func TestProgressStartWorkUsesStableKeyAndDisplayDetail(t *testing.T) {
+	var stderr bytes.Buffer
+	progress := &progress{
+		writer:      &stderr,
+		interactive: true,
+		label:       "Testing progress",
+		total:       2,
+	}
+
+	progress.startWork("repo-a", "repo-a 100/200 commits")
+	progress.update("repo-a", "repo-a 150/200 commits")
+	progress.finish("repo-a", "repo-a")
+
+	out := stderr.String()
+	for _, want := range []string{"0/2 repo-a 100/200 commits", "0/2 repo-a 150/200 commits", "1/2 "} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in progress output:\n%q", want, out)
+		}
+	}
+}
+
 func TestProgressDoesNotShowStaleCompletedDetail(t *testing.T) {
 	var stderr bytes.Buffer
 	progress := &progress{

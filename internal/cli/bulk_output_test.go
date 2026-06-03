@@ -389,6 +389,54 @@ func TestRenameRepoRunsGitHubMutationsSerially(t *testing.T) {
 	}
 }
 
+func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "a-slow", "b-fast")
+	t.Chdir(root)
+
+	var mu sync.Mutex
+	activeFilters := 0
+	maxActiveFilters := 0
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			if name == "git" || name == "git-filter-repo" {
+				return "/usr/bin/" + name, nil
+			}
+			return "", errors.New("unexpected command")
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			joined := name + " " + strings.Join(args, " ")
+			switch {
+			case joined == "git remote get-url origin":
+				return "https://example.test/" + filepath.Base(dir) + ".git\n", "", nil
+			case name == "/usr/bin/git-filter-repo" && strings.Contains(strings.Join(args, " "), "--email-callback"):
+				done := trackConcurrentStart(&mu, &activeFilters, &maxActiveFilters, release, &releaseOnce)
+				defer done()
+				return "rewritten\n", "", nil
+			default:
+				return "", "", errors.New("unexpected command: " + joined)
+			}
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), runner, []string{"rewrite-authors", "--name", "New Name", "--email", "new@example.test", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("rewrite-authors returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if maxActiveFilters < 2 {
+		t.Fatalf("filter-repo runs did not overlap; max active = %d", maxActiveFilters)
+	}
+	out := stdout.String()
+	first := strings.Index(out, "a-slow")
+	second := strings.Index(out, "b-fast")
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("rewrite-authors output not in repo order:\n%s", out)
+	}
+}
+
 func tempGitRepos(t *testing.T, names ...string) string {
 	t.Helper()
 	root := t.TempDir()

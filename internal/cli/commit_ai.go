@@ -15,6 +15,13 @@ type commitAIChange struct {
 	input ai.GenerationInput
 }
 
+type commitAICommitResult struct {
+	change   commitAIChange
+	out      string
+	err      error
+	stageErr bool
+}
+
 func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
 	rpm, _ := cmd.Flags().GetInt("rpm")
@@ -112,33 +119,41 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	committed := 0
-	for _, change := range changes {
+	commitResults := parallelItemsWithWorkersProgress(changes, gitMutationWorkerCount(len(changes)), newProgress(a, "Creating AI commits", len(changes)), func(change commitAIChange) (string, string) {
+		return change.repo.display, change.repo.display
+	}, func(change commitAIChange) commitAICommitResult {
 		message := messages[change.input.ID]
 		if _, err := a.git.Capture(a.ctx, change.repo.dir, nil, "add", "-A"); err != nil {
-			a.error(change.repo.display, "Could not stage changes")
-			failed++
-			continue
+			return commitAICommitResult{change: change, err: err, stageErr: true}
 		}
 		if body {
 			if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject, "-m", message.Body); err == nil {
-				a.ok(change.repo.display, "Commit created")
-				committed++
+				return commitAICommitResult{change: change, out: out}
 			} else {
-				a.error(change.repo.display, "Could not commit changes:")
-				fmt.Fprintf(a.stderr, "%s\n\n", out)
-				failed++
+				return commitAICommitResult{change: change, out: out, err: err}
 			}
-			continue
 		}
 		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject); err == nil {
-			a.ok(change.repo.display, "Commit created")
-			committed++
+			return commitAICommitResult{change: change, out: out}
 		} else {
-			a.error(change.repo.display, "Could not commit changes:")
-			fmt.Fprintf(a.stderr, "%s\n\n", out)
-			failed++
+			return commitAICommitResult{change: change, out: out, err: err}
 		}
+	})
+	committed := 0
+	for _, result := range commitResults {
+		if result.err == nil {
+			a.ok(result.change.repo.display, "Commit created")
+			committed++
+			continue
+		}
+		if result.stageErr {
+			a.error(result.change.repo.display, "Could not stage changes")
+			failed++
+			continue
+		}
+		a.error(result.change.repo.display, "Could not commit changes:")
+		fmt.Fprintf(a.stderr, "%s\n\n", result.out)
+		failed++
 	}
 	fmt.Fprintf(a.stdout, "Summary: %d committed, %d skipped, %d failed\n", committed, skipped, failed)
 	if failed > 0 {
