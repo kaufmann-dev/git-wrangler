@@ -81,6 +81,97 @@ func TestPullRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	}
 }
 
+func TestFetchRunsOriginFetchAndCountsFailures(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "failed", "fetched")
+	t.Chdir(root)
+
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "git" || strings.Join(args, " ") != "fetch origin" {
+				return "", "", errors.New("unexpected command")
+			}
+			switch filepath.Base(dir) {
+			case "failed":
+				return "fatal: 'origin' does not appear to be a git repository", "", errors.New("fetch failed")
+			case "fetched":
+				return "fetched\n", "", nil
+			default:
+				return "", "", errors.New("unexpected repo")
+			}
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), runner, []string{"fetch"}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if !strings.Contains(stdout.String(), "Summary: 1 fetched, 1 failed") {
+		t.Fatalf("missing fetch summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+}
+
+func TestFetchPruneUsesPruneFlag(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "repo")
+	t.Chdir(root)
+
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "git" || strings.Join(args, " ") != "fetch --prune origin" {
+				return "", "", errors.New("unexpected command")
+			}
+			return "fetched\n", "", nil
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), runner, []string{"fetch", "--prune"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("fetch returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Summary: 1 fetched, 0 failed") {
+		t.Fatalf("missing fetch summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+}
+
+func TestFetchRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "a-slow", "b-fast")
+	t.Chdir(root)
+
+	var mu sync.Mutex
+	active := 0
+	maxActive := 0
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "git" || strings.Join(args, " ") != "fetch origin" {
+				return "", "", errors.New("unexpected command")
+			}
+			done := trackConcurrentStart(&mu, &active, &maxActive, release, &releaseOnce)
+			defer done()
+			return "fetched\n", "", nil
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), runner, []string{"fetch"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("fetch returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if maxActive < 2 {
+		t.Fatalf("fetch did not run concurrently; max active = %d", maxActive)
+	}
+	out := stdout.String()
+	first := strings.Index(out, "a-slow")
+	second := strings.Index(out, "b-fast")
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("fetch output not in repo order:\n%s", out)
+	}
+}
+
 func TestPushSummaryCountsOutcomes(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := tempGitRepos(t, "declined", "failed", "pushed", "skipped")
@@ -110,92 +201,6 @@ func TestPushSummaryCountsOutcomes(t *testing.T) {
 	assertExitCode(t, err, 1)
 	if !strings.Contains(stdout.String(), "Summary: 1 pushed, 2 skipped, 1 failed") {
 		t.Fatalf("missing push summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
-	}
-}
-
-func TestCommitSummaryCountsOutcomes(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	root := tempGitRepos(t, "committed", "failed", "skipped")
-	t.Chdir(root)
-
-	runner := fakeRunner{
-		lookPath: fakeGitLookPath,
-		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			if name != "git" {
-				return "", "", errors.New("unexpected command")
-			}
-			repoName := filepath.Base(dir)
-			switch strings.Join(args, " ") {
-			case "add -A":
-				return "", "", nil
-			case "diff --cached --quiet":
-				if repoName == "skipped" {
-					return "", "", nil
-				}
-				return "", "", errors.New("changes")
-			case "commit -m Test commit":
-				if repoName == "failed" {
-					return "commit failed", "", errors.New("commit failed")
-				}
-				return "committed\n", "", nil
-			default:
-				return "", "", errors.New("unexpected git args")
-			}
-		},
-	}
-
-	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), runner, []string{"commit", "--message", "Test commit"}, strings.NewReader(""), &stdout, &stderr)
-	assertExitCode(t, err, 1)
-	if !strings.Contains(stdout.String(), "Summary: 1 committed, 1 skipped, 1 failed") {
-		t.Fatalf("missing commit summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
-	}
-}
-
-func TestCommitRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	root := tempGitRepos(t, "a-slow", "b-fast")
-	t.Chdir(root)
-
-	var mu sync.Mutex
-	activeAdds := 0
-	maxActiveAdds := 0
-	release := make(chan struct{})
-	var releaseOnce sync.Once
-	runner := fakeRunner{
-		lookPath: fakeGitLookPath,
-		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			if name != "git" {
-				return "", "", errors.New("unexpected command")
-			}
-			switch strings.Join(args, " ") {
-			case "add -A":
-				done := trackConcurrentStart(&mu, &activeAdds, &maxActiveAdds, release, &releaseOnce)
-				defer done()
-				return "", "", nil
-			case "diff --cached --quiet":
-				return "", "", errors.New("changes")
-			case "commit -m Test commit":
-				return "committed\n", "", nil
-			default:
-				return "", "", errors.New("unexpected git args")
-			}
-		},
-	}
-
-	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), runner, []string{"commit", "--message", "Test commit"}, strings.NewReader(""), &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("commit returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
-	}
-	if maxActiveAdds < 2 {
-		t.Fatalf("commit did not run concurrently; max active adds = %d", maxActiveAdds)
-	}
-	out := stdout.String()
-	first := strings.Index(out, "a-slow")
-	second := strings.Index(out, "b-fast")
-	if first < 0 || second < 0 || first > second {
-		t.Fatalf("commit output not in repo order:\n%s", out)
 	}
 }
 

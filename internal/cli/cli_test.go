@@ -62,11 +62,11 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 	for _, want := range []string{
 		"Remote Operations:",
 		"Local Operations:",
-		"AI Commands:",
 		"History Rewriting:",
 		"Utility:",
-		"commit-ai",
-		"rewrite-commits-ai",
+		"fetch",
+		"commit",
+		"rewrite-commits",
 		"completion",
 		"doctor",
 		"version",
@@ -75,11 +75,44 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 			t.Fatalf("help missing %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "update") || strings.Contains(out, "uninstall") {
-		t.Fatalf("removed commands appeared in help:\n%s", out)
+	for _, removed := range []string{"AI Commands:", "commit-ai", "rewrite-commits-ai"} {
+		if strings.Contains(out, removed) {
+			t.Fatalf("removed help entry %q appeared in help:\n%s", removed, out)
+		}
 	}
-	if strings.Index(out, "AI Commands:") < strings.Index(out, "Local Operations:") || strings.Index(out, "AI Commands:") > strings.Index(out, "History Rewriting:") {
-		t.Fatalf("AI Commands group is not in the expected order:\n%s", out)
+	for _, removed := range []string{"update", "uninstall"} {
+		if strings.Contains(out, "\n  "+removed+" ") {
+			t.Fatalf("removed command %q appeared in help:\n%s", removed, out)
+		}
+	}
+}
+
+func TestRemovedAICommandNamesAreUnknown(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, args := range [][]string{
+		{"commit-ai"},
+		{"rewrite-commits-ai"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		if err == nil {
+			t.Fatalf("%v returned nil error", args)
+		}
+		if !strings.Contains(stderr.String(), "unknown command") {
+			t.Fatalf("%v stderr = %q", args, stderr.String())
+		}
+	}
+}
+
+func TestRemovedCommandsDoNotAppearInHelp(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithIO([]string{"--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("--help returned error: %v", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "\n  update ") || strings.Contains(out, "\n  uninstall ") {
+		t.Fatalf("removed commands appeared in help:\n%s", out)
 	}
 }
 
@@ -123,7 +156,7 @@ func TestCommandsRejectPositionalArgs(t *testing.T) {
 		{"version", "extra"},
 		{"doctor", "extra"},
 		{"status", "extra"},
-		{"commit", "extra", "--message", "test"},
+		{"commit", "extra"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
@@ -147,14 +180,14 @@ func TestCompletionCommandIsPresent(t *testing.T) {
 	}
 }
 
-func TestRewriteCommitsAIFlagValidation(t *testing.T) {
+func TestRewriteCommitsFlagValidation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, tc := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"rewrite-commits-ai", "--batch-size", "51"}, "--batch-size must be 50 or less"},
-		{[]string{"rewrite-commits-ai", "--rpm", "0"}, "--rpm must be a positive integer"},
+		{[]string{"rewrite-commits", "--batch-size", "51"}, "--batch-size must be 50 or less"},
+		{[]string{"rewrite-commits", "--rpm", "0"}, "--rpm must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
@@ -171,15 +204,15 @@ func TestRewriteCommitsAIFlagValidation(t *testing.T) {
 	}
 }
 
-func TestCommitAIFlagValidation(t *testing.T) {
+func TestCommitFlagValidation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, tc := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"commit-ai", "--max-chars-per-commit", "0"}, "--max-chars-per-commit must be a positive integer"},
-		{[]string{"commit-ai", "--rpm", "0"}, "--rpm must be a positive integer"},
-		{[]string{"commit-ai", "--timeout", "0"}, "--timeout must be a positive integer"},
+		{[]string{"commit", "--max-chars-per-commit", "0"}, "--max-chars-per-commit must be a positive integer"},
+		{[]string{"commit", "--rpm", "0"}, "--rpm must be a positive integer"},
+		{[]string{"commit", "--timeout", "0"}, "--timeout must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
@@ -206,24 +239,12 @@ func TestConfirmUsesInjectedStreams(t *testing.T) {
 	}
 }
 
-func TestRequiredFlagFailsNonInteractive(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), fakeRunner{}, []string{"commit"}, strings.NewReader(""), &stdout, &stderr)
-	if err == nil {
-		t.Fatal("expected missing flag failure")
-	}
-	if !strings.Contains(stderr.String(), "--message is required") {
-		t.Fatalf("unexpected stderr:\n%s", stderr.String())
-	}
-}
-
-func TestRewriteCommitsAIMissingConfigDoesNotPrompt(t *testing.T) {
+func TestRewriteCommitsMissingConfigDoesNotPrompt(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stderr bytes.Buffer
 	cmd := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader("ignored\n"), io.Discard, &stderr))
-	cmd.SetArgs([]string{"rewrite-commits-ai", "--yes"})
+	cmd.SetArgs([]string{"rewrite-commits", "--yes"})
 	cmd.SetIn(strings.NewReader("ignored\n"))
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(&stderr)
@@ -232,7 +253,7 @@ func TestRewriteCommitsAIMissingConfigDoesNotPrompt(t *testing.T) {
 		t.Fatal("expected missing flag failure")
 	}
 	if strings.Contains(stderr.String(), "OpenAI-compatible API base URL:") {
-		t.Fatalf("rewrite-commits-ai should not prompt for removed flags:\n%s", stderr.String())
+		t.Fatalf("rewrite-commits should not prompt for removed flags:\n%s", stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "AI model is required") {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())
