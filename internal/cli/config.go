@@ -19,18 +19,21 @@ func configCommand(a *app) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(
-		&cobra.Command{
-			Use:   "show",
-			Short: "Show non-secret configuration and credential sources.",
-			Args:  cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				if code := runConfigShow(a); code != 0 {
-					return exitError{code: code}
-				}
-				return nil
-			},
+	show := &cobra.Command{
+		Use:   "show",
+		Short: "Show non-secret configuration and credential sources.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a.json = jsonFlagValue(cmd)
+			if code := runConfigShow(a); code != 0 {
+				return exitError{code: code}
+			}
+			return nil
 		},
+	}
+	show.Flags().Bool("json", false, "Emit one JSON document.")
+	cmd.AddCommand(
+		show,
 		configSetCommand(a),
 		configUnsetCommand(a),
 	)
@@ -73,12 +76,40 @@ func configUnsetCommand(a *app) *cobra.Command {
 func runConfigShow(a *app) int {
 	cfg, err := config.Load()
 	if err != nil {
+		if a.json {
+			return writeJSONStatus(a, map[string]any{
+				"ok":      false,
+				"summary": map[string]any{},
+				"error":   jsonError{Message: err.Error()},
+			}, 1)
+		}
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
 	path, _ := config.Path()
 	github := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
 	aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
+
+	if a.json {
+		return writeJSON(a, map[string]any{
+			"ok":      true,
+			"summary": map[string]any{"path": path},
+			"path":    path,
+			"github": map[string]any{
+				"host":       cfg.GitHub.Host,
+				"username":   cfg.GitHub.Username,
+				"authSource": string(github.Source),
+				"authSet":    github.Value != "",
+			},
+			"ai": map[string]any{
+				"provider":     cfg.AI.Provider,
+				"baseURL":      cfg.AI.BaseURL,
+				"model":        cfg.AI.Model,
+				"apiKeySource": string(aiKey.Source),
+				"apiKeySet":    aiKey.Value != "",
+			},
+		})
+	}
 
 	fmt.Fprintf(a.stdout, "Config: %s\n", path)
 	fmt.Fprintln(a.stdout, "GitHub:")

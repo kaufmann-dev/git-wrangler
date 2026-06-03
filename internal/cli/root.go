@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -32,6 +33,7 @@ type app struct {
 	gh     githubcli.Client
 	creds  credentials.Store
 	auth   auth.GitHubAuthenticator
+	json   bool
 }
 
 type repo struct {
@@ -144,22 +146,27 @@ func newRootCommand(a *app) *cobra.Command {
 			intFlag("limit", 100, "Maximum repositories to list."),
 			stringFlag("into", "", "Directory to clone repositories into."),
 		}),
-		command(a, "pull", "Pull the latest changes for every discovered repository.", "remote", runPull, flags{
+		command(a, "pull", "Pull the latest changes for target repositories.", "remote", runPull, flags{
+			repoFlag(),
 			boolFlag("rebase", "Rebase local commits while pulling."),
 			boolFlag("force", "Pass --force to git pull."),
 		}),
-		command(a, "fetch", "Fetch origin updates for every discovered repository.", "remote", runFetch, flags{
+		command(a, "fetch", "Fetch origin updates for target repositories.", "remote", runFetch, flags{
+			repoFlag(),
 			boolFlag("prune", "Prune remote-tracking branches that no longer exist on origin."),
 		}),
 		command(a, "push", "Push local commits to origin HEAD.", "remote", runPush, flags{
+			repoFlag(),
 			boolFlag("force", "Use --force-with-lease."),
 			boolFlag("force-unsafe", "Use raw --force after confirmation."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rename-repo", "Rename GitHub repositories with gh.", "remote", runRenameRepo, flags{
+			repoFlag(),
 			boolFlag("description", "Prompt for repository description updates."),
 		}),
 		command(a, "commit", "Generate and create one Conventional Commit per changed repository.", "local", runCommit, flags{
+			repoFlag(),
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
 			intFlag("rpm", 300, "Maximum API requests to start per minute."),
 			intFlag("timeout", 90, "API timeout in seconds."),
@@ -167,35 +174,45 @@ func newRootCommand(a *app) *cobra.Command {
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "fix-gitignore", "Add missing common generated-file patterns to .gitignore.", "local", runFixGitignore, flags{
+			repoFlag(),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "license", "Add or replace MIT LICENSE files.", "local", runLicense, flags{
-			stringFlag("repo", "", "Repository directory to target."),
+			repoFlag(),
 			stringFlag("name", "", "Copyright holder name."),
 			boolFlag("overwrite", "Replace an existing LICENSE file."),
+			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rename-branch", "Rename a branch across repositories.", "local", runRenameBranch, flags{
+			repoFlag(),
 			stringFlag("oldbranch", "", "Existing branch name."),
 			stringFlag("newbranch", "", "New branch name."),
 		}),
 		command(a, "reset", "Reset current branches to their origin counterparts.", "local", runReset, flags{
+			repoFlag(),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
-		command(a, "review", "Review unpushed changes across repositories.", "local", runReview, nil),
+		command(a, "review", "Review unpushed changes across repositories.", "local", runReview, flags{
+			repoFlag(),
+			jsonFlag(),
+		}),
 		command(a, "untrack", "Stop tracking files already covered by .gitignore.", "local", runUntrack, flags{
+			repoFlag(),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "remove-secrets", "Purge sensitive files from Git history.", "history", runRemoveSecrets, flags{
+			repoFlag(),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-authors", "Rewrite author and committer identity.", "history", runRewriteAuthors, flags{
 			stringFlag("name", "", "New author and committer name."),
 			stringFlag("email", "", "New author and committer email."),
-			stringFlag("repo", "", "Repository directory to target."),
+			repoFlag(),
 			boolFlag("force", "Pass --force to git-filter-repo."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-commits", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommits, flags{
+			repoFlag(),
 			intFlag("batch-size", 10, "Commits per API request."),
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
 			intFlag("rpm", 300, "Maximum API requests to start per minute."),
@@ -205,17 +222,24 @@ func newRootCommand(a *app) *cobra.Command {
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
+			repoFlag(),
 			stringFlag("start-date", "", "Earliest date in YYYY-MM-DD format."),
 			stringFlag("end-date", "", "Latest date in YYYY-MM-DD format."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
-			stringFlag("repo", "", "Repository directory to target."),
+			repoFlag(),
+			jsonFlag(),
 		}),
-		command(a, "doctor", "Check Git Wrangler runtime dependencies.", "utility", runDoctor, nil),
+		command(a, "doctor", "Check Git Wrangler runtime dependencies.", "utility", runDoctor, flags{
+			jsonFlag(),
+		}),
 		initCommand(a),
 		configCommand(a),
-		command(a, "status", "Show clean, dirty, and tracking state.", "utility", runStatus, nil),
+		command(a, "status", "Show clean, dirty, and tracking state.", "utility", runStatus, flags{
+			repoFlag(),
+			jsonFlag(),
+		}),
 		versionCommand(a),
 	)
 	return root
@@ -244,6 +268,27 @@ func printRootBanner(a *app) {
 	fmt.Fprintln(a.stdout)
 }
 
+type jsonError struct {
+	Message string `json:"message"`
+}
+
+func writeJSON(a *app, payload any) int {
+	enc := json.NewEncoder(a.stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(payload); err != nil {
+		fmt.Fprintf(a.stderr, "Error: %s\n", err)
+		return 1
+	}
+	return 0
+}
+
+func writeJSONStatus(a *app, payload any, code int) int {
+	if errCode := writeJSON(a, payload); errCode != 0 {
+		return errCode
+	}
+	return code
+}
+
 func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, []string) int, specs flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     use,
@@ -251,6 +296,7 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 		GroupID: group,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			a.json = jsonFlagValue(cmd)
 			if code := runFn(a, cmd, args); code != 0 {
 				return exitError{code: code}
 			}
@@ -271,13 +317,26 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 }
 
 func versionCommand(a *app) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "version",
 		Short:   "Print version metadata.",
 		GroupID: "utility",
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			a.json = jsonFlagValue(cmd)
+			if a.json {
+				_ = writeJSON(a, map[string]any{
+					"ok":      true,
+					"summary": map[string]any{"version": version.Version},
+					"version": version.Version,
+					"commit":  version.Commit,
+					"date":    version.Date,
+				})
+				return
+			}
 			fmt.Fprintln(a.stdout, version.Full())
 		},
 	}
+	cmd.Flags().Bool("json", false, "Emit one JSON document.")
+	return cmd
 }
