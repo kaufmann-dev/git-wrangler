@@ -49,7 +49,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "commit") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -79,9 +79,9 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	}
 	fmt.Fprintln(a.stderr, "The command will send file paths, stats, and redacted staged diff snippets.")
 	fmt.Fprintln(a.stderr, "API keys are not sent in commit context.")
-	if !yes && !confirm(a, "Send this data to the configured API endpoint?") {
+	if !confirmOrSkip(a, yes, "Send this data to the configured API endpoint?") {
 		fmt.Fprintf(a.stdout, "%sStopped before sending any data.%s\n", a.ui.Yellow, a.ui.Reset)
-		return 1
+		return 0
 	}
 
 	inputs := make([]ai.GenerationInput, 0, len(changes))

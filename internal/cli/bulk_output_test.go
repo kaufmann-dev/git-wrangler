@@ -174,7 +174,7 @@ func TestFetchRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 
 func TestPushSummaryCountsOutcomes(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
-	root := tempGitRepos(t, "declined", "failed", "pushed", "skipped")
+	root := tempGitRepos(t, "failed", "pushed", "skipped")
 	t.Chdir(root)
 
 	runner := fakeRunner{
@@ -197,9 +197,12 @@ func TestPushSummaryCountsOutcomes(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), runner, []string{"push", "--force-unsafe"}, strings.NewReader("n\ny\ny\ny\n"), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), runner, []string{"push", "--force-unsafe"}, strings.NewReader("y\n"), &stdout, &stderr)
 	assertExitCode(t, err, 1)
-	if !strings.Contains(stdout.String(), "Summary: 1 pushed, 2 skipped, 1 failed") {
+	if strings.Count(stderr.String(), "Raw force push") != 1 {
+		t.Fatalf("expected one confirmation prompt:\n%s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Summary: 1 pushed, 1 skipped, 1 failed") {
 		t.Fatalf("missing push summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 	}
 }

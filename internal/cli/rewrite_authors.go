@@ -9,7 +9,6 @@ import (
 func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	force, _ := cmd.Flags().GetBool("force")
 	yes := yesFlag(cmd)
-	repoName, _ := cmd.Flags().GetString("repo")
 	newName, ok := requiredStringFlag(a, cmd, "name", "New author and committer name: ")
 	if !ok {
 		return 1
@@ -25,7 +24,7 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets(repoName)
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -53,13 +52,14 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	}
 	applies := []authorApply{}
 	for _, r := range repos {
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n", a.ui.Red, a.ui.Reset)
-		if !yes && !confirm(a, "Rewrite author and committer identity for "+r.display+"?") {
-			a.error(r.display, "Refusing to rewrite history without confirmation.")
-			status = 1
-			continue
-		}
 		applies = append(applies, authorApply{repo: r})
+	}
+	fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history in %d repositories. A force push will be required to update any remote.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+	if !confirmOrSkip(a, yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies))) {
+		for _, apply := range applies {
+			a.skip(apply.repo.display, "Skipping history rewrite.")
+		}
+		return status
 	}
 	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting authors", len(applies)), func(apply authorApply) (string, string) {
 		return apply.repo.display, apply.repo.display

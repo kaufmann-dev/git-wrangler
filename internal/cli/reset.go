@@ -12,7 +12,7 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "reset") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -20,8 +20,13 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	type resetApply struct {
+		repo   repo
+		branch string
+	}
 	status := 0
-	progress := newProgress(a, "Resetting repositories", len(repos))
+	applies := []resetApply{}
+	progress := newProgress(a, "Preparing resets", len(repos))
 	for _, r := range repos {
 		branchOut, err := a.git.CurrentBranch(a.ctx, r.dir)
 		if err != nil {
@@ -81,19 +86,28 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintf(a.stderr, "%sWarning: Working tree has uncommitted changes that will be discarded.%s\n", a.ui.Red, a.ui.Reset)
 		}
 		fmt.Fprintf(a.stderr, "%sThis will hard reset %s to origin/%s, discarding %s local commit(s).%s\n", a.ui.Red, branch, branch, ahead, a.ui.Reset)
-		if !yes && !confirm(a, "Proceed with reset for "+r.display+"?") {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			progress.advance(r.display)
-			continue
+		applies = append(applies, resetApply{repo: r, branch: branch})
+		progress.advance(r.display)
+	}
+	progress.done()
+	if len(applies) == 0 {
+		return status
+	}
+	if !confirmOrSkip(a, yes, fmt.Sprintf("Proceed with reset for %d repositories?", len(applies))) {
+		for _, apply := range applies {
+			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, apply.repo.display, a.ui.Reset)
 		}
+		return status
+	}
+	for _, apply := range applies {
+		r := apply.repo
+		branch := apply.branch
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "reset", "--hard", "origin/"+branch); err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully reset %s to origin/%s%s\n", a.ui.Green, r.display, branch, a.ui.Reset)
 		} else {
 			fmt.Fprintf(a.stderr, "%sError: Reset failed for %s:\n%s%s\n\n", a.ui.Red, r.display, out, a.ui.Reset)
 			status = 1
 		}
-		progress.advance(r.display)
 	}
-	progress.done()
 	return status
 }

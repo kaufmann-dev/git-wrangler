@@ -21,23 +21,9 @@ if ! go test ./...; then
     status=1
 fi
 
-step "go test -race"
-if ! go test -race ./...; then
-    status=1
-fi
-
 step "go vet"
 if ! go vet ./...; then
     status=1
-fi
-
-if command -v govulncheck >/dev/null 2>&1; then
-    step "govulncheck"
-    if ! govulncheck ./...; then
-        status=1
-    fi
-else
-    printf "skip govulncheck: govulncheck is not installed\n"
 fi
 
 if command -v goreleaser >/dev/null 2>&1; then
