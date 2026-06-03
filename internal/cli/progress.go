@@ -19,10 +19,10 @@ type progress struct {
 	total       int
 	current     int
 	lastWidth   int
+	lastRows    int
 	closed      bool
 	activeKeys  []string
 	activeMap   map[string]string
-	lastDetail  string
 }
 
 var termGetSize = term.GetSize
@@ -101,14 +101,17 @@ func (p *progress) finish(key, detail string) {
 	if p.activeMap != nil {
 		delete(p.activeMap, key)
 	}
-	p.lastDetail = detail
 	p.current++
 	if p.shouldWrite() {
-		p.write(p.currentDetailLocked())
+		p.write(p.detailLocked(detail))
 	}
 }
 
 func (p *progress) currentDetailLocked() string {
+	return p.detailLocked("")
+}
+
+func (p *progress) detailLocked(fallback string) string {
 	if len(p.activeKeys) > 0 {
 		key := p.activeKeys[len(p.activeKeys)-1]
 		if val, ok := p.activeMap[key]; ok {
@@ -116,7 +119,10 @@ func (p *progress) currentDetailLocked() string {
 		}
 		return key
 	}
-	return p.lastDetail
+	if p.interactive {
+		return ""
+	}
+	return fallback
 }
 
 func (p *progress) message(detail string) {
@@ -132,23 +138,24 @@ func (p *progress) message(detail string) {
 }
 
 func (p *progress) clear() {
-	if p.lastWidth == 0 {
+	if p.lastWidth == 0 && p.lastRows == 0 {
 		return
 	}
-	w := 0
+	rows := p.lastRows
 	if file, ok := p.writer.(*os.File); ok {
-		if tw, _, err := termGetSize(int(file.Fd())); err == nil && tw > 0 {
-			w = tw
+		if w, _, err := termGetSize(int(file.Fd())); err == nil && w > 0 && p.lastWidth > 0 {
+			currentRows := (p.lastWidth + w - 1) / w
+			if currentRows > rows {
+				rows = currentRows
+			}
 		}
 	}
-	if w > 0 {
-		rows := (p.lastWidth + w - 1) / w
-		if rows > 1 {
-			fmt.Fprintf(p.writer, "\x1b[%dA", rows-1)
-		}
+	if rows > 1 {
+		fmt.Fprintf(p.writer, "\x1b[%dA", rows-1)
 	}
 	fmt.Fprint(p.writer, "\r\x1b[J")
 	p.lastWidth = 0
+	p.lastRows = 0
 }
 
 func (p *progress) log(message string) {
@@ -163,8 +170,8 @@ func (p *progress) log(message string) {
 	if p.interactive {
 		p.clear()
 		fmt.Fprintln(p.writer, message)
-		if p.current > 0 {
-			p.write("")
+		if p.current > 0 || len(p.activeKeys) > 0 {
+			p.write(p.currentDetailLocked())
 		}
 		return
 	}
@@ -208,6 +215,7 @@ func (p *progress) write(detail string) {
 
 		line := prefix + detail
 		p.lastWidth = visibleWidth(line)
+		p.lastRows = 1
 		fmt.Fprint(p.writer, line)
 		return
 	}
