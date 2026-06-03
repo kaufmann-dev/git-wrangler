@@ -18,11 +18,11 @@ git-wrangler commit-ai [options]
 
 ## What it does
 
-Iterates through Git repositories found under the current directory, stages all changes with `git add -A`, skips repositories with no staged changes, sends redacted staged change context to the configured AI endpoint, and commits each changed repository with the generated message.
+Iterates through Git repositories found under the current directory, prepares `git add -A` context with a temporary index, skips repositories with no changes, sends redacted staged change context to the configured AI endpoint, and commits each changed repository with the generated message.
 
 Diff bodies for common generated, vendor, cache, build, and upload paths are hidden while file names and stats remain visible.
 
-If generation fails for any repository after retries, Git Wrangler creates no commits and exits nonzero. Staged changes may remain.
+If generation fails for any repository after retries, Git Wrangler creates no commits and exits nonzero. The real index is staged only after valid AI messages are available.
 
 ## Options
 
