@@ -41,7 +41,7 @@ func TestConfigSetShowUnsetSecretDoesNotPrintSecret(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("config show returned error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "API key: keyring") {
+	if !strings.Contains(stdout.String(), "API key   keyring") {
 		t.Fatalf("config show missing keyring source:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), "secret-token") {

@@ -29,8 +29,9 @@ func runInit(a *app) int {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
-	fmt.Fprintln(a.stdout, "Git Wrangler setup")
+	fmt.Fprintln(a.stdout, "Git Wrangler Setup")
 	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "GitHub")
 
 	host, err := promptDefault(a, "GitHub host", cfg.GitHub.Host)
 	if err != nil {
@@ -55,6 +56,8 @@ func runInit(a *app) int {
 		a.ok("Stored GitHub authentication for " + result.Username)
 	}
 
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "AI")
 	provider, err := promptDefault(a, "AI provider", cfg.AI.Provider)
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
@@ -90,6 +93,18 @@ func runInit(a *app) int {
 		return 1
 	}
 	a.ok("Setup complete")
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "Recap")
+	github := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
+	aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
+	renderKeyValues(a, []keyValueRow{
+		{key: "GitHub host", value: cfg.GitHub.Host},
+		{key: "GitHub auth", value: string(github.Source)},
+		{key: "AI provider", value: displayUnsetStyled(a, cfg.AI.Provider)},
+		{key: "AI base URL", value: displayUnsetStyled(a, cfg.AI.BaseURL)},
+		{key: "AI model", value: displayUnsetStyled(a, cfg.AI.Model)},
+		{key: "AI API key", value: string(aiKey.Source)},
+	})
 	return 0
 }
 
