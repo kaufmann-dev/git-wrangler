@@ -32,6 +32,52 @@ func TestProgressWritesPlainLinesForNonTTY(t *testing.T) {
 	}
 }
 
+func TestProgressStartShowsActiveWorkAtZero(t *testing.T) {
+	var stderr bytes.Buffer
+	progress := &progress{
+		writer:      &stderr,
+		interactive: true,
+		label:       "Testing progress",
+		total:       2,
+	}
+
+	progress.start("repo-a")
+
+	want := "Testing progress: [--------------------] 0/2 repo-a"
+	if stderr.String() != want {
+		t.Fatalf("progress start output = %q, want %q", stderr.String(), want)
+	}
+	if progress.current != 0 {
+		t.Fatalf("current = %d, want 0", progress.current)
+	}
+}
+
+func TestProgressDoesNotShowStaleCompletedDetail(t *testing.T) {
+	var stderr bytes.Buffer
+	progress := &progress{
+		writer:      &stderr,
+		interactive: true,
+		label:       "Testing progress",
+		total:       2,
+	}
+
+	progress.start("repo-a")
+	progress.finish("repo-a", "repo-a")
+	progress.start("repo-b")
+	progress.finish("repo-b", "repo-b")
+
+	out := stderr.String()
+	last := out[strings.LastIndex(out, "Testing progress:"):]
+	if strings.Contains(last, "repo-a") || strings.Contains(last, "repo-b") {
+		t.Fatalf("final progress line included stale detail:\n%q", out)
+	}
+	for _, want := range []string{"0/2 repo-a", "1/2 repo-b", "2/2 "} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in progress output:\n%q", want, out)
+		}
+	}
+}
+
 func TestProgressThrottlesPlainLinesForNonTTY(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
@@ -123,11 +169,37 @@ func TestAIRequestProgressWritesInlineColoredRetryDetail(t *testing.T) {
 	apiProgress.done()
 
 	out := stderr.String()
-	if !strings.Contains(out, "Sending API requests: 0/2 \033[31mRetrying 1 commit(s)") {
-		t.Fatalf("retry detail was not inline and red:\n%q", out)
+	if !strings.Contains(out, "\033[31mRetrying 1 commit(s) after failed batch attempt 1: missing or invalid message.\033[0m\n") {
+		t.Fatalf("retry detail was not standalone and red:\n%q", out)
 	}
 	if !strings.Contains(out, "Sending API requests: 1/2 batch 1 completed") {
 		t.Fatalf("completion detail was not inline:\n%q", out)
+	}
+}
+
+func TestAIRequestProgressLogsSingleBatchRetry(t *testing.T) {
+	t.Setenv("TERM", "xterm")
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+
+	apiProgress := (*progress)(nil)
+	updateAIRequestProgress(a, &apiProgress, ai.ProgressEvent{
+		Phase:   "Sending API requests",
+		Current: 0,
+		Total:   1,
+		Detail:  "Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.",
+		Error:   true,
+	})
+
+	out := stderr.String()
+	if !strings.Contains(out, "\033[31mRetrying 1 commit(s) after failed batch attempt 1: missing or invalid message.\033[0m\n") {
+		t.Fatalf("single-batch retry detail was not logged:\n%q", out)
+	}
+	if apiProgress != nil {
+		t.Fatal("single-batch retry should not create a progress bar")
 	}
 }
 
@@ -231,6 +303,7 @@ func TestProgressClearHandlesMultipleRows(t *testing.T) {
 		total:       10,
 		current:     5,
 		lastWidth:   45,
+		lastRows:    3,
 	}
 
 	progress.clear()
