@@ -44,19 +44,21 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	})
 	for _, result := range results {
 		if result.err != nil {
-			a.error(result.repo.display, "Git pull failed:")
-			fmt.Fprintf(a.stderr, "%s\n\n", result.out)
+			renderErrorBlock(a, result.repo.display+": git pull failed", outputOrError(result.out, result.err))
 			status = 1
 			failed++
 		} else if result.skipped {
-			a.skip(result.repo.display, "Already up to date. Skipping...")
+			renderStatusLine(a, a.stdout, statusSkip, result.repo.display, "already up to date")
 			skipped++
 		} else {
-			a.ok(result.repo.display, "Git pull completed")
 			updated++
 		}
 	}
-	fmt.Fprintf(a.stdout, "Summary: %d updated, %d skipped, %d failed\n", updated, skipped, failed)
+	renderSummary(a,
+		summaryCount{label: "updated", value: updated, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 
@@ -91,16 +93,17 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 	})
 	for _, result := range results {
 		if result.err != nil {
-			a.error(result.repo.display, "Git fetch failed:")
-			fmt.Fprintf(a.stderr, "%s\n\n", result.out)
+			renderErrorBlock(a, result.repo.display+": git fetch failed", outputOrError(result.out, result.err))
 			status = 1
 			failed++
 			continue
 		}
-		a.ok(result.repo.display, "Git fetch completed")
 		fetched++
 	}
-	fmt.Fprintf(a.stdout, "Summary: %d fetched, %d failed\n", fetched, failed)
+	renderSummary(a,
+		summaryCount{label: "fetched", value: fetched, color: a.ui.Green},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 
@@ -143,48 +146,72 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		})
 		for _, result := range results {
 			if result.err != nil {
-				a.error(result.repo.display, "Git push failed:")
-				fmt.Fprintf(a.stderr, "%s\n\n", result.out)
+				renderErrorBlock(a, result.repo.display+": git push failed", outputOrError(result.out, result.err))
 				status = 1
 				failed++
 			} else if result.skipped {
-				a.skip(result.repo.display, "No changes to push. Skipping...")
+				renderStatusLine(a, a.stdout, statusSkip, result.repo.display, "nothing to push")
 				skipped++
 			} else {
-				a.ok(result.repo.display, "Git push completed")
 				pushed++
 			}
 		}
-		fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
+		renderSummary(a,
+			summaryCount{label: "pushed", value: pushed, color: a.ui.Green},
+			summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
 		return status
 	}
 	if !confirmOrSkip(a, yesFlag(cmd), fmt.Sprintf("Raw force push %d repositories with --force?", len(repos))) {
-		for _, r := range repos {
-			a.skip(r.display, "Skipping unsafe force push.")
-			skipped++
-		}
-		fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
+		skipped = len(repos)
+		renderStatusLine(a, a.stdout, statusSkip, "unsafe force push declined", "")
+		renderSummary(a,
+			summaryCount{label: "pushed", value: pushed, color: a.ui.Green},
+			summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
 		return status
 	}
+	progress := newProgress(a, "Pushing repositories", len(repos))
+	results := []pushResult{}
 	for _, r := range repos {
+		progress.start(r.display)
 		pushArgs := []string{"push", "origin", "HEAD"}
 		pushArgs = []string{"push", "--force", "origin", "HEAD"}
 		out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
+		progress.advance(r.display)
+		results = append(results, pushResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Everything up-to-date")})
+	}
+	finishProgressBeforeOutput(progress)
+	for _, result := range results {
+		r := result.repo
+		out := result.out
+		err := result.err
 		if err == nil {
 			if strings.Contains(out, "Everything up-to-date") {
-				a.skip(r.display, "No changes to push. Skipping...")
+				renderStatusLine(a, a.stdout, statusSkip, r.display, "nothing to push")
 				skipped++
 			} else {
-				a.ok(r.display, "Git push completed")
 				pushed++
 			}
 		} else {
-			a.error(r.display, "Git push failed:")
-			fmt.Fprintf(a.stderr, "%s\n\n", out)
+			renderErrorBlock(a, r.display+": git push failed", outputOrError(out, err))
 			status = 1
 			failed++
 		}
 	}
-	fmt.Fprintf(a.stdout, "Summary: %d pushed, %d skipped, %d failed\n", pushed, skipped, failed)
+	renderSummary(a,
+		summaryCount{label: "pushed", value: pushed, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
+}
+
+func outputOrError(output string, err error) string {
+	if strings.TrimSpace(output) != "" || err == nil {
+		return output
+	}
+	return err.Error()
 }

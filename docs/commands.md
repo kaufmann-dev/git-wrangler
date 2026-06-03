@@ -95,17 +95,19 @@ Fatal command errors set `ok` to `false` and include `error.message`. Per-reposi
 
 ## Per-Command Notes
 
+Human output follows `docs/cli-design.md`: progress and prompts on stderr, durable results on stdout after progress closes, actionable per-repo skips/failures, and final `Summary:` lines for bulk commands. JSON output remains unchanged for commands that support `--json`.
+
 ### `clone`
 
-`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Existing destination directories are skipped successfully.
+`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Existing destination directories are skipped successfully. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
 
 ### `commit`
 
-`commit` prepares staged context in a temporary index so scanning does not stage changes before the user approves the data-send prompt. If context collection fails for any repository, it stops before API calls and before creating commits. Declining the data-send prompt is a successful no-op.
+`commit` prepares staged context in a temporary index so scanning does not stage changes before the user approves the data-send prompt. If context collection fails for any repository, it stops before API calls and before creating commits. Declining the data-send prompt is a successful no-op. Human output includes a data-send notice before API calls, API progress, commit-creation progress, actionable skips/failures, and a committed/skipped/failed summary.
 
 ### `fetch`
 
-`fetch` runs `git fetch origin` for every target repository. `fetch --prune` runs `git fetch --prune origin`. Missing or invalid `origin` remotes are per-repository failures and count in the summary.
+`fetch` runs `git fetch origin` for every target repository. `fetch --prune` runs `git fetch --prune origin`. Missing or invalid `origin` remotes are per-repository failures and count in the summary. Routine success lines are suppressed.
 
 ### `rename-repo`
 
@@ -113,24 +115,24 @@ Fatal command errors set `ok` to `false` and include `error.message`. Per-reposi
 
 ### `license`
 
-`license` creates missing `LICENSE` files without confirmation. `license --overwrite` prompts once before replacing all existing files in the candidate set; `license --overwrite --yes` skips only that overwrite confirmation.
+`license` creates missing `LICENSE` files without confirmation. `license --overwrite` prompts once before replacing all existing files in the candidate set; `license --overwrite --yes` skips only that overwrite confirmation. Human output prints conflicts/skips/failures and a created/overwritten/skipped/failed summary.
 
 ### `reset`
 
-`reset` fetches `origin <current-branch>`, skips detached HEAD and missing remote counterparts, reports ahead/behind counts, warns when the working tree is dirty, and then runs `git reset --hard origin/<branch>` after one aggregate confirmation.
+`reset` fetches `origin <current-branch>`, skips detached HEAD and missing remote counterparts, previews candidates in a table with ahead/behind and dirty state, and then runs `git reset --hard origin/<branch>` after one aggregate confirmation.
 
 ### `remove-secrets`
 
-`remove-secrets` scans history for a fixed set of sensitive filename/path patterns, prints matched files, and only rewrites repositories with matches. It always passes `--partial --force` to `git-filter-repo`.
+`remove-secrets` scans history for a fixed set of sensitive filename/path patterns, prints matched files for affected repositories, counts clean repositories, and only rewrites repositories with matches. It always passes `--partial --force` to `git-filter-repo`.
 
 ### `rewrite-commits`
 
-`rewrite-commits` validates AI settings before scanning repositories. Generation may prompt before sending data; applying generated messages is a separate all-repository confirmation. Old commit messages are not sent as model context. Declining either confirmation is a successful no-op before mutation.
+`rewrite-commits` validates AI settings before scanning repositories. Generation may prompt before sending data; applying generated messages is a separate all-repository confirmation. Old commit messages are not sent as model context. Declining either confirmation is a successful no-op before mutation. Final apply output is aggregate: rewritten commit messages, updated repositories, and failures.
 
 ### `rewrite-dates`
 
-`rewrite-dates` requires at least two commits per target repository. It prints the old-to-new timestamp summary for each candidate before one aggregate confirmation, preserves the dominant timezone offset when possible, and distributes rewritten timestamps between the selected or inferred bounds.
+`rewrite-dates` requires at least two commits per target repository. It prints a compact old-to-new timestamp preview for each candidate before one aggregate confirmation, preserves the dominant timezone offset when possible, and distributes rewritten timestamps between the selected or inferred bounds.
 
 ### `config`
 
-`config set` accepts plaintext values for non-secret keys only. Secret keys (`github.auth`, `ai.api-key`) must be entered through the prompt and are stored through the credential store. `config unset` only removes stored secret values.
+`config show` prints non-secret key/value sections. `config set` accepts plaintext values for non-secret keys only. Secret keys (`github.auth`, `ai.api-key`) must be entered through the prompt and are stored through the credential store. `config unset` only removes stored secret values.

@@ -18,28 +18,34 @@ func runDoctor(a *app, cmd *cobra.Command, args []string) int {
 	}
 	fmt.Fprintln(a.stdout, "Git Wrangler Doctor")
 	fmt.Fprintln(a.stdout)
-	fmt.Fprintf(a.stdout, "Version:    %s\n", firstLine(version.Full()))
-	fmt.Fprintf(a.stdout, "Platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	if executable, err := os.Executable(); err == nil {
-		fmt.Fprintf(a.stdout, "Executable: %s\n", executable)
-	} else {
-		fmt.Fprintln(a.stdout, "Executable: unknown")
+	fmt.Fprintln(a.stdout, "Runtime")
+	runtimeRows := []keyValueRow{
+		{key: "Version", value: firstLine(version.Full())},
+		{key: "Platform", value: runtime.GOOS + "/" + runtime.GOARCH},
 	}
+	if executable, err := os.Executable(); err == nil {
+		runtimeRows = append(runtimeRows, keyValueRow{key: "Executable", value: executable})
+	} else {
+		runtimeRows = append(runtimeRows, keyValueRow{key: "Executable", value: a.ui.Muted + "unknown" + a.ui.Reset})
+	}
+	renderKeyValues(a, runtimeRows)
 	fmt.Fprintln(a.stdout)
-	fmt.Fprintln(a.stdout, "Dependencies:")
+	fmt.Fprintln(a.stdout, "Dependencies")
 
 	status := 0
 	missing := false
-	if !doctorCommand(a, "git", "most Git Wrangler commands", true, "--version") {
+	dependencyRows := [][]string{}
+	if !doctorCommand(a, &dependencyRows, "git", "most Git Wrangler commands", true, "--version") {
 		status = 1
 		missing = true
 	}
-	if !doctorCommand(a, "gh", "clone and rename-repo", false, "--version") {
+	if !doctorCommand(a, &dependencyRows, "gh", "clone and rename-repo", false, "--version") {
 		missing = true
 	}
-	if !doctorFilterRepo(a) {
+	if !doctorFilterRepo(a, &dependencyRows) {
 		missing = true
 	}
+	renderTable(a, []tableColumn{{header: "Check"}, {header: "State"}, {header: "Detail"}}, dependencyRows)
 	if missing {
 		fmt.Fprintln(a.stdout)
 		fmt.Fprintln(a.stdout, "Source installs do not include runtime dependencies. Install missing tools yourself or use an official bundled install.")
@@ -123,25 +129,25 @@ func runDoctorJSON(a *app) int {
 	return status
 }
 
-func doctorCommand(a *app, name, neededFor string, critical bool, args ...string) bool {
+func doctorCommand(a *app, rows *[][]string, name, neededFor string, critical bool, args ...string) bool {
 	path, err := a.runner.LookPath(name)
 	if err != nil {
-		doctorMissing(a, name, neededFor, critical)
+		*rows = append(*rows, []string{name, doctorState(a, critical), "not found; needed for " + neededFor})
 		return false
 	}
 	versionText := doctorVersion(a, path, args...)
-	doctorOK(a, name, path, versionText)
+	*rows = append(*rows, []string{name, a.ui.Green + "OK" + a.ui.Reset, doctorDetail(path, versionText)})
 	return true
 }
 
-func doctorFilterRepo(a *app) bool {
+func doctorFilterRepo(a *app, rows *[][]string) bool {
 	filterRepo, ok := a.git.FilterRepoCommand(a.ctx)
 	if !ok {
-		doctorMissing(a, "git-filter-repo", "history rewrite commands", false)
+		*rows = append(*rows, []string{"git-filter-repo", a.ui.Yellow + "WARN" + a.ui.Reset, "not found; needed for history rewrite commands"})
 		return false
 	}
 	versionText := doctorVersion(a, filterRepo[0], append(filterRepo[1:], "--version")...)
-	doctorOK(a, "git-filter-repo", strings.Join(filterRepo, " "), versionText)
+	*rows = append(*rows, []string{"git-filter-repo", a.ui.Green + "OK" + a.ui.Reset, doctorDetail(strings.Join(filterRepo, " "), versionText)})
 	return true
 }
 
@@ -168,35 +174,50 @@ func doctorMissing(a *app, name, neededFor string, critical bool) {
 	fmt.Fprintf(a.stdout, "  %-5s %-16s not found; needed for %s\n", label, name, neededFor)
 }
 
+func doctorDetail(detail, versionText string) string {
+	if versionText == "" {
+		return detail
+	}
+	return fmt.Sprintf("%s (%s)", detail, versionText)
+}
+
+func doctorState(a *app, critical bool) string {
+	if critical {
+		return a.ui.Red + "ERROR" + a.ui.Reset
+	}
+	return a.ui.Yellow + "WARN" + a.ui.Reset
+}
+
 func doctorConfig(a *app) bool {
-	fmt.Fprintln(a.stdout, "Config and Auth:")
+	fmt.Fprintln(a.stdout, "Config And Auth")
 	path, err := config.Path()
 	if err != nil {
-		fmt.Fprintf(a.stdout, "  ERROR config           %s\n", err.Error())
+		renderTable(a, []tableColumn{{header: "Check"}, {header: "State"}, {header: "Detail"}}, [][]string{{"config", a.ui.Red + "ERROR" + a.ui.Reset, err.Error()}})
 		return false
 	}
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(a.stdout, "  ERROR config           %s: %s\n", path, err.Error())
+		renderTable(a, []tableColumn{{header: "Check"}, {header: "State"}, {header: "Detail"}}, [][]string{{"config", a.ui.Red + "ERROR" + a.ui.Reset, path + ": " + err.Error()}})
 		return false
 	}
-	fmt.Fprintf(a.stdout, "  OK    config           %s\n", path)
+	rows := [][]string{{"config", a.ui.Green + "OK" + a.ui.Reset, path}}
 	if credentials.KeyringAvailable(a.creds) {
-		fmt.Fprintln(a.stdout, "  OK    keyring          available")
+		rows = append(rows, []string{"keyring", a.ui.Green + "OK" + a.ui.Reset, "available"})
 	} else {
-		fmt.Fprintln(a.stdout, "  WARN  keyring          unavailable")
+		rows = append(rows, []string{"keyring", a.ui.Yellow + "WARN" + a.ui.Reset, "unavailable"})
 	}
 	github := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
-	fmt.Fprintf(a.stdout, "  %-5s github.auth      %s\n", doctorCredentialLabel(github), github.Source)
-	fmt.Fprintf(a.stdout, "  OK    github.host      %s\n", cfg.GitHub.Host)
+	rows = append(rows, []string{"github.auth", doctorCredentialState(a, github), string(github.Source)})
+	rows = append(rows, []string{"github.host", a.ui.Green + "OK" + a.ui.Reset, cfg.GitHub.Host})
 	if cfg.GitHub.Username != "" {
-		fmt.Fprintf(a.stdout, "  OK    github.username  %s\n", cfg.GitHub.Username)
+		rows = append(rows, []string{"github.username", a.ui.Green + "OK" + a.ui.Reset, cfg.GitHub.Username})
 	}
 	aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
-	fmt.Fprintf(a.stdout, "  %-5s ai.api-key       %s\n", doctorCredentialLabel(aiKey), aiKey.Source)
-	doctorConfigValue(a, "ai.provider", cfg.AI.Provider)
-	doctorConfigValue(a, "ai.base-url", cfg.AI.BaseURL)
-	doctorConfigValue(a, "ai.model", cfg.AI.Model)
+	rows = append(rows, []string{"ai.api-key", doctorCredentialState(a, aiKey), string(aiKey.Source)})
+	rows = append(rows, doctorConfigRow(a, "ai.provider", cfg.AI.Provider))
+	rows = append(rows, doctorConfigRow(a, "ai.base-url", cfg.AI.BaseURL))
+	rows = append(rows, doctorConfigRow(a, "ai.model", cfg.AI.Model))
+	renderTable(a, []tableColumn{{header: "Check"}, {header: "State"}, {header: "Detail"}}, rows)
 	return true
 }
 
@@ -213,4 +234,18 @@ func doctorConfigValue(a *app, name, value string) {
 		return
 	}
 	fmt.Fprintf(a.stdout, "  OK    %-16s %s\n", name, value)
+}
+
+func doctorCredentialState(a *app, resolved credentials.Resolved) string {
+	if resolved.Value == "" {
+		return a.ui.Yellow + "WARN" + a.ui.Reset
+	}
+	return a.ui.Green + "OK" + a.ui.Reset
+}
+
+func doctorConfigRow(a *app, name, value string) []string {
+	if value == "" {
+		return []string{name, a.ui.Yellow + "WARN" + a.ui.Reset, "missing"}
+	}
+	return []string{name, a.ui.Green + "OK" + a.ui.Reset, value}
 }
