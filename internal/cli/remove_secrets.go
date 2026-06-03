@@ -3,7 +3,9 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -126,7 +128,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Removing secrets", len(applies)), func(apply secretApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply secretApply) secretApplyResult {
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, apply.filterArgs, nil)
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, apply.filterArgs, nil)
 		return secretApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
 	rewritten := 0
@@ -187,16 +189,47 @@ func secretPatternMatches(pattern, file string) bool {
 	return false
 }
 
-func runFilterRepo(a *app, dir string, filterCmd []string, args []string, env []string) (string, error) {
+func runFilterRepo(a *app, dir, gitDir string, filterCmd []string, args []string, env []string) (string, error) {
 	if len(filterCmd) == 0 {
 		return "", errors.New("missing filter command")
+	}
+	if err := removeFilterRepoAlreadyRan(gitDir); err != nil {
+		return "", err
 	}
 	return a.runCapture(dir, env, filterCmd[0], append(filterCmd[1:], args...)...)
 }
 
-func runFilterRepoRestoringOrigin(a *app, dir string, filterCmd []string, args []string, env []string) (string, error, error) {
+func removeFilterRepoAlreadyRan(gitDir string) error {
+	if gitDir == "" {
+		return nil
+	}
+	metadataDir := gitDir
+	if info, err := os.Stat(gitDir); err != nil {
+		return fmt.Errorf("could not inspect git-filter-repo state: %w", err)
+	} else if !info.IsDir() {
+		data, err := os.ReadFile(gitDir)
+		if err != nil {
+			return fmt.Errorf("could not inspect git-filter-repo state: %w", err)
+		}
+		target, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+		if !ok {
+			return nil
+		}
+		metadataDir = strings.TrimSpace(target)
+		if !filepath.IsAbs(metadataDir) {
+			metadataDir = filepath.Join(filepath.Dir(gitDir), metadataDir)
+		}
+	}
+	marker := filepath.Join(metadataDir, "filter-repo", "already_ran")
+	if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("could not clear git-filter-repo continuation marker: %w", err)
+	}
+	return nil
+}
+
+func runFilterRepoRestoringOrigin(a *app, dir, gitDir string, filterCmd []string, args []string, env []string) (string, error, error) {
 	remoteURL := originURL(a, dir)
-	out, err := runFilterRepo(a, dir, filterCmd, args, env)
+	out, err := runFilterRepo(a, dir, gitDir, filterCmd, args, env)
 	restoreErr := restoreOrigin(a, dir, remoteURL)
 	return out, err, restoreErr
 }
