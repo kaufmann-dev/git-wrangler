@@ -37,6 +37,9 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 		validRepo  bool
 	}
 	status := 0
+	renamed := 0
+	skipped := 0
+	failed := 0
 	results := parallelGitMutationsProgress(repos, newProgress(a, "Renaming branches", len(repos)), func(r repo) renameBranchResult {
 		if _, err := os.Stat(r.dir); err != nil {
 			return renameBranchResult{repo: r, failed: true, message: fmt.Sprintf("Error: Directory is inaccessible: %s", r.display)}
@@ -45,10 +48,10 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			return renameBranchResult{repo: r, out: out, failed: true, accessible: true}
 		}
 		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+oldBranch) {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("Old branch '%s' does not exist in %s. Skipping...", oldBranch, r.display), accessible: true, validRepo: true}
+			return renameBranchResult{repo: r, message: fmt.Sprintf("old branch '%s' does not exist", oldBranch), accessible: true, validRepo: true}
 		}
 		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+newBranch) {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("New branch '%s' already exists in %s. Skipping...", newBranch, r.display), accessible: true, validRepo: true}
+			return renameBranchResult{repo: r, message: fmt.Sprintf("new branch '%s' already exists", newBranch), accessible: true, validRepo: true}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", oldBranch, newBranch); err == nil {
 			return renameBranchResult{repo: r, message: fmt.Sprintf("Branch renamed from '%s' to '%s' for %s", oldBranch, newBranch, r.display), accessible: true, validRepo: true}
@@ -59,20 +62,29 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	for _, result := range results {
 		switch {
 		case result.failed && !result.accessible:
-			fmt.Fprintf(a.stderr, "%s%s%s\n", a.ui.Red, result.message, a.ui.Reset)
+			renderErrorBlock(a, result.repo.display+": directory is inaccessible", result.message)
 			status = 1
+			failed++
 		case result.failed && !result.validRepo:
-			fmt.Fprintf(a.stderr, "%sError: Not a valid git repository for %s:\n%s%s\n", a.ui.Red, result.repo.display, result.out, a.ui.Reset)
+			renderErrorBlock(a, result.repo.display+": not a valid git repository", result.out)
 			status = 1
+			failed++
 		case result.failed:
-			fmt.Fprintf(a.stderr, "%sError: Failed to rename branch in %s:\n%s%s\n\n", a.ui.Red, result.repo.display, result.out, a.ui.Reset)
+			renderErrorBlock(a, result.repo.display+": failed to rename branch", result.out)
 			status = 1
+			failed++
 		case strings.HasPrefix(result.message, "Branch renamed"):
-			fmt.Fprintf(a.stdout, "%s%s%s\n", a.ui.Green, result.message, a.ui.Reset)
+			renamed++
 		default:
-			fmt.Fprintf(a.stdout, "%s%s%s\n", a.ui.Yellow, result.message, a.ui.Reset)
+			renderStatusLine(a, a.stdout, statusSkip, result.repo.display, result.message)
+			skipped++
 		}
 	}
+	renderSummary(a,
+		summaryCount{label: "renamed", value: renamed, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 
@@ -90,7 +102,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		a.error("Git Wrangler GitHub auth is required for rename-repo. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.")
 		return 1
 	}
-	a.info("Using GitHub auth from " + string(authSource))
+	renderStatusLine(a, a.stdout, statusInfo, "GitHub auth", string(authSource))
 	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
@@ -101,42 +113,63 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		return 0
 	}
 	status := 0
-	for _, r := range repos {
+	renamed := 0
+	descriptionUpdated := 0
+	skipped := 0
+	failed := 0
+	for i, r := range repos {
 		oldName, err := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "name", "-q", ".name")
 		if err != nil {
-			fmt.Fprintf(a.stdout, "%sSkipping %s: No remote or not a GitHub repository.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			renderStatusLine(a, a.stdout, statusSkip, r.display, "no remote or not a GitHub repository")
+			skipped++
 			continue
 		}
 		oldName = strings.TrimSpace(oldName)
-		fmt.Fprintf(a.stdout, "\n%sRepository: %s%s\n", a.ui.RepoColor, oldName, a.ui.Reset)
-		newName, _ := promptRead(a, "Enter new name (leave blank to skip): ")
+		if i > 0 {
+			fmt.Fprintln(a.stdout)
+		}
+		renderRepoHeader(a, oldName)
+		newName, _ := promptRead(a, "New name (leave blank to skip): ")
 		newDesc := ""
 		if editDescription {
 			oldDesc, _ := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "description", "-q", ".description")
 			oldDesc = strings.TrimSpace(oldDesc)
 			if oldDesc == "" {
-				fmt.Fprintln(a.stdout, "Current description: <None>")
+				fmt.Fprintln(a.stdout, "Current description: <none>")
 			} else {
 				fmt.Fprintf(a.stdout, "Current description: %s\n", oldDesc)
 			}
-			newDesc, _ = promptRead(a, "Enter new description (leave blank to skip): ")
+			newDesc, _ = promptRead(a, "New description (leave blank to skip): ")
 		}
 		if editDescription && newDesc != "" {
 			if out, err := a.gh.CaptureEnv(a.ctx, r.dir, ghEnv, "repo", "edit", "--description", newDesc); err == nil {
-				fmt.Fprintf(a.stdout, "%sSuccessfully updated description for %s%s\n", a.ui.Green, oldName, a.ui.Reset)
+				renderStatusLine(a, a.stdout, statusOK, oldName, "description updated")
+				descriptionUpdated++
 			} else {
-				fmt.Fprintf(a.stderr, "%sError: Failed to update description for %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
+				renderErrorBlock(a, oldName+": failed to update description", out)
 				status = 1
+				failed++
 			}
 		}
 		if newName != "" {
 			if out, err := a.gh.CaptureEnv(a.ctx, r.dir, ghEnv, "repo", "rename", newName, "--yes"); err == nil {
-				fmt.Fprintf(a.stdout, "%sSuccessfully renamed %s to %s%s\n", a.ui.Green, oldName, newName, a.ui.Reset)
+				renderStatusLine(a, a.stdout, statusOK, oldName, "renamed to "+newName)
+				renamed++
 			} else {
-				fmt.Fprintf(a.stderr, "%sError: Failed to rename %s:\n%s%s\n", a.ui.Red, oldName, out, a.ui.Reset)
+				renderErrorBlock(a, oldName+": failed to rename", out)
 				status = 1
+				failed++
 			}
 		}
+		if newName == "" && (!editDescription || newDesc == "") {
+			skipped++
+		}
 	}
+	renderSummary(a,
+		summaryCount{label: "renamed", value: renamed, color: a.ui.Green},
+		summaryCount{label: "description updated", value: descriptionUpdated, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }

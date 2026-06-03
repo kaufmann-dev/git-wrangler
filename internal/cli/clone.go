@@ -49,7 +49,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	if visibility == "private" || visibility == "all" {
-		a.info("Using GitHub auth from " + string(authSource))
+		renderStatusLine(a, a.stdout, statusInfo, "GitHub auth", string(authSource))
 	}
 
 	listArgs := githubcli.RepoListArgs(user, visibility, "1")
@@ -86,19 +86,59 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	status := 0
+	cloned := 0
+	skipped := 0
+	failed := 0
+	successLines := []string{}
+	results := []cloneResult{}
+	progress := newProgress(a, "Cloning repositories", lineCount(reposOut))
 	for _, line := range splitLines(reposOut) {
 		fields := strings.Split(line, "\t")
 		if len(fields) == 0 || fields[0] == "" {
 			continue
 		}
-		if !cloneRepository(a, ghEnv, fields[0], into) {
+		progress.start(fields[0])
+		result := cloneRepository(a, ghEnv, fields[0], into)
+		progress.advance(fields[0])
+		results = append(results, result)
+	}
+	finishProgressBeforeOutput(progress)
+	for _, result := range results {
+		switch {
+		case result.err != nil:
 			status = 1
+			failed++
+			renderErrorBlock(a, result.name+": clone failed", outputOrError(result.output, result.err))
+		case result.skipped:
+			skipped++
+			renderStatusLine(a, a.stdout, statusSkip, result.name, result.detail)
+		default:
+			cloned++
+			successLines = append(successLines, fmt.Sprintf("Cloned %s into %s", result.name, result.detail))
 		}
 	}
+	if cloned <= 2 {
+		for _, line := range successLines {
+			renderStatusLine(a, a.stdout, statusOK, line, "")
+		}
+	}
+	renderSummary(a,
+		summaryCount{label: "cloned", value: cloned, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	return status
 }
 
-func cloneRepository(a *app, ghEnv []string, fullName, into string) bool {
+type cloneResult struct {
+	name    string
+	detail  string
+	output  string
+	skipped bool
+	err     error
+}
+
+func cloneRepository(a *app, ghEnv []string, fullName, into string) cloneResult {
 	repoName := fullName
 	if idx := strings.LastIndex(fullName, "/"); idx >= 0 {
 		repoName = fullName[idx+1:]
@@ -106,16 +146,13 @@ func cloneRepository(a *app, ghEnv []string, fullName, into string) bool {
 	target := filepath.Join(into, repoName)
 	if isDir(target) {
 		abs, _ := filepath.Abs(into)
-		fmt.Fprintf(a.stdout, "%s%s already exists in %s. Skipping...%s\n", a.ui.Yellow, repoName, abs, a.ui.Reset)
-		return true
+		return cloneResult{name: repoName, detail: "already exists in " + abs, skipped: true}
 	}
 	if out, err := a.gh.CaptureEnv(a.ctx, "", ghEnv, "repo", "clone", fullName, target); err == nil {
 		abs, _ := filepath.Abs(target)
-		fmt.Fprintf(a.stdout, "%sCloned %s into %s%s\n", a.ui.Green, repoName, abs, a.ui.Reset)
-		return true
+		return cloneResult{name: repoName, detail: abs}
 	} else {
-		fmt.Fprintf(a.stderr, "%sError: Failed to clone %s:\n%s%s\n\n", a.ui.Red, repoName, out, a.ui.Reset)
-		return false
+		return cloneResult{name: repoName, output: out, err: err}
 	}
 }
 

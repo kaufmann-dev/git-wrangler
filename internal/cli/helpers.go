@@ -15,13 +15,25 @@ import (
 )
 
 func (a *app) status(stream io.Writer, color, symbol string, parts ...string) {
-	message := ""
-	if len(parts) == 1 {
-		message = parts[0]
-	} else if len(parts) >= 2 {
-		message = parts[0] + ": " + parts[1]
+	state := statusInfo
+	switch symbol {
+	case a.ui.OKSymbol:
+		state = statusOK
+	case a.ui.WarnSymbol:
+		state = statusWarn
+	case a.ui.ErrSymbol:
+		state = statusError
+	case a.ui.SkipSymbol:
+		state = statusSkip
 	}
-	fmt.Fprintf(stream, "%s%s%s %s\n", color, symbol, a.ui.Reset, message)
+	_ = color
+	if len(parts) == 1 {
+		renderStatusLine(a, stream, state, parts[0], "")
+		return
+	}
+	if len(parts) >= 2 {
+		renderStatusLine(a, stream, state, parts[0], parts[1])
+	}
 }
 
 func (a *app) ok(parts ...string) { a.status(a.stdout, a.ui.Green, a.ui.OKSymbol, parts...) }

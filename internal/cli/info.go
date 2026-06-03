@@ -30,6 +30,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	statusCode := 0
+	failed := 0
 	results := parallelReposProgress(repos, newProgress(a, "Inspecting repositories", len(repos)), func(r repo) infoResult {
 		return collectInfo(a, r)
 	})
@@ -40,7 +41,14 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		}
 		if result.failed {
 			statusCode = 1
+			failed++
 		}
+	}
+	if len(repos) > 1 && failed > 0 {
+		renderSummary(a,
+			summaryCount{label: "inspected", value: len(repos) - failed, color: a.ui.Green},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
 	}
 	return statusCode
 }

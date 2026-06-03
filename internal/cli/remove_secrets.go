@@ -71,25 +71,30 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		restoreErr error
 	}
 	applies := []secretApply{}
+	clean := 0
+	scanFailed := 0
 	for _, scan := range scans {
 		r := scan.repo
 		if scan.invalidRepo {
-			fmt.Fprintf(a.stderr, "%sError: %s is not a valid or accessible git repository. Skipping...%s\n", a.ui.Red, r.display, a.ui.Reset)
+			renderErrorBlock(a, r.display+": not a valid or accessible git repository", scan.err.Error())
 			status = 1
+			scanFailed++
 			continue
 		}
 		if scan.err != nil {
-			fmt.Fprintf(a.stderr, "%sError: Could not scan history for %s:\n%s%s\n\n", a.ui.Red, r.display, scan.err.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": could not scan history", scan.err.Error())
 			status = 1
+			scanFailed++
 			continue
 		}
 		matchedPatterns := scan.matchedPatterns
 		matchedFiles := scan.matchedFiles
 		if len(matchedPatterns) == 0 {
-			fmt.Fprintf(a.stdout, "%sNo target patterns found in history. Skipping %s cleanly...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			clean++
 			continue
 		}
-		fmt.Fprintf(a.stdout, "%sFound %d sensitive file(s) matching %d pattern(s) in %s:%s\n", a.ui.Yellow, len(matchedFiles), len(matchedPatterns), r.display, a.ui.Reset)
+		renderRepoHeader(a, r.display)
+		fmt.Fprintf(a.stdout, "  %sMatched files:%s %d across %d pattern(s)\n", a.ui.Yellow, a.ui.Reset, len(matchedFiles), len(matchedPatterns))
 		for _, file := range matchedFiles {
 			fmt.Fprintf(a.stdout, "  %s\n", file)
 		}
@@ -101,12 +106,20 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
 		applies = append(applies, secretApply{repo: r, filterArgs: filterArgs, matchedFiles: matchedFiles})
 	}
+	renderSummary(a,
+		summaryCount{label: "with matches", value: len(applies), color: a.ui.Yellow},
+		summaryCount{label: "clean", value: clean, color: a.ui.Green},
+		summaryCount{label: "failed", value: scanFailed, color: a.ui.Red},
+	)
 	if len(applies) > 0 {
-		fmt.Fprintf(a.stderr, "%sWARNING: This operation rewrites Git history in %d repositories. A force push will be required to update any remote.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+		renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
 		if !confirmOrSkip(a, yes, fmt.Sprintf("Purge these files from history in %d repositories?", len(applies))) {
-			for _, apply := range applies {
-				a.skip(apply.repo.display, "Skipping history rewrite.")
-			}
+			renderSummary(a,
+				summaryCount{label: "rewritten", value: 0, color: a.ui.Green},
+				summaryCount{label: "clean", value: clean, color: a.ui.Green},
+				summaryCount{label: "skipped", value: len(applies), color: a.ui.Yellow},
+				summaryCount{label: "failed", value: scanFailed, color: a.ui.Red},
+			)
 			return status
 		}
 	}
@@ -116,22 +129,33 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, apply.filterArgs, nil)
 		return secretApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
+	rewritten := 0
+	applyFailed := 0
 	for _, result := range results {
 		r := result.apply.repo
 		if result.err == nil {
-			fmt.Fprintf(a.stdout, "%sSuccessfully purged %d sensitive file(s) from %s%s\n", a.ui.Green, len(result.apply.matchedFiles), r.display, a.ui.Reset)
 			if result.restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Secret removal completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+				renderErrorBlock(a, r.display+": secret removal completed, but origin could not be restored", result.restoreErr.Error())
 				status = 1
+				applyFailed++
+				continue
 			}
+			rewritten++
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sError: Rewrite failed for %s:\n%s%s\n\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		renderErrorBlock(a, r.display+": rewrite failed", result.output)
 		if result.restoreErr != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": rewrite failed, and origin could not be restored", result.restoreErr.Error())
 		}
 		status = 1
+		applyFailed++
 	}
+	renderSummary(a,
+		summaryCount{label: "rewritten", value: rewritten, color: a.ui.Green},
+		summaryCount{label: "clean", value: clean, color: a.ui.Green},
+		summaryCount{label: "skipped", value: 0, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: scanFailed + applyFailed, color: a.ui.Red},
+	)
 	return status
 }
 

@@ -36,13 +36,14 @@ func TestDoctorReportsInstalledDependencies(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"Git Wrangler Doctor",
-		"Version:    git-wrangler dev",
-		"Platform:",
-		"Executable:",
-		"OK    git",
+		"Runtime",
+		"Version     git-wrangler dev",
+		"Platform",
+		"Executable",
+		"git              OK",
 		"/usr/bin/git (git version 2.50.0)",
-		"OK    gh",
-		"OK    git-filter-repo",
+		"gh               OK",
+		"git-filter-repo  OK",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, out)
@@ -87,7 +88,7 @@ func TestDoctorFailsWhenGitIsMissing(t *testing.T) {
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		"ERROR git",
+		"git              ERROR",
 		"not found; needed for most Git Wrangler commands",
 		"Source installs do not include runtime dependencies",
 	} {
@@ -123,9 +124,9 @@ func TestDoctorWarnsForMissingOptionalDependencies(t *testing.T) {
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		"WARN  gh",
+		"gh               WARN",
 		"not found; needed for clone and rename-repo",
-		"WARN  git-filter-repo",
+		"git-filter-repo  WARN",
 		"not found; needed for history rewrite commands",
 		"Source installs do not include runtime dependencies",
 	} {
@@ -167,7 +168,7 @@ func TestDoctorReportsGitFilterRepoFallback(t *testing.T) {
 		t.Fatalf("doctor returned error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "OK    git-filter-repo  git filter-repo (git-filter-repo 2.47.0)") {
+	if !strings.Contains(out, "git-filter-repo  OK     git filter-repo (git-filter-repo 2.47.0)") {
 		t.Fatalf("doctor did not report git filter-repo fallback:\n%s", out)
 	}
 }
