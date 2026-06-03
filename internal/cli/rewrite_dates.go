@@ -197,7 +197,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit dates", len(applies)), func(apply dateApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply dateApply) dateApplyResult {
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, []string{"--partial", "--commit-callback", apply.callback, "--force"}, nil)
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, []string{"--partial", "--commit-callback", apply.callback, "--force"}, nil)
 		_ = os.Remove(apply.callback)
 		return dateApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})

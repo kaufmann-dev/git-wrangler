@@ -163,7 +163,7 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	results := parallelItemsWithWorkersProgress(plan.Repos, gitMutationWorkerCount(len(plan.Repos)), progress, func(repoPlan ai.RepoPlan) (string, string) {
 		return repoPlan.Name, repoPlan.Name
 	}, func(repoPlan ai.RepoPlan) aiApplyResult {
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, repoPlan.GitDir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
 		return aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
 	})
 
