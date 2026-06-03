@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -u
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT" || exit 1
+
+GOBIN="${GOBIN:-$HOME/.local/bin}"
+export GOBIN
+mkdir -p "$GOBIN"
+
+go install ./cmd/git-wrangler
+
+printf "installed git-wrangler to %s\n" "$GOBIN"
