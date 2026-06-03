@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -45,6 +46,29 @@ func TestConfigSetShowUnsetSecretDoesNotPrintSecret(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "secret-token") {
 		t.Fatalf("config show leaked secret:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	a = newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+	a.creds = store
+	cmd = newRootCommand(a)
+	cmd.SetArgs([]string{"config", "show", "--json"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config show --json returned error: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("config show --json wrote stderr: %s", stderr.String())
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "secret-token") {
+		t.Fatalf("config show --json leaked secret:\n%s", stdout.String())
 	}
 
 	stdout.Reset()
