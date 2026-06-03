@@ -100,36 +100,41 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		return dateRewriteScan{repo: r, hasHead: true, commits: commits, mapping: distributeCommitTimes(commits, startEpoch, endEpoch), tzOffset: tzOffset}
 	})
 	status := 0
-	rewriteProgress := newProgress(a, "Rewriting commit dates", len(scans))
+	type dateApply struct {
+		repo     repo
+		callback string
+	}
+	type dateApplyResult struct {
+		apply      dateApply
+		output     string
+		err        error
+		restoreErr error
+	}
+	applies := []dateApply{}
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasHead {
 			fmt.Fprintf(a.stdout, "%s%s has no commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		fmt.Fprintf(a.stdout, "%sProcessing %s...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 		if scan.countText != "" {
 			fmt.Fprintf(a.stderr, "%sError: malformed commit count for %s: %q%s\n", a.ui.Red, r.display, scan.countText, a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.err != nil {
 			fmt.Fprintf(a.stderr, "%sError: %s for %s: %s%s\n", a.ui.Red, scan.errLabel, r.display, scan.err.Error(), a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.tooFew {
 			fmt.Fprintf(a.stdout, "%s%s has fewer than 2 commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		if scan.startBad {
 			fmt.Fprintf(a.stderr, "%sError: start date must be before end date in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		fmt.Fprintln(a.stdout, "Commit summary (old -> new):")
@@ -140,34 +145,39 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		fmt.Fprintf(a.stderr, "%s\nWARNING: This operation rewrites Git history. A force push will be required to update any remote.%s\n\n", a.ui.Red, a.ui.Reset)
 		if !yes && !confirm(a, "Proceed with rewrite for "+r.display+"?") {
 			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-			rewriteProgress.advance(r.display)
 			continue
 		}
 		callback, err := writeDateCallback(scan.mapping, scan.tzOffset)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "%sError: timestamp generation failed for %s:\n%s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
 			status = 1
-			rewriteProgress.advance(r.display)
 			continue
 		}
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, r.dir, filterCmd, []string{"--partial", "--commit-callback", callback, "--force"}, nil)
-		_ = os.Remove(callback)
-		if err == nil {
+		applies = append(applies, dateApply{repo: r, callback: callback})
+	}
+	results := parallelItemsWithWorkersProgress(applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting commit dates", len(applies)), func(apply dateApply) (string, string) {
+		return apply.repo.display, apply.repo.display
+	}, func(apply dateApply) dateApplyResult {
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, filterCmd, []string{"--partial", "--commit-callback", apply.callback, "--force"}, nil)
+		_ = os.Remove(apply.callback)
+		return dateApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
+	})
+	for _, result := range results {
+		r := result.apply.repo
+		if result.err == nil {
 			fmt.Fprintf(a.stdout, "%sSuccessfully rewrote commit dates for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
+			if result.restoreErr != nil {
+				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
 				status = 1
 			}
-		} else {
-			fmt.Fprintf(a.stderr, "%sError: rewrite failed for %s:\n%s%s\n", a.ui.Red, r.display, out, a.ui.Reset)
-			if restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, restoreErr.Error(), a.ui.Reset)
-			}
-			status = 1
+			continue
 		}
-		rewriteProgress.advance(r.display)
+		fmt.Fprintf(a.stderr, "%sError: rewrite failed for %s:\n%s%s\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		if result.restoreErr != nil {
+			fmt.Fprintf(a.stderr, "%sWarning: Date rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+		}
+		status = 1
 	}
-	rewriteProgress.done()
 	return status
 }
 
