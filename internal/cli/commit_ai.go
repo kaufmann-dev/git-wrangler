@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
@@ -91,7 +93,7 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 		Body:              body,
 		Git:               a.git,
 		Progress: func(event ai.ProgressEvent) {
-			if event.Phase != "Sending API requests" || event.Total <= 1 {
+			if event.Phase != "Sending API requests" {
 				return
 			}
 			updateAIRequestProgress(a, &apiProgress, event)
@@ -113,6 +115,11 @@ func runCommitAI(a *app, cmd *cobra.Command, args []string) int {
 	committed := 0
 	for _, change := range changes {
 		message := messages[change.input.ID]
+		if _, err := a.git.Capture(a.ctx, change.repo.dir, nil, "add", "-A"); err != nil {
+			a.error(change.repo.display, "Could not stage changes")
+			failed++
+			continue
+		}
 		if body {
 			if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject, "-m", message.Body); err == nil {
 				a.ok(change.repo.display, "Commit created")
@@ -161,14 +168,25 @@ func collectCommitAIChanges(a *app, repos []repo, maxChars int) ([]commitAIChang
 		contextError bool
 		skipped      bool
 	}
-	results := parallelReposProgress(repos, newProgress(a, "Preparing AI commits", len(repos)), func(r repo) commitAICollectResult {
-		if _, err := a.git.Capture(a.ctx, r.dir, nil, "add", "-A"); err != nil {
+	results := parallelGitMutationsProgress(repos, newProgress(a, "Preparing AI commits", len(repos)), func(r repo) commitAICollectResult {
+		tempDir, err := os.MkdirTemp("", "git-wrangler-commit-ai-index-*")
+		if err != nil {
 			return commitAICollectResult{repo: r, err: err, stageFailed: true}
 		}
-		if _, err := a.git.Capture(a.ctx, r.dir, nil, "diff", "--cached", "--quiet"); err == nil {
+		defer os.RemoveAll(tempDir)
+		env := []string{"GIT_INDEX_FILE=" + filepath.Join(tempDir, "index")}
+		if _, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
+			if _, err := a.git.Capture(a.ctx, r.dir, env, "read-tree", "HEAD"); err != nil {
+				return commitAICollectResult{repo: r, err: err, stageFailed: true}
+			}
+		}
+		if _, err := a.git.Capture(a.ctx, r.dir, env, "add", "-A"); err != nil {
+			return commitAICollectResult{repo: r, err: err, stageFailed: true}
+		}
+		if _, err := a.git.Capture(a.ctx, r.dir, env, "diff", "--cached", "--quiet"); err == nil {
 			return commitAICollectResult{repo: r, skipped: true}
 		}
-		contextText, err := ai.BuildStagedContext(a.ctx, a.git, r.dir, r.display, maxChars)
+		contextText, err := ai.BuildStagedContextWithEnv(a.ctx, a.git, r.dir, r.display, maxChars, env)
 		if err != nil {
 			return commitAICollectResult{repo: r, err: err, contextError: true}
 		}
