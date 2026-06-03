@@ -119,55 +119,77 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		restoreErr error
 	}
 	candidates := []dateCandidate{}
+	skipped := 0
+	failed := 0
 	for _, scan := range scans {
 		r := scan.repo
 		if !scan.hasHead {
-			fmt.Fprintf(a.stdout, "%s%s has no commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			skipped++
 			continue
 		}
-		fmt.Fprintf(a.stdout, "%sProcessing %s...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
 		if scan.countText != "" {
-			fmt.Fprintf(a.stderr, "%sError: malformed commit count for %s: %q%s\n", a.ui.Red, r.display, scan.countText, a.ui.Reset)
+			renderErrorBlock(a, r.display+": malformed commit count", scan.countText)
 			status = 1
+			failed++
 			continue
 		}
 		if scan.err != nil {
-			fmt.Fprintf(a.stderr, "%sError: %s for %s: %s%s\n", a.ui.Red, scan.errLabel, r.display, scan.err.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": "+scan.errLabel, scan.err.Error())
 			status = 1
+			failed++
 			continue
 		}
 		if scan.tooFew {
-			fmt.Fprintf(a.stdout, "%s%s has fewer than 2 commits. Skipping...%s\n", a.ui.Yellow, r.display, a.ui.Reset)
+			skipped++
 			continue
 		}
 		if scan.startBad {
-			fmt.Fprintf(a.stderr, "%sError: start date must be before end date in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
+			renderErrorBlock(a, r.display+": start date must be before end date", "")
 			status = 1
+			failed++
 			continue
 		}
-		fmt.Fprintln(a.stdout, "Commit summary (old -> new):")
-		fmt.Fprintln(a.stdout, strings.Repeat("-", 70))
-		for _, c := range scan.commits {
+		renderRepoHeader(a, r.display)
+		fmt.Fprintf(a.stdout, "  Commits: %d\n", len(scan.commits))
+		fmt.Fprintf(a.stdout, "  Range: %s -> %s\n", formatEpoch(scan.mapping[scan.commits[0].hash], scan.tzOffset), formatEpoch(scan.mapping[scan.commits[len(scan.commits)-1].hash], scan.tzOffset))
+		fmt.Fprintf(a.stdout, "  Timezone: %s\n", scan.tzOffset)
+		fmt.Fprintln(a.stdout, "  Sample:")
+		for i, c := range scan.commits {
+			if i >= 3 {
+				if len(scan.commits) > 3 {
+					fmt.Fprintln(a.stdout, "    ...")
+				}
+				break
+			}
 			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(c.hash, 8), formatEpoch(c.epoch, scan.tzOffset), formatEpoch(scan.mapping[c.hash], scan.tzOffset))
 		}
+		fmt.Fprintln(a.stdout)
 		candidates = append(candidates, dateCandidate{repo: r, mapping: scan.mapping, tzOffset: scan.tzOffset})
 	}
+	renderSummary(a,
+		summaryCount{label: "with rewrites", value: len(candidates), color: a.ui.Yellow},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
 	if len(candidates) == 0 {
 		return status
 	}
-	fmt.Fprintf(a.stderr, "%s\nWARNING: This operation rewrites Git history in %d repositories. A force push will be required to update any remote.%s\n\n", a.ui.Red, len(candidates), a.ui.Reset)
+	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(candidates)))
 	if !confirmOrSkip(a, yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(candidates))) {
-		for _, candidate := range candidates {
-			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, candidate.repo.display, a.ui.Reset)
-		}
+		renderSummary(a,
+			summaryCount{label: "rewritten", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: skipped + len(candidates), color: a.ui.Yellow},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
 		return status
 	}
 	applies := []dateApply{}
 	for _, candidate := range candidates {
 		callback, err := writeDateCallback(candidate.mapping, candidate.tzOffset)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "%sError: timestamp generation failed for %s:\n%s%s\n", a.ui.Red, candidate.repo.display, err.Error(), a.ui.Reset)
+			renderErrorBlock(a, candidate.repo.display+": timestamp generation failed", err.Error())
 			status = 1
+			failed++
 			continue
 		}
 		applies = append(applies, dateApply{repo: candidate.repo, callback: callback})
@@ -179,22 +201,32 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		_ = os.Remove(apply.callback)
 		return dateApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
+	rewritten := 0
+	applyFailed := 0
 	for _, result := range results {
 		r := result.apply.repo
 		if result.err == nil {
-			fmt.Fprintf(a.stdout, "%sSuccessfully rewrote commit dates for %s%s\n", a.ui.Green, r.display, a.ui.Reset)
 			if result.restoreErr != nil {
-				fmt.Fprintf(a.stderr, "%sWarning: Date rewrite completed for %s, but origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+				renderErrorBlock(a, r.display+": date rewrite completed, but origin could not be restored", result.restoreErr.Error())
 				status = 1
+				applyFailed++
+				continue
 			}
+			rewritten++
 			continue
 		}
-		fmt.Fprintf(a.stderr, "%sError: rewrite failed for %s:\n%s%s\n", a.ui.Red, r.display, result.output, a.ui.Reset)
+		renderErrorBlock(a, r.display+": rewrite failed", result.output)
 		if result.restoreErr != nil {
-			fmt.Fprintf(a.stderr, "%sWarning: Date rewrite failed for %s, and origin could not be restored:\n%s%s\n\n", a.ui.Red, r.display, result.restoreErr.Error(), a.ui.Reset)
+			renderErrorBlock(a, r.display+": date rewrite failed, and origin could not be restored", result.restoreErr.Error())
 		}
 		status = 1
+		applyFailed++
 	}
+	renderSummary(a,
+		summaryCount{label: "rewritten", value: rewritten, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed + applyFailed, color: a.ui.Red},
+	)
 	return status
 }
 
