@@ -3,6 +3,8 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/config"
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
@@ -89,6 +91,7 @@ func runConfigShow(a *app) int {
 	path, _ := config.Path()
 	github := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
 	aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
+	aiHeaders := aiHeaderSummaries(a, cfg)
 
 	if a.json {
 		return writeJSON(a, map[string]any{
@@ -107,6 +110,7 @@ func runConfigShow(a *app) int {
 				"model":        cfg.AI.Model,
 				"apiKeySource": string(aiKey.Source),
 				"apiKeySet":    aiKey.Value != "",
+				"headers":      aiHeaders,
 			},
 		})
 	}
@@ -127,6 +131,7 @@ func runConfigShow(a *app) int {
 		{key: "Base URL", value: displayUnsetStyled(a, cfg.AI.BaseURL)},
 		{key: "Model", value: displayUnsetStyled(a, cfg.AI.Model)},
 		{key: "API key", value: string(aiKey.Source)},
+		{key: "Headers", value: displayHeaderSummary(a, aiHeaders)},
 	})
 	return 0
 }
@@ -207,6 +212,9 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	default:
+		if strings.HasPrefix(key, "ai.headers.") {
+			return runConfigSetAIHeader(a, cfg, key, args)
+		}
 		a.plainErrorf("unknown config key %q.", key)
 		return 1
 	}
@@ -227,6 +235,9 @@ func runConfigUnset(a *app, key string) int {
 	case "ai.api-key":
 		account = credentials.AIAccount(cfg.AI.Provider)
 	default:
+		if strings.HasPrefix(key, "ai.headers.") {
+			return runConfigUnsetAIHeader(a, cfg, key)
+		}
 		a.plainErrorf("unknown config key %q.", key)
 		return 1
 	}
@@ -236,6 +247,150 @@ func runConfigUnset(a *app, key string) int {
 	}
 	a.ok("Unset " + key)
 	return 0
+}
+
+func runConfigSetAIHeader(a *app, cfg config.Config, key string, args []string) int {
+	header, ok := configHeaderName(a, key)
+	if !ok {
+		return 1
+	}
+	if len(args) == 2 && args[1] != "" {
+		if cfg.AI.Headers == nil {
+			cfg.AI.Headers = map[string]string{}
+		}
+		cfg.AI.Headers[header] = args[1]
+		cfg.AI.SecretHeaders = removeHeaderName(cfg.AI.SecretHeaders, header)
+		if err := a.creds.Delete(credentials.AIHeaderAccount(cfg.AI.Provider, header)); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
+		if err := config.Save(cfg); err != nil {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
+		a.ok("Updated ai.headers." + header)
+		return 0
+	}
+	token, ok := secretValue(a, args, header+": ")
+	if !ok {
+		return 1
+	}
+	if err := a.creds.Set(credentials.AIHeaderAccount(cfg.AI.Provider, header), token); err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	if cfg.AI.Headers != nil {
+		delete(cfg.AI.Headers, header)
+	}
+	cfg.AI.SecretHeaders = appendHeaderName(cfg.AI.SecretHeaders, header)
+	if err := config.Save(cfg); err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	a.ok("Updated ai.headers." + header)
+	return 0
+}
+
+func runConfigUnsetAIHeader(a *app, cfg config.Config, key string) int {
+	header, ok := configHeaderName(a, key)
+	if !ok {
+		return 1
+	}
+	if cfg.AI.Headers != nil {
+		delete(cfg.AI.Headers, header)
+	}
+	cfg.AI.SecretHeaders = removeHeaderName(cfg.AI.SecretHeaders, header)
+	if err := a.creds.Delete(credentials.AIHeaderAccount(cfg.AI.Provider, header)); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	if err := config.Save(cfg); err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	a.ok("Unset ai.headers." + header)
+	return 0
+}
+
+func configHeaderName(a *app, key string) (string, bool) {
+	raw := strings.TrimPrefix(key, "ai.headers.")
+	header, ok := config.CanonicalHeaderName(raw)
+	if !ok {
+		a.plainErrorf("invalid AI header name %q.", raw)
+		return "", false
+	}
+	return header, true
+}
+
+func appendHeaderName(headers []string, header string) []string {
+	headers = removeHeaderName(headers, header)
+	headers = append(headers, header)
+	sort.Strings(headers)
+	return headers
+}
+
+func removeHeaderName(headers []string, header string) []string {
+	out := headers[:0]
+	for _, existing := range headers {
+		if !strings.EqualFold(existing, header) {
+			out = append(out, existing)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func aiHeaderSummaries(a *app, cfg config.Config) []map[string]any {
+	names := map[string]bool{}
+	for name := range cfg.AI.Headers {
+		names[name] = true
+	}
+	for _, name := range cfg.AI.SecretHeaders {
+		names[name] = true
+	}
+	sorted := make([]string, 0, len(names))
+	for name := range names {
+		sorted = append(sorted, name)
+	}
+	sort.Strings(sorted)
+	rows := make([]map[string]any, 0, len(sorted))
+	for _, name := range sorted {
+		source := "config"
+		set := cfg.AI.Headers[name] != ""
+		if containsHeaderName(cfg.AI.SecretHeaders, name) {
+			resolved, err := a.creds.Get(credentials.AIHeaderAccount(cfg.AI.Provider, name))
+			source = string(credentials.SourceKeyring)
+			set = err == nil && resolved != ""
+		}
+		rows = append(rows, map[string]any{
+			"name":   name,
+			"source": source,
+			"set":    set,
+		})
+	}
+	return rows
+}
+
+func displayHeaderSummary(a *app, headers []map[string]any) string {
+	if len(headers) == 0 {
+		return displayUnsetStyled(a, "")
+	}
+	parts := make([]string, 0, len(headers))
+	for _, header := range headers {
+		parts = append(parts, fmt.Sprintf("%s (%s)", header["name"], header["source"]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func containsHeaderName(headers []string, header string) bool {
+	for _, existing := range headers {
+		if strings.EqualFold(existing, header) {
+			return true
+		}
+	}
+	return false
 }
 
 func configValue(a *app, args []string, key string) (string, bool) {

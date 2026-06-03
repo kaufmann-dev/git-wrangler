@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"runtime"
 	"sync"
 )
@@ -27,33 +28,36 @@ func cappedWorkerCount(repoCount, cap int) int {
 	return workers
 }
 
-func parallelRepos[T any](repos []repo, inspect func(repo) T) []T {
-	return parallelReposWithWorkers(repos, readOnlyWorkerCount(len(repos)), inspect)
+func parallelRepos[T any](ctx context.Context, repos []repo, inspect func(repo) T) []T {
+	return parallelReposWithWorkers(ctx, repos, readOnlyWorkerCount(len(repos)), inspect)
 }
 
-func parallelReposProgress[T any](repos []repo, progress *progress, inspect func(repo) T) []T {
-	return parallelReposWithWorkersProgress(repos, readOnlyWorkerCount(len(repos)), progress, inspect)
+func parallelReposProgress[T any](ctx context.Context, repos []repo, progress *progress, inspect func(repo) T) []T {
+	return parallelReposWithWorkersProgress(ctx, repos, readOnlyWorkerCount(len(repos)), progress, inspect)
 }
 
-func parallelGitMutations[T any](repos []repo, mutate func(repo) T) []T {
-	return parallelReposWithWorkers(repos, gitMutationWorkerCount(len(repos)), mutate)
+func parallelGitMutations[T any](ctx context.Context, repos []repo, mutate func(repo) T) []T {
+	return parallelReposWithWorkers(ctx, repos, gitMutationWorkerCount(len(repos)), mutate)
 }
 
-func parallelGitMutationsProgress[T any](repos []repo, progress *progress, mutate func(repo) T) []T {
-	return parallelReposWithWorkersProgress(repos, gitMutationWorkerCount(len(repos)), progress, mutate)
+func parallelGitMutationsProgress[T any](ctx context.Context, repos []repo, progress *progress, mutate func(repo) T) []T {
+	return parallelReposWithWorkersProgress(ctx, repos, gitMutationWorkerCount(len(repos)), progress, mutate)
 }
 
-func parallelReposWithWorkers[T any](repos []repo, workers int, inspect func(repo) T) []T {
-	return parallelReposWithWorkersProgress(repos, workers, nil, inspect)
+func parallelReposWithWorkers[T any](ctx context.Context, repos []repo, workers int, inspect func(repo) T) []T {
+	return parallelReposWithWorkersProgress(ctx, repos, workers, nil, inspect)
 }
 
-func parallelReposWithWorkersProgress[T any](repos []repo, workers int, progress *progress, inspect func(repo) T) []T {
-	return parallelItemsWithWorkersProgress(repos, workers, progress, func(r repo) (string, string) {
+func parallelReposWithWorkersProgress[T any](ctx context.Context, repos []repo, workers int, progress *progress, inspect func(repo) T) []T {
+	return parallelItemsWithWorkersProgress(ctx, repos, workers, progress, func(r repo) (string, string) {
 		return r.display, r.display
 	}, inspect)
 }
 
-func parallelItemsWithWorkersProgress[T any, R any](items []T, workers int, progress *progress, detail func(T) (string, string), work func(T) R) []R {
+func parallelItemsWithWorkersProgress[T any, R any](ctx context.Context, items []T, workers int, progress *progress, detail func(T) (string, string), work func(T) R) []R {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	results := make([]R, len(items))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -68,7 +72,21 @@ func parallelItemsWithWorkersProgress[T any, R any](items []T, workers int, prog
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for index := range jobs {
+		outer:
+			for {
+				var index int
+				select {
+				case <-ctx.Done():
+					break outer
+				case next, ok := <-jobs:
+					if !ok {
+						break outer
+					}
+					index = next
+				}
+				if ctx.Err() != nil {
+					break outer
+				}
 				if progress != nil {
 					key, text := detail(items[index])
 					progress.startWork(key, text)
@@ -81,10 +99,23 @@ func parallelItemsWithWorkersProgress[T any, R any](items []T, workers int, prog
 			}
 		}()
 	}
+outer:
 	for index := range items {
-		jobs <- index
+		select {
+		case <-ctx.Done():
+			break outer
+		case jobs <- index:
+		}
 	}
 	close(jobs)
 	wg.Wait()
 	return results
+}
+
+func interrupted(a *app) bool {
+	if a == nil || a.ctx.Err() == nil {
+		return false
+	}
+	renderStatusLine(a, a.stdout, statusSkip, "stopped", "operation cancelled")
+	return true
 }
