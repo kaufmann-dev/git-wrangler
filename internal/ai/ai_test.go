@@ -57,6 +57,23 @@ func TestRedactDiffHidesSensitiveFileContents(t *testing.T) {
 	}
 }
 
+func TestRedactLineHidesUnquotedAndBacktickSecrets(t *testing.T) {
+	lines := []string{
+		"+password: mysecretvalue",
+		"+password := `mysecretvalue`",
+		`+api_key = "mysecretvalue"`,
+	}
+	for _, line := range lines {
+		redacted := RedactLine(line)
+		if strings.Contains(redacted, "mysecretvalue") {
+			t.Fatalf("secret leaked for %q: %s", line, redacted)
+		}
+		if !strings.Contains(redacted, "[REDACTED]") {
+			t.Fatalf("missing redaction marker for %q: %s", line, redacted)
+		}
+	}
+}
+
 func TestRedactDiffParsesQuotedAndSpacedPaths(t *testing.T) {
 	diff := strings.Join([]string{
 		`diff --git a/app/config.json b/app/config.json`,
@@ -245,6 +262,42 @@ func TestChatEndpoint(t *testing.T) {
 	}
 	if got := ChatEndpoint("https://example.test/v1/chat/completions"); got != "https://example.test/v1/chat/completions" {
 		t.Fatalf("endpoint = %q", got)
+	}
+}
+
+func TestRequestBatchSendsCustomHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Project-Id"); got != "corp-dev-99" {
+			t.Fatalf("X-Project-Id = %q, want corp-dev-99", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Gateway custom-token" {
+			t.Fatalf("Authorization = %q, want custom header", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	messages, err := requestBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL: server.URL,
+		Model:   "test-model",
+		APIKey:  "default-token",
+		Headers: map[string]string{
+			"Authorization": "Gateway custom-token",
+			"X-Project-Id":  "corp-dev-99",
+		},
+		Timeout: time.Second,
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages["c000001"].Subject != "feat(cli): add thing" {
+		t.Fatalf("messages = %#v", messages)
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/auth"
+	"github.com/kaufmann-dev/git-wrangler/internal/config"
+	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 )
 
 func TestConfigSetShowUnsetSecretDoesNotPrintSecret(t *testing.T) {
@@ -104,6 +106,89 @@ func TestConfigSetSecretRequiresPromptInput(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "secret input is required") {
 		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	}
+}
+
+func TestConfigSetAIHeadersUsesConfigAndKeyring(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	store := &fakeCredentialStore{}
+	var stdout, stderr bytes.Buffer
+
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+	a.creds = store
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"config", "set", "ai.headers.X-Project-ID", "corp-dev-99"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config set plaintext header returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AI.Headers["X-Project-Id"] != "corp-dev-99" {
+		t.Fatalf("headers = %#v", cfg.AI.Headers)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	a = newApp(context.Background(), fakeRunner{}, strings.NewReader("azure-secret\n"), &stdout, &stderr)
+	a.creds = store
+	cmd = newRootCommand(a)
+	cmd.SetArgs([]string{"config", "set", "ai.headers.api-key"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config set secret header returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.AI.SecretHeaders) != 1 || cfg.AI.SecretHeaders[0] != "Api-Key" {
+		t.Fatalf("secret headers = %#v", cfg.AI.SecretHeaders)
+	}
+	if got, err := store.Get(credentials.AIHeaderAccount("openai", "Api-Key")); err != nil || got != "azure-secret" {
+		t.Fatalf("stored header = %q, %v", got, err)
+	}
+	if strings.Contains(stdout.String()+stderr.String(), "azure-secret") {
+		t.Fatalf("secret leaked:\nstdout=%s\nstderr=%s", stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	a = newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+	a.creds = store
+	cmd = newRootCommand(a)
+	cmd.SetArgs([]string{"config", "show", "--json"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config show --json returned error: %v", err)
+	}
+	if strings.Contains(stdout.String(), "azure-secret") {
+		t.Fatalf("config show --json leaked secret:\n%s", stdout.String())
+	}
+	var shown map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &shown); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, stdout.String())
+	}
+	aiSection := shown["ai"].(map[string]any)
+	headers := aiSection["headers"].([]any)
+	foundSecretHeader := false
+	for _, header := range headers {
+		row := header.(map[string]any)
+		if row["name"] == "Api-Key" && row["source"] == "keyring" && row["set"] == true {
+			foundSecretHeader = true
+		}
+	}
+	if !foundSecretHeader {
+		t.Fatalf("config show --json missing header metadata:\n%s", stdout.String())
 	}
 }
 
