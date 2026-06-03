@@ -15,7 +15,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "fix-gitignore") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -51,43 +51,16 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		return scan
 	})
 	status := 0
+	applies := []gitignoreScan{}
 	for _, scan := range scans {
 		r := scan.repo
 		added := scan.added
 		covered := scan.covered
 		notPresent := scan.notPresent
-		printedRepo := false
+		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
 		if len(added) > 0 {
-			fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
 			fmt.Fprintf(a.stdout, "  %sWill add:%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(added, ", "))
-			printedRepo = true
-			fmt.Fprintf(a.stderr, "%sWARNING: This operation will modify .gitignore and create a commit in %s.%s\n", a.ui.Red, r.display, a.ui.Reset)
-			if !yes && !confirm(a, "Apply and commit .gitignore updates for "+r.display+"?") {
-				fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, r.display, a.ui.Reset)
-				continue
-			}
-			if err := appendGitignoreEntries(filepath.Join(r.dir, ".gitignore"), added); err != nil {
-				fmt.Fprintf(a.stderr, "  %sError: Could not update .gitignore:\n%s%s\n", a.ui.Red, err.Error(), a.ui.Reset)
-				status = 1
-				continue
-			}
-		}
-		if !printedRepo {
-			fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
-		}
-		if len(added) > 0 {
-			fmt.Fprintf(a.stdout, "  %sAdded:%s %s\n", a.ui.Green, a.ui.Reset, strings.Join(added, ", "))
-			if out, err := a.git.Capture(a.ctx, r.dir, nil, "add", ".gitignore"); err != nil {
-				fmt.Fprintf(a.stderr, "  %sError: Could not stage .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
-				status = 1
-				continue
-			}
-			if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", "Update .gitignore with missing entries"); err == nil {
-				fmt.Fprintf(a.stdout, "  %sCommitted .gitignore updates%s\n", a.ui.Green, a.ui.Reset)
-			} else {
-				fmt.Fprintf(a.stderr, "  %sError: Could not commit .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
-				status = 1
-			}
+			applies = append(applies, scan)
 		}
 		if len(covered) > 0 {
 			fmt.Fprintf(a.stdout, "  %sSkipped (already covered):%s %s\n", a.ui.Yellow, a.ui.Reset, strings.Join(covered, ", "))
@@ -97,6 +70,37 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		}
 		if len(added) == 0 && len(covered) == 0 && len(notPresent) == 0 {
 			fmt.Fprintf(a.stdout, "  %sNo changes needed.%s\n", a.ui.Yellow, a.ui.Reset)
+		}
+	}
+	if len(applies) == 0 {
+		return status
+	}
+	fmt.Fprintf(a.stderr, "%sWARNING: This operation will modify .gitignore and create commits in %d repositories.%s\n", a.ui.Red, len(applies), a.ui.Reset)
+	if !confirmOrSkip(a, yes, fmt.Sprintf("Apply and commit .gitignore updates for %d repositories?", len(applies))) {
+		for _, apply := range applies {
+			fmt.Fprintf(a.stdout, "%sSkipping %s.%s\n", a.ui.Yellow, apply.repo.display, a.ui.Reset)
+		}
+		return status
+	}
+	for _, apply := range applies {
+		r := apply.repo
+		if err := appendGitignoreEntries(filepath.Join(r.dir, ".gitignore"), apply.added); err != nil {
+			fmt.Fprintf(a.stderr, "  %sError: Could not update .gitignore for %s:\n%s%s\n", a.ui.Red, r.display, err.Error(), a.ui.Reset)
+			status = 1
+			continue
+		}
+		fmt.Fprintf(a.stdout, "%s%s:%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
+		fmt.Fprintf(a.stdout, "  %sAdded:%s %s\n", a.ui.Green, a.ui.Reset, strings.Join(apply.added, ", "))
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "add", ".gitignore"); err != nil {
+			fmt.Fprintf(a.stderr, "  %sError: Could not stage .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
+			status = 1
+			continue
+		}
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", "Update .gitignore with missing entries"); err == nil {
+			fmt.Fprintf(a.stdout, "  %sCommitted .gitignore updates%s\n", a.ui.Green, a.ui.Reset)
+		} else {
+			fmt.Fprintf(a.stderr, "  %sError: Could not commit .gitignore:\n%s%s\n", a.ui.Red, out, a.ui.Reset)
+			status = 1
 		}
 	}
 	return status

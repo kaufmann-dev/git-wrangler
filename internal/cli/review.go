@@ -13,10 +13,13 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		a.errorf("Unknown option: %s", args[0])
 		return 1
 	}
+	if a.json {
+		return runReviewJSON(a, cmd)
+	}
 	if !requireGit(a, "review") {
 		return 1
 	}
-	repos, err := resolveRepositoryTargets("")
+	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -86,6 +89,85 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		fmt.Fprintln(a.stdout)
 	}
 	return status
+}
+
+func runReviewJSON(a *app, cmd *cobra.Command) int {
+	if _, err := a.runner.LookPath("git"); err != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": 0, "failed": 1},
+			"error":   jsonError{Message: "'git' is required for review. Install it and make sure it is on PATH."},
+		}, 1)
+	}
+	repos, err := commandRepositoryTargets(cmd)
+	if err != nil {
+		return writeJSONStatus(a, map[string]any{
+			"ok":      false,
+			"summary": map[string]any{"repositories": 0, "failed": 1},
+			"error":   jsonError{Message: err.Error()},
+		}, 1)
+	}
+	type reviewJSONRepo struct {
+		Name            string     `json:"name"`
+		Path            string     `json:"path"`
+		Added           []string   `json:"added,omitempty"`
+		Modified        []string   `json:"modified,omitempty"`
+		DeletedFolders  []string   `json:"deletedFolders,omitempty"`
+		DeletedFiles    []string   `json:"deletedFiles,omitempty"`
+		UnpushedChanges bool       `json:"unpushedChanges"`
+		Error           *jsonError `json:"error,omitempty"`
+	}
+	results := parallelRepos(repos, func(r repo) reviewJSONRepo {
+		row := reviewJSONRepo{Name: r.display, Path: r.dir}
+		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
+		if err != nil {
+			row.Error = &jsonError{Message: "could not list unpushed commits: " + err.Error()}
+			return row
+		}
+		commits := splitLines(unpushed)
+		if len(commits) == 0 {
+			return row
+		}
+		oldest := commits[len(commits)-1]
+		base, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-parse", "--verify", oldest+"^")
+		base = strings.TrimSpace(base)
+		if err != nil || base == "" {
+			base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		}
+		diff, err := a.git.Stdout(a.ctx, r.dir, nil, "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
+		if err != nil {
+			row.Error = &jsonError{Message: "could not inspect unpushed diff: " + err.Error()}
+			return row
+		}
+		added, modified, deleted := parseNameStatusZ(diff)
+		deletedFolders, individualDeleted := groupDeletedFiles(a, r.dir, deleted)
+		row.Added = added
+		row.Modified = modified
+		row.DeletedFolders = deletedFolders
+		row.DeletedFiles = individualDeleted
+		row.UnpushedChanges = len(added) > 0 || len(modified) > 0 || len(deletedFolders) > 0 || len(individualDeleted) > 0
+		return row
+	})
+	failed := 0
+	changed := 0
+	for _, result := range results {
+		if result.Error != nil {
+			failed++
+		}
+		if result.UnpushedChanges {
+			changed++
+		}
+	}
+	code := 0
+	if failed > 0 {
+		code = 1
+	}
+	_ = writeJSON(a, map[string]any{
+		"ok":           code == 0,
+		"summary":      map[string]int{"repositories": len(results), "changed": changed, "failed": failed},
+		"repositories": results,
+	})
+	return code
 }
 
 func parseNameStatusZ(data string) (added, modified, deleted []string) {
