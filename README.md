@@ -1,6 +1,6 @@
 # Git Wrangler
 
-![Git Wrangler Logo](docs/logo.svg)
+![Git Wrangler Logo](docs/logo.png)
 
 [![CI](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/ci.yml)
 [![Release](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml/badge.svg)](https://github.com/kaufmann-dev/git-wrangler/actions/workflows/release.yml)
