@@ -86,6 +86,34 @@ func TestRedactDiffFailsClosedForUnparseableHeader(t *testing.T) {
 	}
 }
 
+func TestRedactDiffHidesSensitiveRenameSource(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/.env b/config.txt",
+		"+OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz",
+	}, "\n")
+	redacted := RedactDiff(diff)
+	if strings.Contains(redacted, "OPENAI_API_KEY") || strings.Contains(redacted, "sk-abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("sensitive rename source leaked:\n%s", redacted)
+	}
+	if !strings.Contains(redacted, "[SENSITIVE FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing sensitive marker:\n%s", redacted)
+	}
+}
+
+func TestRedactDiffHidesExcludedRenameSource(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/vendor/pkg/file.go b/main.go",
+		"+generated vendor content",
+	}, "\n")
+	redacted := RedactDiff(diff)
+	if strings.Contains(redacted, "generated vendor content") {
+		t.Fatalf("excluded rename source leaked:\n%s", redacted)
+	}
+	if !strings.Contains(redacted, "[EXCLUDED FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing excluded marker:\n%s", redacted)
+	}
+}
+
 func TestSensitivePathList(t *testing.T) {
 	sensitive := []string{
 		".npmrc",
@@ -530,6 +558,52 @@ func TestBuildContextPreservesVisiblePathWithSpaces(t *testing.T) {
 	}
 }
 
+func TestBuildContextSkipsDiffForSensitiveRenameSource(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return "R100\t.env\tconfig.txt\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return "1\t0\tconfig.txt\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "[SENSITIVE FILE CONTENT HIDDEN]") {
+		t.Fatalf("missing sensitive marker:\n%s", contextText)
+	}
+}
+
+func TestBuildContextIncludesNormalRenameDiff(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return "R100\told.txt\tnew.txt\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return "1\t0\tnew.txt\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123 -- new.txt":
+			return "diff --git a/old.txt b/new.txt\n+visible content\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contextText, "visible content") {
+		t.Fatalf("missing visible rename diff:\n%s", contextText)
+	}
+}
+
 func TestBuildStagedContextSkipsDiffForExcludedOnlyChanges(t *testing.T) {
 	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 		joined := name + " " + strings.Join(args, " ")
@@ -639,6 +713,66 @@ func TestProcessItemsPacesRequestStartsAndKeepsResults(t *testing.T) {
 	for _, id := range []string{"c000001", "c000002", "c000003"} {
 		if results[id].Subject != "feat(cli): add thing" {
 			t.Fatalf("missing result for %s: %#v", id, results[id])
+		}
+	}
+}
+
+func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
+	var mu sync.Mutex
+	var starts []time.Time
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		starts = append(starts, time.Now())
+		request := requests
+		mu.Unlock()
+
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		content := payload.Messages[1].Content
+		w.Header().Set("Content-Type", "application/json")
+		if request <= 3 {
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"not conventional\"},{\"id\":\"c000002\",\"subject\":\"not conventional\"}]}"}}]}`)
+			return
+		}
+		id := "c000001"
+		if strings.Contains(content, "c000002") {
+			id = "c000002"
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	results, failures, err := processItems(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+	}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 2,
+		RPM:       1200,
+		Timeout:   time.Second,
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || len(results) != 2 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if len(starts) != 5 {
+		t.Fatalf("starts = %d, want 5", len(starts))
+	}
+	for i := 1; i < len(starts); i++ {
+		if delta := starts[i].Sub(starts[i-1]); delta < 40*time.Millisecond {
+			t.Fatalf("request %d started too soon after previous request: %s", i+1, delta)
 		}
 	}
 }
