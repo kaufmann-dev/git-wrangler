@@ -15,6 +15,7 @@ Use unit tests for pure helpers:
 Use fake-runner command tests for subprocess orchestration:
 
 - Exact `--repo` targeting per command family.
+- Automatic `git fetch --prune origin` orchestration for remote-aware commands.
 - Decline-as-skip confirmations.
 - No multi-repository command asks one confirmation per repository.
 - `--yes` skipping prompts without filling required values.
@@ -29,6 +30,8 @@ Use temp-repository tests for real Git behavior only when fake runners would hid
 
 Prefer fake executables or `internal/run` fakes when validating command orchestration. Fake runners should assert the exact command shape that matters and return clear errors for unexpected commands.
 
+Remote-aware command fakes should account for the default `git fetch --prune origin` phase before inspection or history rewrite planning. Use `--no-fetch` in tests that are explicitly about local-only behavior or that need to isolate unrelated command contracts.
+
 Do not depend on global machine state unless the test is specifically about dependency detection.
 
 ## JSON Assertions
@@ -38,6 +41,8 @@ Each JSON command should have focused coverage that verifies:
 - stdout is valid JSON.
 - stdout contains no ANSI escape codes or progress text.
 - stderr is empty for normal JSON execution.
+- default auto-fetch success is silent.
+- fetch failures for `status`, `info`, and `review` appear as per-repository errors with empty stderr.
 - per-repo failures appear in `repositories[]` and return exit code 1.
 - fatal command errors include `error.message`.
 - `config show --json` never exposes stored secret values.
@@ -95,6 +100,8 @@ When changing a command, check:
 - Does a declined confirmation skip successfully before mutation?
 - Does a multi-repository command ask at most one confirmation for the whole candidate set?
 - Does `--yes` skip only confirmations?
+- If the command relies on remote-tracking refs, does it refresh `origin` by default and honor `--no-fetch`?
+- For history rewrites, does fetch failure stop before scan, AI requests, prompts, and mutation?
 - Are stdout and stderr still separated by purpose?
 - Is JSON mode unaffected or explicitly tested if the command supports `--json`?
 - Do per-repo failures return nonzero without stopping ordered reporting?

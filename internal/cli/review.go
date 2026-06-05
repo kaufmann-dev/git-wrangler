@@ -27,6 +27,13 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	fetchFailures := map[string]originRefreshResult{}
+	if !noFetchFlagValue(cmd) {
+		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
+		if interrupted(a) {
+			return 1
+		}
+	}
 	type reviewResult struct {
 		repo              repo
 		err               error
@@ -41,6 +48,9 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	clean := 0
 	failed := 0
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
+		if failure, ok := fetchFailures[r.dir]; ok {
+			return reviewResult{repo: r, err: fmt.Errorf("%s", fetchFailureMessage(failure)), errMessage: "Could not fetch origin"}
+		}
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
 			return reviewResult{repo: r, err: err, errMessage: "Could not list unpushed commits"}
@@ -120,6 +130,17 @@ func runReviewJSON(a *app, cmd *cobra.Command) int {
 			"error":   jsonError{Message: err.Error()},
 		}, 1)
 	}
+	fetchFailures := map[string]originRefreshResult{}
+	if !noFetchFlagValue(cmd) {
+		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
+		if a.ctx.Err() != nil {
+			return writeJSONStatus(a, map[string]any{
+				"ok":      false,
+				"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
+				"error":   jsonError{Message: "operation cancelled"},
+			}, 1)
+		}
+	}
 	type reviewJSONRepo struct {
 		Name            string     `json:"name"`
 		Path            string     `json:"path"`
@@ -132,6 +153,10 @@ func runReviewJSON(a *app, cmd *cobra.Command) int {
 	}
 	results := parallelRepos(a.ctx, repos, func(r repo) reviewJSONRepo {
 		row := reviewJSONRepo{Name: r.display, Path: r.dir}
+		if failure, ok := fetchFailures[r.dir]; ok {
+			row.Error = &jsonError{Message: fetchFailureMessage(failure)}
+			return row
+		}
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
 			row.Error = &jsonError{Message: "could not list unpushed commits: " + err.Error()}

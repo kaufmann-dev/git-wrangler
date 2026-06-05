@@ -195,6 +195,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "review", "Review unpushed changes across repositories.", "local", runReview, flags{
 			repoFlag(),
 			jsonFlag(),
+			noFetchFlag(),
 		}),
 		command(a, "untrack", "Stop tracking files already covered by .gitignore.", "local", runUntrack, flags{
 			repoFlag(),
@@ -202,17 +203,20 @@ func newRootCommand(a *app) *cobra.Command {
 		}),
 		command(a, "remove-secrets", "Purge sensitive files from Git history.", "history", runRemoveSecrets, flags{
 			repoFlag(),
+			noFetchFlag(),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-authors", "Rewrite author and committer identity.", "history", runRewriteAuthors, flags{
 			stringFlag("name", "", "New author and committer name."),
 			stringFlag("email", "", "New author and committer email."),
 			repoFlag(),
+			noFetchFlag(),
 			boolFlag("force", "Pass --force to git-filter-repo."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-commits", "Generate Conventional Commit messages with an OpenAI-compatible endpoint.", "history", runRewriteCommits, flags{
 			repoFlag(),
+			noFetchFlag(),
 			intFlag("batch-size", 10, "Commits per API request."),
 			intFlag("max-chars-per-commit", 3000, "Maximum redacted context characters per commit."),
 			intFlag("rpm", 300, "Maximum API requests to start per minute."),
@@ -223,6 +227,7 @@ func newRootCommand(a *app) *cobra.Command {
 		}),
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
 			repoFlag(),
+			noFetchFlag(),
 			stringFlag("start-date", "", "Earliest date in YYYY-MM-DD format."),
 			stringFlag("end-date", "", "Latest date in YYYY-MM-DD format."),
 			boolFlag("yes", "Skip confirmation prompts."),
@@ -230,6 +235,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
 			repoFlag(),
 			jsonFlag(),
+			noFetchFlag(),
 		}),
 		command(a, "doctor", "Check Git Wrangler runtime dependencies.", "utility", runDoctor, flags{
 			jsonFlag(),
@@ -239,6 +245,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "status", "Show clean, dirty, and tracking state.", "utility", runStatus, flags{
 			repoFlag(),
 			jsonFlag(),
+			noFetchFlag(),
 		}),
 		versionCommand(a),
 	)
