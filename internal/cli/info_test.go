@@ -65,6 +65,8 @@ func TestInfoRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 			}
 			joined := strings.Join(args, " ")
 			switch joined {
+			case "fetch --prune origin":
+				return "fetched\n", "", nil
 			case "status --porcelain":
 				done := trackConcurrentStart(&mu, &activeStatus, &maxActiveStatus, release, &releaseOnce)
 				defer done()

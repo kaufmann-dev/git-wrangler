@@ -29,3 +29,7 @@ func repoFlag() flagSpec {
 func jsonFlag() flagSpec {
 	return boolFlag("json", "Emit one JSON document.")
 }
+
+func noFetchFlag() flagSpec {
+	return boolFlag("no-fetch", "Use local remote-tracking refs without fetching first.")
+}
