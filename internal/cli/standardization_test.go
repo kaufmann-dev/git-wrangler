@@ -50,10 +50,13 @@ func TestStatusJSONExactRepoSuppressesHumanOutput(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			inspected = append(inspected, filepath.Base(dir))
+			if strings.Join(args, " ") == "fetch --prune origin" {
+				return "fetched\n", "", nil
+			}
 			if strings.Join(args, " ") != "status --porcelain=v2 --branch" {
 				return "", "", errors.New("unexpected git command")
 			}
+			inspected = append(inspected, filepath.Base(dir))
 			return "# branch.upstream origin/main\n# branch.ab +0 -0\n", "", nil
 		},
 	}
@@ -92,6 +95,9 @@ func TestStatusJSONPerRepoFailureExitsNonzero(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if strings.Join(args, " ") == "fetch --prune origin" {
+				return "fetched\n", "", nil
+			}
 			return "", "status failed", errors.New("status failed")
 		},
 	}
@@ -131,7 +137,12 @@ func TestRewriteAuthorsDeclineSkipsSuccessfully(t *testing.T) {
 			}
 		},
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			filterRan = true
+			if name == "git" && strings.Join(args, " ") == "fetch --prune origin" {
+				return "fetched\n", "", nil
+			}
+			if name == "/usr/bin/git-filter-repo" {
+				filterRan = true
+			}
 			return "", "", nil
 		},
 	}

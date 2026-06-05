@@ -28,6 +28,9 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	if !refreshOriginForRewrite(a, cmd, repos) {
+		return 1
+	}
 	patterns := []string{
 		".env", ".env.*", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
 		"*.pem", "*.key", "*.p12", "*.pfx", "*.asc", "*.gpg", "*.crt", "*.cer", "*.cert",

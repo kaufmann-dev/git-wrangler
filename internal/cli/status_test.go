@@ -147,10 +147,17 @@ func TestStatusProgressCompletesBeforeTableOutput(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			if name != "git" || strings.Join(args, " ") != "status --porcelain=v2 --branch" {
+			if name != "git" {
 				return "", "", errors.New("unexpected command")
 			}
-			return "# branch.upstream origin/main\n# branch.ab +0 -0\n", "", nil
+			switch strings.Join(args, " ") {
+			case "fetch --prune origin":
+				return "fetched\n", "", nil
+			case "status --porcelain=v2 --branch":
+				return "# branch.upstream origin/main\n# branch.ab +0 -0\n", "", nil
+			default:
+				return "", "", errors.New("unexpected git args")
+			}
 		},
 	}
 

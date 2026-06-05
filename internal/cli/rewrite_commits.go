@@ -62,6 +62,9 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	if !refreshOriginForRewrite(a, cmd, repos) {
+		return 1
+	}
 	workDir, err := os.MkdirTemp("", "git-wrangler-ai-*")
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
