@@ -27,6 +27,13 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	fetchFailures := map[string]originRefreshResult{}
+	if !noFetchFlagValue(cmd) {
+		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
+		if interrupted(a) {
+			return 1
+		}
+	}
 
 	totalClean := 0
 	totalDirty := 0
@@ -42,6 +49,9 @@ func runStatus(a *app, cmd *cobra.Command, args []string) int {
 		err  error
 	}
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Checking status", len(repos)), func(r repo) statusResult {
+		if failure, ok := fetchFailures[r.dir]; ok {
+			return statusResult{repo: r, err: fmt.Errorf("%s", fetchFailureMessage(failure))}
+		}
 		row, err := statusRow(a, r)
 		return statusResult{repo: r, row: row, err: err}
 	})
@@ -94,6 +104,17 @@ func runStatusJSON(a *app, cmd *cobra.Command) int {
 			"error":   jsonError{Message: err.Error()},
 		}, 1)
 	}
+	fetchFailures := map[string]originRefreshResult{}
+	if !noFetchFlagValue(cmd) {
+		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
+		if a.ctx.Err() != nil {
+			return writeJSONStatus(a, map[string]any{
+				"ok":      false,
+				"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
+				"error":   jsonError{Message: "operation cancelled"},
+			}, 1)
+		}
+	}
 	type statusJSONRepo struct {
 		Name     string     `json:"name"`
 		Path     string     `json:"path"`
@@ -106,8 +127,16 @@ func runStatusJSON(a *app, cmd *cobra.Command) int {
 	rows := []statusJSONRepo{}
 	summary := map[string]int{"repositories": len(repos), "clean": 0, "dirty": 0, "behind": 0, "noRemote": 0, "failed": 0}
 	for _, r := range repos {
+		row := statusJSONRepo{Name: r.display, Path: r.dir, State: "clean", Tracking: "up to date"}
+		if failure, ok := fetchFailures[r.dir]; ok {
+			row.Error = &jsonError{Message: fetchFailureMessage(failure)}
+			summary["failed"]++
+			rows = append(rows, row)
+			continue
+		}
 		detail, err := statusDetails(a, r)
-		row := statusJSONRepo{Name: r.display, Path: r.dir, State: "clean", Tracking: "up to date", Ahead: detail.ahead, Behind: detail.behind}
+		row.Ahead = detail.ahead
+		row.Behind = detail.behind
 		if err != nil {
 			row.Error = &jsonError{Message: err.Error()}
 			summary["failed"]++

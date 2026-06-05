@@ -32,6 +32,9 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	if !refreshOriginForRewrite(a, cmd, repos) {
+		return 1
+	}
 	filterArgs := []string{"--partial"}
 	if force {
 		filterArgs = append(filterArgs, "--force")

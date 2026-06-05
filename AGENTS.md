@@ -18,6 +18,8 @@ Do not automatically load these files into context with `AGENTS.md`; open them o
 
 `internal/cli` also owns command-local repository target selection, confirmation handling, JSON output, progress plumbing, and ordered result reporting. Commands that support `--repo` must use exact single-repository targeting through the shared helper; commands without `--repo` keep discovering repositories below the current directory.
 
+Remote-aware read/report commands and history rewrite planning stay `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates` refresh with `git fetch --prune origin` before inspecting remote-tracking refs unless `--no-fetch` is set. Fetch failures are per-repository failures for read/report commands and hard stops before planning or mutation for history rewrites.
+
 Bulk per-repository work in `internal/cli` should use ordered worker patterns: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and history rewrites that are not explicitly parallelized remain sequential. Workers must return result structs; print only after collection so repository output order stays stable. Confirmed AI and non-AI rewrite applications run repositories in parallel with the independent Git mutation cap.
 
 Long-running bulk phases should report progress to stderr with the shared progress helper. Progress must not change ordered stdout summaries or interleave repository result blocks.
@@ -55,6 +57,8 @@ Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, 
 `--yes` is command-local and skips confirmations only. It must not fill required values such as names, branch names, config values, API keys, or secrets. Multi-repository commands must ask at most one confirmation for the whole candidate set, never once per repository. Declining a confirmation before mutation is a successful skip/no-op, not a failure.
 
 `--json` is command-local and limited to `status`, `info`, `review`, `doctor`, `config show`, and `version`. JSON mode writes one document to stdout, suppresses colors/progress/prompts/human summaries, keeps stderr empty except Cobra parse errors or unavoidable process-level failures, and must not expose stored secrets.
+
+`--no-fetch` is command-local and limited to `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates`. It skips only the automatic origin refresh; it must not change repository targeting or other command behavior.
 
 ## Runtime Dependencies
 

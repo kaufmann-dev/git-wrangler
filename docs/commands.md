@@ -12,6 +12,8 @@ Commands with `--repo`: `pull`, `fetch`, `push`, `commit`, `fix-gitignore`, `lic
 
 Commands without `--repo`: `clone`, `init`, `config`, `doctor`, `version`, `completion`, and `help`.
 
+Remote-aware reporting and history rewrite planning is `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates` run `git fetch --prune origin` for target repositories before inspecting remote-tracking refs unless `--no-fetch` is set.
+
 ## Command Matrix
 
 | Command           | Group   | Targeting                                    | Mutates                                                                                       | Confirmation                                                                                            | Required runtime tools                        | Auth/config usage                                         |
@@ -48,6 +50,7 @@ Commands without `--repo`: `clone`, `init`, `config`, `doctor`, `version`, `comp
 | `--repo`                                      | `pull`, `fetch`, `push`, `commit`, `fix-gitignore`, `license`, `rename-branch`, `reset`, `review`, `untrack`, `remove-secrets`, `rewrite-*`, `info`, `status`, `rename-repo` | Targets exactly one working-tree repository. Does not discover nested repositories.                                                                                                                 |
 | `--yes`                                       | `commit`, `fix-gitignore`, `license`, `push`, `reset`, `untrack`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`                                    | Skips confirmation prompts only. Multi-repository commands ask at most one confirmation for the candidate set. It does not fill required values such as names, branches, config values, or secrets. |
 | `--json`                                      | `status`, `info`, `review`, `doctor`, `config show`, `version`                                                                                                               | Emits exactly one JSON document on stdout. Suppresses progress, colors, prompts, and human summaries.                                                                                               |
+| `--no-fetch`                                  | `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`                                                                          | Uses local remote-tracking refs without the default `git fetch --prune origin` refresh. Intended for offline/local-only runs.                                                                       |
 | `--force`                                     | `pull`, `push`, `rewrite-authors`                                                                                                                                            | Has command-specific meaning: `git pull --force`, `git push --force-with-lease`, or `git-filter-repo --force`.                                                                                      |
 | `--force-unsafe`                              | `push`                                                                                                                                                                       | Uses raw `git push --force` after one aggregate confirmation unless `--yes` is also set. Cannot be combined with `--force`.                                                                         |
 | `--prune`                                     | `fetch`                                                                                                                                                                      | Runs `git fetch --prune origin` instead of `git fetch origin`.                                                                                                                                      |
@@ -67,17 +70,18 @@ Commands without `--repo`: `clone`, `init`, `config`, `doctor`, `version`, `comp
 
 ## Behavior Matrix
 
-| Behavior                                         | Commands                                                                                                                                                                             |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Read-only repository scans with up to 32 workers | `status`, `review`, `info`, scan phases of `fix-gitignore`, `remove-secrets`, `rewrite-commits`, `rewrite-dates`                                                                     |
-| Independent Git mutations with up to 4 workers   | `fetch`, `pull`, normal `push`, commit preparation/creation, `rename-branch`, apply phases of `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`                |
-| Sequential per-repo flow                         | `clone`, `rename-repo`, `license`, `push --force-unsafe`; scan/preview/apply flows still ask at most one aggregate confirmation                                                      |
-| History rewrite and origin restore               | `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`                                                                                                              |
-| Returns nonzero on per-repo failure              | Bulk commands return nonzero for validation errors, missing dependencies, failed repo operations, partial failures, or failed cleanup. User-declined no-ops remain successful skips. |
-| Progress reported to stderr                      | Bulk scan/mutation phases that use `newProgress`; ordered summaries and per-repo result blocks remain on stdout/stderr after collection                                              |
-| JSON output                                      | Read-only/introspection JSON commands write one document to stdout and keep stderr empty except Cobra parse errors or unavoidable process-level failures                             |
-| Uses Git Wrangler GitHub credentials             | `clone`, `rename-repo`, `doctor`, `config`, `init`                                                                                                                                   |
-| Uses Git Wrangler AI settings                    | `commit`, `rewrite-commits`, `doctor`, `config`, `init`                                                                                                                              |
+| Behavior                                         | Commands                                                                                                                                                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read-only repository scans with up to 32 workers | `status`, `review`, `info`, scan phases of `fix-gitignore`, `remove-secrets`, `rewrite-commits`, `rewrite-dates`                                                                               |
+| Auto-refresh of `origin` with up to 4 workers    | `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates` run `git fetch --prune origin` before remote-aware inspection/planning unless `--no-fetch` |
+| Independent Git mutations with up to 4 workers   | `fetch`, `pull`, normal `push`, commit preparation/creation, `rename-branch`, apply phases of `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`                          |
+| Sequential per-repo flow                         | `clone`, `rename-repo`, `license`, `push --force-unsafe`; scan/preview/apply flows still ask at most one aggregate confirmation                                                                |
+| History rewrite and origin restore               | `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`                                                                                                                        |
+| Returns nonzero on per-repo failure              | Bulk commands return nonzero for validation errors, missing dependencies, failed repo operations, partial failures, or failed cleanup. User-declined no-ops remain successful skips.           |
+| Progress reported to stderr                      | Bulk scan/mutation phases that use `newProgress`; ordered summaries and per-repo result blocks remain on stdout/stderr after collection                                                        |
+| JSON output                                      | Read-only/introspection JSON commands write one document to stdout and keep stderr empty except Cobra parse errors or unavoidable process-level failures                                       |
+| Uses Git Wrangler GitHub credentials             | `clone`, `rename-repo`, `doctor`, `config`, `init`                                                                                                                                             |
+| Uses Git Wrangler AI settings                    | `commit`, `rewrite-commits`, `doctor`, `config`, `init`                                                                                                                                        |
 
 ## JSON Shape
 
@@ -92,6 +96,8 @@ JSON mode is command-local and intentionally limited. It uses this general shape
 ```
 
 Fatal command errors set `ok` to `false` and include `error.message`. Per-repository failures are represented inside `repositories[]` and make the command exit 1. `config show --json` reports credential sources and booleans only; it must not expose stored secrets.
+
+For `status`, `info`, and `review`, JSON mode silently performs the default `git fetch --prune origin` refresh before inspection. Fetch failures are represented as per-repository `error.message` entries, stderr remains empty, and the command exits 1 if any repository fails. `--no-fetch` skips this refresh and reports from local remote-tracking refs.
 
 ## Per-Command Notes
 
@@ -109,6 +115,20 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 `fetch` runs `git fetch origin` for every target repository. `fetch --prune` runs `git fetch --prune origin`. Missing or invalid `origin` remotes are per-repository failures and count in the summary. Routine success lines are suppressed.
 
+The built-in auto-refresh used by reporting and history rewrite commands is separate from the explicit `fetch` command. It always uses `git fetch --prune origin` and has no remote selector or timeout flag.
+
+### `status`
+
+`status` refreshes `origin` before checking clean/dirty and ahead/behind state. With `--no-fetch`, it uses existing local remote-tracking refs. Fetch failures are per-repository failures: human output continues to inspect other repositories, and JSON output includes failure rows without stderr output.
+
+### `info`
+
+`info` refreshes `origin` before collecting status, branch, ahead/behind, branch list, remotes, commit counts, authors, and largest files. With `--no-fetch`, it uses existing local remote-tracking refs. Fetch failures are per-repository failures in both human and JSON modes.
+
+### `review`
+
+`review` refreshes `origin` before calculating unpushed commits with `HEAD --not --remotes`. With `--no-fetch`, it compares against existing local remote-tracking refs. Fetch failures are per-repository failures in both human and JSON modes.
+
 ### `rename-repo`
 
 `rename-repo` is intentionally interactive and sequential. It skips repositories that `gh repo view` cannot identify as GitHub repositories. There is no `--yes`; entered names are passed to `gh repo rename` with `--yes`.
@@ -123,15 +143,19 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `remove-secrets`
 
-`remove-secrets` scans history for a fixed set of sensitive filename/path patterns, prints matched files for affected repositories, counts clean repositories, and only rewrites repositories with matches. It always passes `--partial --force` to `git-filter-repo`.
+`remove-secrets` refreshes `origin` before scanning history for a fixed set of sensitive filename/path patterns. Any fetch failure stops before scanning or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning. It prints matched files for affected repositories, counts clean repositories, and only rewrites repositories with matches. It always passes `--partial --force` to `git-filter-repo`.
+
+### `rewrite-authors`
+
+`rewrite-authors` refreshes `origin` before previewing the author rewrite. Any fetch failure stops before the destructive notice, confirmation, or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before continuing.
 
 ### `rewrite-commits`
 
-`rewrite-commits` validates AI settings before scanning repositories. Generation may prompt before sending data; applying generated messages is a separate all-repository confirmation. Old commit messages are not sent as model context. Declining either confirmation is a successful no-op before mutation. Final apply output is aggregate: rewritten commit messages, updated repositories, and failures.
+`rewrite-commits` validates AI settings before refreshing `origin`, then scans repositories. Any fetch failure stops before scanning, AI requests, preview, confirmation, or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning and before the normal AI data-send confirmation path. Generation may prompt before sending data; applying generated messages is a separate all-repository confirmation. Old commit messages are not sent as model context. Declining either confirmation is a successful no-op before mutation. Final apply output is aggregate: rewritten commit messages, updated repositories, and failures.
 
 ### `rewrite-dates`
 
-`rewrite-dates` requires at least two commits per target repository. It prints a compact old-to-new timestamp preview for each candidate before one aggregate confirmation, preserves the dominant timezone offset when possible, and distributes rewritten timestamps between the selected or inferred bounds.
+`rewrite-dates` refreshes `origin` before preparing timestamp rewrites. Any fetch failure stops before planning or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning. It requires at least two commits per target repository, prints a compact old-to-new timestamp preview for each candidate before one aggregate confirmation, preserves the dominant timezone offset when possible, and distributes rewritten timestamps between the selected or inferred bounds.
 
 ### `config`
 
