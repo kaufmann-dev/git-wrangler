@@ -209,8 +209,14 @@ func TestStatusSummaryUsesStdoutAndCountsFailures(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			if name != "git" || strings.Join(args, " ") != "status --porcelain=v2 --branch" {
+			if name != "git" {
 				return "", "", errors.New("unexpected command")
+			}
+			if strings.Join(args, " ") == "fetch --prune origin" {
+				return "fetched\n", "", nil
+			}
+			if strings.Join(args, " ") != "status --porcelain=v2 --branch" {
+				return "", "", errors.New("unexpected git args")
 			}
 			switch filepath.Base(dir) {
 			case "behind":
@@ -257,6 +263,8 @@ func TestReviewRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 				return "", "", errors.New("unexpected command")
 			}
 			switch {
+			case strings.Join(args, " ") == "fetch --prune origin":
+				return "fetched\n", "", nil
 			case strings.Join(args, " ") == "rev-list HEAD --not --remotes":
 				done := trackConcurrentStart(&mu, &activeRevLists, &maxActiveRevLists, release, &releaseOnce)
 				defer done()
@@ -411,6 +419,8 @@ func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *test
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 			joined := name + " " + strings.Join(args, " ")
 			switch {
+			case joined == "git fetch --prune origin":
+				return "fetched\n", "", nil
 			case joined == "git remote get-url origin":
 				return "https://example.test/" + filepath.Base(dir) + ".git\n", "", nil
 			case name == "/usr/bin/git-filter-repo" && strings.Contains(strings.Join(args, " "), "--email-callback"):

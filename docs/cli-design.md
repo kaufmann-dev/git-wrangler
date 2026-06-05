@@ -14,11 +14,12 @@ Use this rhythm for human commands:
 
 1. Validate flags, dependencies, config, and credentials.
 2. Discover targets.
-3. Show transient progress on stderr for long-running scan phases.
-4. Print durable previews or results on stdout after progress is closed.
-5. Print destructive warnings and prompts on stderr when needed.
-6. Mutate with transient progress on stderr.
-7. Print concise final summaries on stdout.
+3. Refresh `origin` with transient `Fetching repositories` progress when a command relies on remote-tracking refs.
+4. Show transient progress on stderr for long-running scan phases.
+5. Print durable previews or results on stdout after progress is closed.
+6. Print destructive warnings and prompts on stderr when needed.
+7. Mutate with transient progress on stderr.
+8. Print concise final summaries on stdout.
 
 Progress is never durable output. Tables, previews, summaries, and repo blocks must be printed only after active progress has been closed.
 
@@ -50,6 +51,8 @@ Do not use decorative boxes, emojis, gradients in command output, or heavy separ
 ## Progress
 
 Use `newProgress` for long-running bulk phases. Prefer one progress surface per phase, such as `Checking status`, `Pulling repositories`, `Sending API requests`, or `Applying AI rewrites`.
+
+Remote-aware reporting and history rewrite planning commands use `Fetching repositories` progress for their automatic `git fetch --prune origin` refresh in human output. JSON mode has no progress, including no fetch progress.
 
 Interactive progress is transient. Non-TTY progress is line-oriented and throttled. JSON mode has no progress.
 
@@ -105,7 +108,7 @@ Preferred count orders:
 
 ### `status`
 
-Show progress while checking repositories. Then print one dense table with `Repository`, `State`, and `Tracking`, followed by the standard summary. Rows with failures should show `ERROR` where possible, with details on stderr.
+Refresh `origin` first unless `--no-fetch` is set, then show progress while checking repositories. Print one dense table with `Repository`, `State`, and `Tracking`, followed by the standard summary. Rows with fetch or inspection failures should show `ERROR` where possible, with details on stderr. JSON mode keeps fetch failures in repository rows and keeps stderr empty.
 
 ### `pull`, `fetch`, and `push`
 
@@ -139,7 +142,7 @@ Preparation progress completes before any preview. Print a reset table with repo
 
 ### `review`
 
-Progress first. Print only repositories with unpushed changes or errors. Keep per-repo file-change blocks because they are the command result. Added, edited, and removed labels are aligned and printed to stdout. Summarize changed, clean, and failed counts.
+Refresh `origin` first unless `--no-fetch` is set, then show review progress. Print only repositories with unpushed changes or errors. Keep per-repo file-change blocks because they are the command result. Added, edited, and removed labels are aligned and printed to stdout. Summarize changed, clean, and failed counts. JSON mode keeps fetch failures in repository rows and keeps stderr empty.
 
 ### `untrack`
 
@@ -147,23 +150,23 @@ Scan first. Print candidate blocks only for repositories with tracked ignored fi
 
 ### `remove-secrets`
 
-Scan history with progress. Always show matched files for affected repositories because this is safety-critical. Count clean repositories. Warn and prompt once. Apply with progress and summarize.
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scan, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Scan history with progress. Always show matched files for affected repositories because this is safety-critical. Count clean repositories. Warn and prompt once. Apply with progress and summarize.
 
 ### `rewrite-authors`
 
-Print a concise destructive notice with repository count and new identity. Warn and prompt once. Apply with progress. Suppress per-repo success lines, print origin-restore warnings and failures, and summarize.
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before the destructive notice, prompt, or mutation. `--no-fetch` prints a warning before continuing. Print a concise destructive notice with repository count and new identity. Warn and prompt once. Apply with progress. Suppress per-repo success lines, print origin-restore warnings and failures, and summarize.
 
 ### `rewrite-commits`
 
-Use phases for repository scanning, commit scanning, API requests, generated preview, destructive warning/prompt, and applying rewrites. Retry details must stay inline or in clean progress logs, never interleaved with durable output. Keep the generated plan preview. Final success is aggregate.
+Validate AI settings, refresh `origin` unless `--no-fetch` is set, then use phases for repository scanning, commit scanning, API requests, generated preview, destructive warning/prompt, and applying rewrites. Fetch failures stop before scanning or AI requests. `--no-fetch` prints a warning before scanning and before the normal AI data-send confirmation path. Retry details must stay inline or in clean progress logs, never interleaved with durable output. Keep the generated plan preview. Final success is aggregate.
 
 ### `rewrite-dates`
 
-Preparation progress completes before preview. Print candidate repo blocks with commit count, range, timezone, and a compact sample of old-to-new timestamps. Warn and prompt once. Apply with progress and summarize.
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before planning or mutation. `--no-fetch` prints a warning before scanning. Preparation progress completes before preview. Print candidate repo blocks with commit count, range, timezone, and a compact sample of old-to-new timestamps. Warn and prompt once. Apply with progress and summarize.
 
 ### `info`
 
-Keep the detailed multi-line report. Use aligned key/value rows. Separate repositories with exactly one blank line. Add a summary only for multi-repo runs with failures.
+Refresh `origin` first unless `--no-fetch` is set. Keep the detailed multi-line report. Use aligned key/value rows. Separate repositories with exactly one blank line. Add a summary only for multi-repo runs with failures. JSON mode keeps fetch failures in repository rows and keeps stderr empty.
 
 ### `doctor`
 

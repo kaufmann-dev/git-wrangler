@@ -44,6 +44,9 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	if !refreshOriginForRewrite(a, cmd, repos) {
+		return 1
+	}
 	type dateRewriteScan struct {
 		repo      repo
 		err       error
