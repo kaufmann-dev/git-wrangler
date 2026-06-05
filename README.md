@@ -35,6 +35,9 @@ It finds repositories below your current directory and runs Git workflows across
 them in one pass, with parallel execution, stable output, and safe defaults.
 Use `--repo PATH` on repository commands when you want to target exactly one
 repository instead of discovering everything below the current directory.
+Remote-aware commands such as `status`, `info`, `review`, and history rewrite
+planning refresh `origin` by default before inspecting remote-tracking refs.
+Use `--no-fetch` on those commands for offline or local-only runs.
 
 ### What it gives you
 
@@ -189,6 +192,9 @@ and designed to fail safely.
   push requires the separate `--force-unsafe` flag.
 - **Fail-safe bulk runs** — per-repository failures do not stop the whole run.
   Git Wrangler reports all failures and exits nonzero if anything failed.
+- **Fresh remote-tracking refs** — remote-aware reports and history rewrite
+  planning run `git fetch --prune origin` by default, with `--no-fetch` for
+  explicit offline/local-only runs.
 - **Origin preservation** — history rewrite commands restore the `origin` remote
   after `git-filter-repo` removes it.
 - **Warnings on stderr** — destructive operations warn clearly without polluting

@@ -29,9 +29,19 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	fetchFailures := map[string]originRefreshResult{}
+	if !noFetchFlagValue(cmd) {
+		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
+		if interrupted(a) {
+			return 1
+		}
+	}
 	statusCode := 0
 	failed := 0
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Inspecting repositories", len(repos)), func(r repo) infoResult {
+		if failure, ok := fetchFailures[r.dir]; ok {
+			return infoErrorResult(a, r, "Could not fetch origin", fmt.Errorf("%s", fetchFailureMessage(failure)))
+		}
 		return collectInfo(a, r)
 	})
 	if interrupted(a) {
@@ -72,6 +82,17 @@ func runInfoJSON(a *app, cmd *cobra.Command) int {
 			"error":   jsonError{Message: err.Error()},
 		}, 1)
 	}
+	fetchFailures := map[string]originRefreshResult{}
+	if !noFetchFlagValue(cmd) {
+		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
+		if a.ctx.Err() != nil {
+			return writeJSONStatus(a, map[string]any{
+				"ok":      false,
+				"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
+				"error":   jsonError{Message: "operation cancelled"},
+			}, 1)
+		}
+	}
 	type infoJSONRepo struct {
 		Name          string     `json:"name"`
 		Path          string     `json:"path"`
@@ -88,6 +109,10 @@ func runInfoJSON(a *app, cmd *cobra.Command) int {
 	}
 	results := parallelRepos(a.ctx, repos, func(r repo) infoJSONRepo {
 		row := infoJSONRepo{Name: r.display, Path: r.dir, HasLicense: fileExists(filepath.Join(r.dir, "LICENSE"))}
+		if failure, ok := fetchFailures[r.dir]; ok {
+			row.Error = &jsonError{Message: fetchFailureMessage(failure)}
+			return row
+		}
 		status, err := a.git.StatusPorcelain(a.ctx, r.dir)
 		if err != nil {
 			row.Error = &jsonError{Message: "could not inspect status: " + err.Error()}
@@ -162,11 +187,18 @@ type infoResult struct {
 	failed bool
 }
 
+func infoErrorResult(a *app, r repo, label string, err error) infoResult {
+	var stderr bytes.Buffer
+	fmt.Fprintf(&stderr, "%sError: %s for %s:\n%s%s\n\n", a.ui.Red, label, r.display, err.Error(), a.ui.Reset)
+	return infoResult{stderr: stderr.String(), failed: true}
+}
+
 func collectInfo(a *app, r repo) infoResult {
-	var stdout, stderr bytes.Buffer
+	var stdout bytes.Buffer
 	errorf := func(label string, err error) infoResult {
-		fmt.Fprintf(&stderr, "%sError: %s for %s:\n%s%s\n\n", a.ui.Red, label, r.display, err.Error(), a.ui.Reset)
-		return infoResult{stdout: stdout.String(), stderr: stderr.String(), failed: true}
+		result := infoErrorResult(a, r, label, err)
+		result.stdout = stdout.String()
+		return result
 	}
 
 	fmt.Fprintf(&stdout, "Repository:         %s%s%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
