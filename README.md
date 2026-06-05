@@ -113,47 +113,47 @@ git-wrangler help
 
 ### Remote Operations
 
-| Command       | What it does                                              |
-| ------------- | --------------------------------------------------------- |
-| `clone`       | Clone multiple GitHub repositories for a user or org.     |
-| `fetch`       | Fetch origin updates. Use `--prune` to prune stale refs.  |
-| `pull`        | Pull latest changes for every discovered repository.      |
-| `push`        | Push local commits to origin. `--force` uses lease-based. |
-| `rename-repo` | Rename GitHub repositories through `gh`.                  |
+| Command                                                         | What it does                                              |
+| --------------------------------------------------------------- | --------------------------------------------------------- |
+| [`clone`](https://wrangler.kaufmann.dev/docs/clone)             | Clone multiple GitHub repositories for a user or org.     |
+| [`fetch`](https://wrangler.kaufmann.dev/docs/fetch)             | Fetch origin updates. Use `--prune` to prune stale refs.  |
+| [`pull`](https://wrangler.kaufmann.dev/docs/pull)               | Pull latest changes for every discovered repository.      |
+| [`push`](https://wrangler.kaufmann.dev/docs/push)               | Push local commits to origin. `--force` uses lease-based. |
+| [`rename-repo`](https://wrangler.kaufmann.dev/docs/rename-repo) | Rename GitHub repositories through `gh`.                  |
 
 ### Local Operations
 
-| Command         | What it does                                                |
-| --------------- | ----------------------------------------------------------- |
-| `commit`        | Generate and create one AI Conventional Commit per repo.    |
-| `fix-gitignore` | Add missing common generated-file patterns to `.gitignore`. |
-| `license`       | Add or replace MIT license files.                           |
-| `rename-branch` | Rename a branch across repositories.                        |
-| `reset`         | Reset current branches to their origin counterparts.        |
-| `review`        | Review unpushed changes across repositories.                |
-| `untrack`       | Stop tracking files already covered by `.gitignore`.        |
+| Command                                                             | What it does                                                |
+| ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| [`commit`](https://wrangler.kaufmann.dev/docs/commit)               | Generate and create one AI Conventional Commit per repo.    |
+| [`fix-gitignore`](https://wrangler.kaufmann.dev/docs/fix-gitignore) | Add missing common generated-file patterns to `.gitignore`. |
+| [`license`](https://wrangler.kaufmann.dev/docs/license)             | Add or replace MIT license files.                           |
+| [`rename-branch`](https://wrangler.kaufmann.dev/docs/rename-branch) | Rename a branch across repositories.                        |
+| [`reset`](https://wrangler.kaufmann.dev/docs/reset)                 | Reset current branches to their origin counterparts.        |
+| [`review`](https://wrangler.kaufmann.dev/docs/review)               | Review unpushed changes across repositories.                |
+| [`untrack`](https://wrangler.kaufmann.dev/docs/untrack)             | Stop tracking files already covered by `.gitignore`.        |
 
 ### History Rewriting
 
-| Command           | What it does                                                    |
-| ----------------- | --------------------------------------------------------------- |
-| `remove-secrets`  | Purge sensitive files from Git history.                         |
-| `rewrite-authors` | Rewrite author and committer identity.                          |
-| `rewrite-commits` | Generate AI Conventional Commit messages, then rewrite history. |
-| `rewrite-dates`   | Redistribute commit timestamps.                                 |
+| Command                                                                 | What it does                                                    |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`remove-secrets`](https://wrangler.kaufmann.dev/docs/remove-secrets)   | Purge sensitive files from Git history.                         |
+| [`rewrite-authors`](https://wrangler.kaufmann.dev/docs/rewrite-authors) | Rewrite author and committer identity.                          |
+| [`rewrite-commits`](https://wrangler.kaufmann.dev/docs/rewrite-commits) | Generate AI Conventional Commit messages, then rewrite history. |
+| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)     | Redistribute commit timestamps.                                 |
 
 ### Utility
 
-| Command      | What it does                                        |
-| ------------ | --------------------------------------------------- |
-| `config`     | Show and edit Git Wrangler configuration.           |
-| `doctor`     | Check runtime dependencies and local configuration. |
-| `info`       | Show detailed repository information.               |
-| `init`       | Set up GitHub and AI credentials.                   |
-| `status`     | Show clean, dirty, ahead, behind, and remote state. |
-| `version`    | Print version metadata.                             |
-| `completion` | Generate shell completion scripts.                  |
-| `help`       | Show help for Git Wrangler or a specific command.   |
+| Command                                                       | What it does                                        |
+| ------------------------------------------------------------- | --------------------------------------------------- |
+| [`config`](https://wrangler.kaufmann.dev/docs/config)         | Show and edit Git Wrangler configuration.           |
+| [`doctor`](https://wrangler.kaufmann.dev/docs/doctor)         | Check runtime dependencies and local configuration. |
+| [`info`](https://wrangler.kaufmann.dev/docs/info)             | Show detailed repository information.               |
+| [`init`](https://wrangler.kaufmann.dev/docs/init)             | Set up GitHub and AI credentials.                   |
+| [`status`](https://wrangler.kaufmann.dev/docs/status)         | Show clean, dirty, ahead, behind, and remote state. |
+| [`version`](https://wrangler.kaufmann.dev/docs/version)       | Print version metadata.                             |
+| [`completion`](https://wrangler.kaufmann.dev/docs/completion) | Generate shell completion scripts.                  |
+| [`help`](https://wrangler.kaufmann.dev/docs/help)             | Show help for Git Wrangler or a specific command.   |
 
 ## AI-Powered Workflows
 
