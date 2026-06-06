@@ -140,7 +140,7 @@ git-wrangler help
 | [`remove-secrets`](https://wrangler.kaufmann.dev/docs/remove-secrets)   | Purge sensitive files from Git history.                         |
 | [`rewrite-authors`](https://wrangler.kaufmann.dev/docs/rewrite-authors) | Rewrite author and committer identity.                          |
 | [`rewrite-commits`](https://wrangler.kaufmann.dev/docs/rewrite-commits) | Generate AI Conventional Commit messages, then rewrite history. |
-| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)     | Globally redistribute or roll back commit timestamps.           |
+| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)     | Redistribute commit timestamps or roll back rewritten history.  |
 
 ### Utility
 
@@ -195,18 +195,21 @@ and designed to fail safely.
 - **Fresh remote-tracking refs** — remote-aware reports and history rewrite
   planning run `git fetch --prune origin` by default, with `--no-fetch` for
   explicit offline/local-only runs.
-- **Origin preservation** — history rewrite commands restore the `origin` remote
-  after `git-filter-repo` removes it.
+- **Origin preservation** — history rewrite commands that use `git-filter-repo`
+  restore the `origin` remote after it is removed.
+- **Exact date rollback** — `rewrite-dates --rollback` restores original commit
+  objects from stored backup refs when possible, replaying only new commits made
+  after the rewrite.
 - **Warnings on stderr** — destructive operations warn clearly without polluting
   normal command output.
 
 ## Runtime Dependencies
 
-| Tool              | Required for                                     |
-| ----------------- | ------------------------------------------------ |
-| `git`             | All repository operations (required).            |
-| `gh`              | GitHub operations: `clone`, `rename-repo`.       |
-| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-*`. |
+| Tool              | Required for                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `git`             | All repository operations (required).                                                                                       |
+| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                                                  |
+| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-commits`, normal `rewrite-dates`, and legacy date rollback. |
 
 Run `git-wrangler doctor` to check what's available on your system.
 
