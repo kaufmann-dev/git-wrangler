@@ -87,6 +87,7 @@ Every bulk human command ends with `Summary:` on stdout. Use a consistent count 
 Preferred count orders:
 
 - `status`: clean, dirty, behind, no remote, failed.
+- `activity`: commits, repositories, failed.
 - `pull`: updated, skipped, failed.
 - `fetch`: fetched, failed.
 - `push`: pushed, skipped, failed.
@@ -109,6 +110,10 @@ Preferred count orders:
 ### `status`
 
 Refresh `origin` first unless `--no-fetch` is set, then show progress while checking repositories. Print one dense table with `Repository`, `State`, and `Tracking`, followed by the standard summary. Rows with fetch or inspection failures should show `ERROR` where possible, with details on stderr. JSON mode keeps fetch failures in repository rows and keeps stderr empty.
+
+### `activity`
+
+Show `Scanning activity` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then one aggregated calendar and a `commits`, `repositories`, `failed` summary. Keep years newest first, weeks Sunday-first, and include month and weekday labels. Plain output uses `.`, `1`, `2`, `3`, and `4`; TTY output uses GitHub-style green cells. Show the effective maximum in year headings or the shared global-scale heading.
 
 ### `pull`, `fetch`, and `push`
 
