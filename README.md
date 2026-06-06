@@ -109,6 +109,23 @@ git-wrangler status
 git-wrangler help
 ```
 
+On browserless machines, `init` prints the GitHub device code and verification
+URL so authorization can be completed in a browser on another device. On
+machines without an available keyring, configure credentials through environment
+variables before running Git Wrangler:
+
+```bash
+export GIT_WRANGLER_GITHUB_TOKEN=...
+export GIT_WRANGLER_AI_API_KEY=...
+
+# OpenAI API keys may also use the provider-specific fallback:
+export OPENAI_API_KEY=...
+```
+
+Git Wrangler does not resolve GitHub credentials from an inbound `GH_TOKEN`.
+It sets `GH_TOKEN` only when passing its own resolved credential to child `gh`
+processes.
+
 ## Commands
 
 ### Remote Operations
