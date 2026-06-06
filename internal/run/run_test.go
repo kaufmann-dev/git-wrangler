@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -86,5 +87,23 @@ func TestInjectedRunnersAreParallelSafe(t *testing.T) {
 				t.Fatalf("Capture = %q, %v", out, err)
 			}
 		})
+	}
+}
+
+func TestStreamStdoutFallsBackToBufferedRunner(t *testing.T) {
+	t.Parallel()
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		return "streamed output", "", nil
+	}}
+	var output strings.Builder
+	err := StreamStdout(context.Background(), runner, "", nil, "cmd", nil, func(reader io.Reader) error {
+		_, err := io.Copy(&output, reader)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "streamed output" {
+		t.Fatalf("output = %q", output.String())
 	}
 }

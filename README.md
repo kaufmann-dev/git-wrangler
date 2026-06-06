@@ -146,6 +146,7 @@ git-wrangler help
 
 | Command                                                       | What it does                                        |
 | ------------------------------------------------------------- | --------------------------------------------------- |
+| [`activity`](https://wrangler.kaufmann.dev/docs/activity)     | Show an aggregated commit activity calendar.        |
 | [`config`](https://wrangler.kaufmann.dev/docs/config)         | Show and edit Git Wrangler configuration.           |
 | [`doctor`](https://wrangler.kaufmann.dev/docs/doctor)         | Check runtime dependencies and local configuration. |
 | [`info`](https://wrangler.kaufmann.dev/docs/info)             | Show detailed repository information.               |

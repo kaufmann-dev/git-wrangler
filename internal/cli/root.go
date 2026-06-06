@@ -140,6 +140,13 @@ func newRootCommand(a *app) *cobra.Command {
 	root.SetCompletionCommandGroupID("utility")
 
 	root.AddCommand(
+		command(a, "activity", "Show an aggregated commit activity calendar.", "utility", runActivity, flags{
+			repoFlag(),
+			intFlag("year", 0, "Only include UTC author dates in YYYY."),
+			stringArrayFlag("user", "Only include an exact author name or email. Repeatable."),
+			boolFlag("all", "Include commits reachable from all normal refs."),
+			boolFlag("global-scale", "Use one activity scale across all rendered years."),
+		}),
 		command(a, "clone", "Clone multiple GitHub repositories for a user.", "remote", runClone, flags{
 			stringFlag("visibility", "all", "Repository visibility: all, public, or private."),
 			stringFlag("user", "", "GitHub user or organization to clone from."),
@@ -323,6 +330,8 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 			cmd.Flags().Bool(spec.name, false, spec.description)
 		case "int":
 			cmd.Flags().Int(spec.name, spec.intValue, spec.description)
+		case "stringArray":
+			cmd.Flags().StringArray(spec.name, nil, spec.description)
 		default:
 			cmd.Flags().String(spec.name, spec.stringValue, spec.description)
 		}
