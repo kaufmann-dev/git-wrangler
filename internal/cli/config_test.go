@@ -243,7 +243,10 @@ func TestInitWithoutKeyringSkipsSecretPromptsAndSavesConfig(t *testing.T) {
 	if strings.Contains(stderr.String(), "Authenticate GitHub now?") || strings.Contains(stderr.String(), "Store an AI API key now?") || strings.Contains(stderr.String(), "AI API key:") {
 		t.Fatalf("secret prompt was shown:\n%s", stderr.String())
 	}
-	for _, want := range []string{"GIT_WRANGLER_GITHUB_TOKEN", "GIT_WRANGLER_AI_API_KEY"} {
+	for _, want := range []string{
+		"Secure credential storage is unavailable, so Git Wrangler skipped GitHub authentication setup. Set GIT_WRANGLER_GITHUB_TOKEN instead.",
+		"Secure credential storage is unavailable, so Git Wrangler skipped AI API key setup. Set GIT_WRANGLER_AI_API_KEY instead.",
+	} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("missing %q guidance:\n%s", want, stderr.String())
 		}
@@ -278,7 +281,7 @@ func TestInitWithoutKeyringShowsOpenAIEnvironmentGuidance(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("init returned error: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY") {
+	if !strings.Contains(stderr.String(), "Secure credential storage is unavailable, so Git Wrangler skipped AI API key setup. Set GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY instead.") {
 		t.Fatalf("missing OpenAI guidance:\n%s", stderr.String())
 	}
 }

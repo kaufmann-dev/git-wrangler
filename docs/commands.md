@@ -194,7 +194,7 @@ The planner seed comes from `--seed`, then existing per-repository rewrite state
 
 GitHub credentials resolve only from `GIT_WRANGLER_GITHUB_TOKEN` or Git Wrangler's keyring account. `GH_TOKEN` is used only as an outbound transport variable when Git Wrangler invokes `gh`; inbound `GH_TOKEN` is ignored.
 
-`init` checks keyring availability before secret-related prompts. When unavailable, it skips GitHub OAuth and AI API-key entry, still saves prompted GitHub host and AI provider/base URL/model values, and exits successfully. Missing GitHub auth is reported with `GIT_WRANGLER_GITHUB_TOKEN` guidance. Missing AI auth is reported with `GIT_WRANGLER_AI_API_KEY` guidance, plus `OPENAI_API_KEY` for the OpenAI provider.
+`init` checks keyring availability before secret-related prompts. When unavailable, it skips GitHub OAuth and AI API-key entry, still saves prompted GitHub host and AI provider/base URL/model values, and exits successfully. Warnings explain that secure credential storage is unavailable and secret setup was skipped without exposing backend keyring errors. Missing GitHub auth is reported with `GIT_WRANGLER_GITHUB_TOKEN` guidance. Missing AI auth is reported with `GIT_WRANGLER_AI_API_KEY` guidance, plus `OPENAI_API_KEY` for the OpenAI provider.
 
 ### `config`
 
