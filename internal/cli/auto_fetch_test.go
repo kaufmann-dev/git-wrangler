@@ -209,6 +209,44 @@ func TestRewriteCommitsFetchFailureStopsBeforeAIGeneration(t *testing.T) {
 	}
 }
 
+func TestRewriteDatesFetchFailureStopsBeforePlanning(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "rewrite", args: []string{"rewrite-dates", "--yes"}},
+		{name: "rollback", args: []string{"rewrite-dates", "--rollback", "--yes"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tempGitRepos(t, "repo")
+			t.Chdir(root)
+			scanned := false
+			runner := fakeRunner{
+				lookPath: fakeGitAndFilterRepoLookPath,
+				run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+					joined := name + " " + strings.Join(args, " ")
+					if joined == "git fetch --prune origin" {
+						return "", "offline", errors.New("fetch failed")
+					}
+					scanned = true
+					return "", "", errors.New("unexpected command: " + joined)
+				},
+			}
+
+			var stdout, stderr bytes.Buffer
+			err := ExecuteWithRunner(context.Background(), runner, tc.args, strings.NewReader(""), &stdout, &stderr)
+			assertExitCode(t, err, 1)
+			if scanned {
+				t.Fatalf("%v scanned history after fetch failure", tc.args)
+			}
+			if !strings.Contains(stderr.String(), "git fetch failed") {
+				t.Fatalf("missing fetch failure output for %v:\nstdout: %s\nstderr: %s", tc.args, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
 func TestRewriteDatesNoFetchWarnsAndSkipsFetch(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := tempGitRepos(t, "repo")

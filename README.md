@@ -140,7 +140,7 @@ git-wrangler help
 | [`remove-secrets`](https://wrangler.kaufmann.dev/docs/remove-secrets)   | Purge sensitive files from Git history.                         |
 | [`rewrite-authors`](https://wrangler.kaufmann.dev/docs/rewrite-authors) | Rewrite author and committer identity.                          |
 | [`rewrite-commits`](https://wrangler.kaufmann.dev/docs/rewrite-commits) | Generate AI Conventional Commit messages, then rewrite history. |
-| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)     | Redistribute commit timestamps.                                 |
+| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)     | Globally redistribute or roll back commit timestamps.           |
 
 ### Utility
 
