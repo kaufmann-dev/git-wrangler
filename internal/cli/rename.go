@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -98,7 +99,11 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 	}
 	ghEnv, authSource, ok, err := githubAuthEnv(a)
 	if err != nil {
-		a.error(err.Error())
+		if errors.Is(err, errGitHubCredentialStorageUnavailable) {
+			a.error("Secure credential storage is unavailable. Set GIT_WRANGLER_GITHUB_TOKEN.")
+		} else {
+			a.error(err.Error())
+		}
 		return 1
 	}
 	if !ok {

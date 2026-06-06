@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,7 +39,11 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	ghEnv, authSource, ok, err := githubAuthEnv(a)
 	if err != nil {
 		if visibility == "private" || visibility == "all" {
-			a.error(err.Error())
+			if errors.Is(err, errGitHubCredentialStorageUnavailable) {
+				a.error("Secure credential storage is unavailable. Set GIT_WRANGLER_GITHUB_TOKEN, or use --visibility public to clone only public repositories.")
+			} else {
+				a.error(err.Error())
+			}
 			return 1
 		}
 		ghEnv = nil
@@ -138,6 +143,8 @@ type cloneResult struct {
 	err     error
 }
 
+var errGitHubCredentialStorageUnavailable = errors.New("GitHub credential storage unavailable")
+
 func cloneRepository(a *app, ghEnv []string, fullName, into string) cloneResult {
 	repoName := fullName
 	if idx := strings.LastIndex(fullName, "/"); idx >= 0 {
@@ -163,7 +170,7 @@ func githubAuthEnv(a *app) ([]string, credentials.Source, bool, error) {
 	}
 	resolved := credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host)
 	if resolved.Err != nil {
-		return nil, resolved.Source, false, resolved.Err
+		return nil, resolved.Source, false, errGitHubCredentialStorageUnavailable
 	}
 	if resolved.Value == "" {
 		return nil, resolved.Source, false, nil
