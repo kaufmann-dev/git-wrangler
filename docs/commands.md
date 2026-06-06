@@ -188,6 +188,14 @@ The planner seed comes from `--seed`, then existing per-repository rewrite state
 
 `--rollback` uses the stored branch state to restore original commit objects. Branches already at the original head are skipped. Branches exactly at the stored rewritten head are moved back to the stored backup head, preserving original hashes and signatures for known history. Branches with new commits on top of the rewritten head restore the original base and replay only the new commits with `git commit-tree`, preserving their tree, message, authorship, and dates where possible; replayed commits may receive new hashes or lose signatures. Rollback requires branch rollback metadata and a clean working tree, creates rollback backup refs before moving branch refs, then resets the checked-out branch worktree/index to the new `HEAD`. Missing rollback metadata fails that repository before mutation. Rollback uses the same fetch, preview, destructive warning, and aggregate prompt behavior as normal rewrites, and summarizes `rolled back`, `skipped`, and `failed`.
 
+### `init`
+
+`init` owns GitHub device authentication. It prints the one-time code and verification URL before an explicit Enter prompt, attempts to open the URL with the platform browser launcher, and continues waiting when no browser is available. The server-provided device-code expiration is the authentication timeout, and command cancellation stops the wait.
+
+GitHub credentials resolve only from `GIT_WRANGLER_GITHUB_TOKEN` or Git Wrangler's keyring account. `GH_TOKEN` is used only as an outbound transport variable when Git Wrangler invokes `gh`; inbound `GH_TOKEN` is ignored.
+
+`init` checks keyring availability before secret-related prompts. When unavailable, it skips GitHub OAuth and AI API-key entry, still saves prompted GitHub host and AI provider/base URL/model values, and exits successfully. Missing GitHub auth is reported with `GIT_WRANGLER_GITHUB_TOKEN` guidance. Missing AI auth is reported with `GIT_WRANGLER_AI_API_KEY` guidance, plus `OPENAI_API_KEY` for the OpenAI provider.
+
 ### `config`
 
 `config show` prints non-secret key/value sections. `config set` accepts plaintext values for non-secret keys only. Secret keys (`github.auth`, `ai.api-key`) must be entered through the prompt and are stored through the credential store. AI gateway headers use `ai.headers.<name>`: inline values are stored in config, while omitted values prompt for a secret and store it in the credential store. `config unset` removes stored secrets and AI header values.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -218,5 +219,66 @@ func TestInitUsesFakeAuthAndDoesNotPrintSecrets(t *testing.T) {
 	}
 	if got, err := store.Get("ai:openai"); err != nil || got != "ai-secret" {
 		t.Fatalf("ai secret = %q, %v", got, err)
+	}
+}
+
+func TestInitWithoutKeyringSkipsSecretPromptsAndSavesConfig(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	t.Setenv("GIT_WRANGLER_AI_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	stdin := strings.NewReader("example.com\ncustom\nhttps://ai.example.test/v1\nmodel-test\n")
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), fakeRunner{}, stdin, &stdout, &stderr)
+	a.creds = &fakeCredentialStore{err: errors.New("keyring unavailable")}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"init"})
+	cmd.SetIn(stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "Authenticate GitHub now?") || strings.Contains(stderr.String(), "Store an AI API key now?") || strings.Contains(stderr.String(), "AI API key:") {
+		t.Fatalf("secret prompt was shown:\n%s", stderr.String())
+	}
+	for _, want := range []string{"GIT_WRANGLER_GITHUB_TOKEN", "GIT_WRANGLER_AI_API_KEY"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("missing %q guidance:\n%s", want, stderr.String())
+		}
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GitHub.Host != "example.com" || cfg.AI.Provider != "custom" || cfg.AI.BaseURL != "https://ai.example.test/v1" || cfg.AI.Model != "model-test" {
+		t.Fatalf("config = %#v", cfg)
+	}
+	if !strings.Contains(stdout.String(), "Setup complete") || !strings.Contains(stdout.String(), "missing") {
+		t.Fatalf("unexpected stdout:\n%s", stdout.String())
+	}
+}
+
+func TestInitWithoutKeyringShowsOpenAIEnvironmentGuidance(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	t.Setenv("GIT_WRANGLER_AI_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	stdin := strings.NewReader("\n\n\n\n")
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), fakeRunner{}, stdin, &stdout, &stderr)
+	a.creds = &fakeCredentialStore{err: errors.New("keyring unavailable")}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"init"})
+	cmd.SetIn(stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY") {
+		t.Fatalf("missing OpenAI guidance:\n%s", stderr.String())
 	}
 }

@@ -32,6 +32,7 @@ func runInit(a *app) int {
 	fmt.Fprintln(a.stdout, "Git Wrangler Setup")
 	fmt.Fprintln(a.stdout)
 	fmt.Fprintln(a.stdout, "GitHub")
+	keyringAvailable := credentials.KeyringAvailable(a.creds)
 
 	host, err := promptDefault(a, "GitHub host", cfg.GitHub.Host)
 	if err != nil {
@@ -42,8 +43,10 @@ func runInit(a *app) int {
 	if cfg.GitHub.Host == "" {
 		cfg.GitHub.Host = config.DefaultGitHubHost
 	}
-	if confirm(a, "Authenticate GitHub now?") {
-		result, err := a.auth.AuthenticateGitHub(a.ctx, cfg.GitHub.Host, a.input, a.stderr)
+	if keyringAvailable && confirm(a, "Authenticate GitHub now?") {
+		wait := newAuthorizationWait(a)
+		result, err := a.auth.AuthenticateGitHub(a.ctx, cfg.GitHub.Host, a.input, a.stderr, wait.update)
+		wait.done()
 		if err != nil {
 			a.plainErrorf("%s", err.Error())
 			return 1
@@ -54,6 +57,9 @@ func runInit(a *app) int {
 		}
 		cfg.GitHub.Username = result.Username
 		a.ok("Stored GitHub authentication for " + result.Username)
+	}
+	if !keyringAvailable && credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host).Value == "" {
+		a.warn("GitHub authentication is missing. Set GIT_WRANGLER_GITHUB_TOKEN.")
 	}
 
 	fmt.Fprintln(a.stdout)
@@ -76,7 +82,7 @@ func runInit(a *app) int {
 		return 1
 	}
 	cfg.AI.Model = model
-	if confirm(a, "Store an AI API key now?") {
+	if keyringAvailable && confirm(a, "Store an AI API key now?") {
 		token, err := promptSecret(a, "AI API key: ")
 		if err != nil || token == "" {
 			a.plainErrorf("secret input is required.")
@@ -87,6 +93,13 @@ func runInit(a *app) int {
 			return 1
 		}
 		a.ok("Stored AI API key")
+	}
+	if !keyringAvailable && credentials.ResolveAIKey(a.creds, cfg.AI.Provider).Value == "" {
+		guidance := "AI authentication is missing. Set GIT_WRANGLER_AI_API_KEY."
+		if cfg.AI.Provider == config.DefaultAIProvider {
+			guidance = "AI authentication is missing. Set GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY."
+		}
+		a.warn(guidance)
 	}
 	if err := config.Save(cfg); err != nil {
 		a.plainErrorf("%s", err.Error())

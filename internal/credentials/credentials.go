@@ -58,7 +58,7 @@ type Resolved struct {
 }
 
 func ResolveGitHubToken(store Store, host string) Resolved {
-	if value := firstEnv("GIT_WRANGLER_GITHUB_TOKEN", "GH_TOKEN"); value != "" {
+	if value := firstEnv("GIT_WRANGLER_GITHUB_TOKEN"); value != "" {
 		return Resolved{Value: value, Source: SourceEnv}
 	}
 	return resolveStore(store, GitHubAccount(host))

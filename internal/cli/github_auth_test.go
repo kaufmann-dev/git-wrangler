@@ -65,6 +65,35 @@ func TestClonePassesGitWranglerAuthToGhAndSkipsGhAuthStatus(t *testing.T) {
 	}
 }
 
+func TestCloneIgnoresInboundGHToken(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "foreign-token")
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			return "/usr/bin/" + name, nil
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			return "", "", errors.New("gh should not run")
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	a.creds = &fakeCredentialStore{}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"clone", "--user", "octo", "--visibility", "all"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected missing Git Wrangler auth failure")
+	}
+	if !strings.Contains(stderr.String(), "Git Wrangler GitHub auth is required") {
+		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	}
+}
+
 func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
