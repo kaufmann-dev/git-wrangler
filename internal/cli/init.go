@@ -59,7 +59,7 @@ func runInit(a *app) int {
 		a.ok("Stored GitHub authentication for " + result.Username)
 	}
 	if !keyringAvailable && credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host).Value == "" {
-		a.warn("GitHub authentication is missing. Set GIT_WRANGLER_GITHUB_TOKEN.")
+		a.warn("Secure credential storage is unavailable, so Git Wrangler skipped GitHub authentication setup. Set GIT_WRANGLER_GITHUB_TOKEN instead.")
 	}
 
 	fmt.Fprintln(a.stdout)
@@ -95,9 +95,9 @@ func runInit(a *app) int {
 		a.ok("Stored AI API key")
 	}
 	if !keyringAvailable && credentials.ResolveAIKey(a.creds, cfg.AI.Provider).Value == "" {
-		guidance := "AI authentication is missing. Set GIT_WRANGLER_AI_API_KEY."
+		guidance := "Secure credential storage is unavailable, so Git Wrangler skipped AI API key setup. Set GIT_WRANGLER_AI_API_KEY instead."
 		if cfg.AI.Provider == config.DefaultAIProvider {
-			guidance = "AI authentication is missing. Set GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY."
+			guidance = "Secure credential storage is unavailable, so Git Wrangler skipped AI API key setup. Set GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY instead."
 		}
 		a.warn(guidance)
 	}
