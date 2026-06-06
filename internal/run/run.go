@@ -26,6 +26,10 @@ type Runner interface {
 	Pipe(ctx context.Context, dir string, env []string, left Command, right Command, consume func(io.Reader) error) error
 }
 
+type StreamingRunner interface {
+	Stream(ctx context.Context, dir string, env []string, name string, args []string, consume func(io.Reader) error) error
+}
+
 type RealRunner struct{}
 
 func New() Runner {
@@ -60,6 +64,26 @@ func Stdout(ctx context.Context, r Runner, dir string, env []string, name string
 		return stdout, err
 	}
 	return stdout, nil
+}
+
+func StreamStdout(ctx context.Context, r Runner, dir string, env []string, name string, args []string, consume func(io.Reader) error) error {
+	if r == nil {
+		r = RealRunner{}
+	}
+	if streaming, ok := r.(StreamingRunner); ok {
+		return streaming.Stream(ctx, dir, env, name, args, consume)
+	}
+	stdout, stderr, err := r.Run(ctx, dir, env, name, args...)
+	if err != nil {
+		if strings.TrimSpace(stderr) != "" {
+			return errors.New(strings.TrimSpace(stderr))
+		}
+		return err
+	}
+	if consume == nil {
+		return nil
+	}
+	return consume(strings.NewReader(stdout))
 }
 
 type stdinKey struct{}
@@ -109,6 +133,59 @@ func (RealRunner) Run(ctx context.Context, dir string, env []string, name string
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+func (RealRunner) Stream(ctx context.Context, dir string, env []string, name string, args []string, consume func(io.Reader) error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
+		defer cancel()
+	}
+	processCtx, cancelProcess := context.WithCancel(ctx)
+	defer cancelProcess()
+	cmd := exec.CommandContext(processCtx, name, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	if stdin := GetStdin(ctx); stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if consume == nil {
+		consume = func(output io.Reader) error {
+			_, err := io.Copy(io.Discard, output)
+			return err
+		}
+	}
+	consumeErr := consume(stdout)
+	if consumeErr != nil {
+		cancelProcess()
+	}
+	runErr := cmd.Wait()
+	if consumeErr != nil {
+		return consumeErr
+	}
+	if runErr != nil {
+		if strings.TrimSpace(stderr.String()) != "" {
+			return errors.New(strings.TrimSpace(stderr.String()))
+		}
+		return runErr
+	}
+	return nil
 }
 
 func (r RealRunner) Pipe(ctx context.Context, dir string, env []string, left Command, right Command, consume func(io.Reader) error) error {
