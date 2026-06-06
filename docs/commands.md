@@ -110,7 +110,7 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `clone`
 
-`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Existing destination directories are skipped successfully. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
+`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Existing destination directories are skipped successfully. When secure credential storage is unavailable, authenticated cloning hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`; `--visibility public` continues without authentication. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
 
 ### `commit`
 
@@ -144,7 +144,7 @@ Years render newest first with Sunday-first weeks. The default four-level scale 
 
 ### `rename-repo`
 
-`rename-repo` is intentionally interactive and sequential. It skips repositories that `gh repo view` cannot identify as GitHub repositories. There is no `--yes`; entered names are passed to `gh repo rename` with `--yes`.
+`rename-repo` is intentionally interactive and sequential. When secure credential storage is unavailable, it hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`. It skips repositories that `gh repo view` cannot identify as GitHub repositories. There is no `--yes`; entered names are passed to `gh repo rename` with `--yes`.
 
 ### `license`
 
