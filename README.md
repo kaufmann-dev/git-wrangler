@@ -205,11 +205,11 @@ and designed to fail safely.
 
 ## Runtime Dependencies
 
-| Tool              | Required for                                                                                                                |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `git`             | All repository operations (required).                                                                                       |
-| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                                                  |
-| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-commits`, normal `rewrite-dates`, and legacy date rollback. |
+| Tool              | Required for                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `git`             | All repository operations (required).                                                                 |
+| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                            |
+| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and normal `rewrite-dates`. |
 
 Run `git-wrangler doctor` to check what's available on your system.
 
