@@ -32,11 +32,11 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 `internal/config` owns non-secret JSON config at the user config path.
 
-`internal/credentials` owns secret storage and resolution through `go-keyring`, with environment variable overrides and fallbacks.
+`internal/credentials` owns secret storage and resolution through `go-keyring`, with environment variable overrides and fallbacks. GitHub credentials resolve only from `GIT_WRANGLER_GITHUB_TOKEN` or Git Wrangler's keyring account; inbound `GH_TOKEN` is not a credential source.
 
 `internal/auth` owns GitHub device OAuth and username lookup for `git-wrangler init`.
 
-`internal/githubcli` owns `gh` subprocess behavior. `clone` and `rename-repo` must keep using `gh` as the GitHub transport and pass Git Wrangler-owned tokens through `GH_TOKEN`/`GH_HOST`; do not reimplement repository listing, clone, rename, or edit flows.
+`internal/githubcli` owns `gh` subprocess behavior. `clone` and `rename-repo` must keep using `gh` as the GitHub transport and pass Git Wrangler-owned tokens through outbound `GH_TOKEN`/`GH_HOST` transport variables; do not reimplement repository listing, clone, rename, or edit flows.
 
 `internal/run` owns command execution wrappers, optional streaming stdout with buffered fake-runner fallback, default subprocess timeouts, and concurrency-safe fake-command support for tests.
 

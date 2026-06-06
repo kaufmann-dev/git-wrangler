@@ -79,10 +79,16 @@ func (s *fakeCredentialStore) Delete(account string) error {
 }
 
 type fakeGitHubAuth struct {
-	result auth.GitHubResult
-	err    error
+	result     auth.GitHubResult
+	err        error
+	waitEvents []auth.WaitEvent
 }
 
-func (f fakeGitHubAuth) AuthenticateGitHub(ctx context.Context, host string, stdin io.Reader, stdout io.Writer) (auth.GitHubResult, error) {
+func (f fakeGitHubAuth) AuthenticateGitHub(ctx context.Context, host string, stdin io.Reader, stderr io.Writer, onWait func(auth.WaitEvent)) (auth.GitHubResult, error) {
+	if onWait != nil {
+		for _, event := range f.waitEvents {
+			onWait(event)
+		}
+	}
 	return f.result, f.err
 }
