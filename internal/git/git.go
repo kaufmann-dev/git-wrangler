@@ -31,6 +31,10 @@ func (c Client) Stdout(ctx context.Context, dir string, env []string, args ...st
 	return run.Stdout(ctx, c.runner, dir, env, "git", args...)
 }
 
+func (c Client) StreamStdout(ctx context.Context, dir string, env []string, consume func(io.Reader) error, args ...string) error {
+	return run.StreamStdout(ctx, c.runner, dir, env, "git", args, consume)
+}
+
 func (c Client) Installed() bool {
 	_, err := c.runner.LookPath("git")
 	return err == nil
