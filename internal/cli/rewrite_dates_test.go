@@ -445,7 +445,7 @@ func TestRewriteDatesStateBlobRefReadWrite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(stdin, `"schema_version": 2`) || !strings.Contains(stdin, `"seed": "seed"`) || !strings.Contains(stdin, `"original_sha": "a"`) || !strings.Contains(stdin, `"backup_ref": "refs/git-wrangler/backup/rewrite-dates/run/heads/main"`) {
+		if !strings.Contains(stdin, `"seed": "seed"`) || !strings.Contains(stdin, `"original_sha": "a"`) || !strings.Contains(stdin, `"backup_ref": "refs/git-wrangler/backup/rewrite-dates/run/heads/main"`) {
 			t.Fatalf("unexpected state stdin:\n%s", stdin)
 		}
 		if updatedRef != rewriteDatesStateRef {
@@ -460,7 +460,7 @@ func TestRewriteDatesStateBlobRefReadWrite(t *testing.T) {
 			case "git rev-parse --verify --quiet refs/git-wrangler/state/rewrite-dates":
 				return "blob123\n", "", nil
 			case "git cat-file -p blob123":
-				return `{"schema_version":1,"seed":"seed","commits":[{"original_sha":"a","current_sha":"b","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"101 +0000","original_committer_epoch":101,"original_committer_tz":"+0000"}]}` + "\n", "", nil
+				return `{"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"a","rewritten_head":"b","backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","run_id":"run"}],"commits":[{"original_sha":"a","current_sha":"b","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"101 +0000","original_committer_epoch":101,"original_committer_tz":"+0000"}]}` + "\n", "", nil
 			default:
 				return "", "", nil
 			}
@@ -470,7 +470,7 @@ func TestRewriteDatesStateBlobRefReadWrite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !found || state.SchemaVersion != rewriteDatesStateVersion || state.Seed != "seed" || len(state.Commits) != 1 || state.Commits[0].CurrentSHA != "b" || len(state.Branches) != 0 {
+		if !found || state.Seed != "seed" || len(state.Commits) != 1 || state.Commits[0].CurrentSHA != "b" || len(state.Branches) != 1 || state.Branches[0].BackupRef == "" {
 			t.Fatalf("state = found:%v %+v", found, state)
 		}
 	})
@@ -483,7 +483,7 @@ func TestRewriteDatesExactRollbackDoesNotRequireFilterRepo(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stateJSON := `{"schema_version":2,"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"original","rewritten_head":"rewritten","backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","run_id":"run"}],"commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
+	stateJSON := `{"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"original","rewritten_head":"rewritten","backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","run_id":"run"}],"commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
 	filterRepoLookups := 0
 	filterRepoRuns := 0
 	branchRestored := false
@@ -557,6 +557,71 @@ func TestRewriteDatesExactRollbackDoesNotRequireFilterRepo(t *testing.T) {
 	}
 	if !branchRestored {
 		t.Fatal("branch ref was not restored to original head")
+	}
+}
+
+func TestRewriteDatesRollbackMissingBranchMetadataFailsBeforeMutation(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stateJSON := `{"seed":"seed","commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
+	mutated := false
+	filterRepoLookups := 0
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			switch name {
+			case "git":
+				return "/usr/bin/git", nil
+			case "git-filter-repo":
+				filterRepoLookups++
+				return "", exec.ErrNotFound
+			default:
+				return "", exec.ErrNotFound
+			}
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name == "git-filter-repo" || (name == "git" && len(args) > 0 && args[0] == "filter-repo") {
+				mutated = true
+				return "", "", errors.New("filter-repo should not run")
+			}
+			joined := name + " " + strings.Join(args, " ")
+			switch {
+			case joined == "git rev-parse HEAD":
+				return "rewritten\n", "", nil
+			case joined == "git for-each-ref --format=%(refname)%00%(objectname) refs/heads":
+				return "refs/heads/main\x00rewritten\n", "", nil
+			case joined == "git rev-parse --verify --quiet refs/git-wrangler/state/rewrite-dates":
+				return "stateblob\n", "", nil
+			case joined == "git cat-file -p stateblob":
+				return stateJSON + "\n", "", nil
+			case len(args) > 0 && args[0] == "log" && strings.Contains(joined, "--topo-order"):
+				return "rewritten\x00\x00100\x001970-01-01 00:01:40 +0000\x00100\x001970-01-01 00:01:40 +0000\x00N\x1e", "", nil
+			case len(args) > 0 && args[0] == "update-ref":
+				mutated = true
+				return "", "", errors.New("update-ref should not run")
+			case joined == "git hash-object -w --stdin":
+				mutated = true
+				return "", "", errors.New("hash-object should not run")
+			default:
+				return "", "", errors.New("unexpected command: " + joined)
+			}
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), runner, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--rollback", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if mutated {
+		t.Fatalf("rollback mutated refs or state after missing branch metadata\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
+	}
+	if filterRepoLookups != 0 {
+		t.Fatalf("rollback looked up filter-repo after missing branch metadata: %d", filterRepoLookups)
+	}
+	if !strings.Contains(stderr.String(), "rewrite state is missing branch rollback metadata") {
+		t.Fatalf("missing metadata error not reported:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
 	}
 }
 
