@@ -191,6 +191,70 @@ func TestRewriteDateTargetRangeDays(t *testing.T) {
 	}
 }
 
+func TestGeneratePlannedEpochsSpansTargetRange(t *testing.T) {
+	start := parseDateStart("2020-01-01")
+	end := parseDateEnd("2020-01-10")
+	intensity := rewriteDateIntensity{name: "test", activeRatio: 1, pauseChance: 0.5, maxBurst: 8}
+
+	got := generatePlannedEpochs(2, start, end, "seed", intensity)
+	if len(got) != 2 {
+		t.Fatalf("timestamps = %d, want 2", len(got))
+	}
+	if floorDay(got[0]) != floorDay(start) {
+		t.Fatalf("first timestamp = %s, want first target day", formatEpochLocal(got[0]))
+	}
+	if floorDay(got[1]) != floorDay(end) {
+		t.Fatalf("last timestamp = %s, want last target day", formatEpochLocal(got[1]))
+	}
+}
+
+func TestGeneratePlannedEpochsUsesFullLongRange(t *testing.T) {
+	start := parseDateStart("2020-01-01")
+	end := parseDateEnd("2026-06-06")
+	intensity, _ := rewriteDateIntensityProfile("medium")
+
+	got := generatePlannedEpochs(1837, start, end, "seed", intensity)
+	if len(got) != 1837 {
+		t.Fatalf("timestamps = %d, want 1837", len(got))
+	}
+	if got[0] < start || got[len(got)-1] > end {
+		t.Fatalf("timestamps outside target range: %s -> %s", formatEpochLocal(got[0]), formatEpochLocal(got[len(got)-1]))
+	}
+	if got[len(got)-1] < parseDateStart("2026-01-01") {
+		t.Fatalf("last timestamp stopped before 2026: %s", formatEpochLocal(got[len(got)-1]))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] < got[i-1] {
+			t.Fatalf("timestamps are not sorted at index %d: %s before %s", i, formatEpochLocal(got[i]), formatEpochLocal(got[i-1]))
+		}
+	}
+	again := generatePlannedEpochs(1837, start, end, "seed", intensity)
+	for i := range got {
+		if got[i] != again[i] {
+			t.Fatalf("same seed differs at index %d: %d != %d", i, got[i], again[i])
+		}
+	}
+}
+
+func TestGeneratePlannedEpochsSingleDay(t *testing.T) {
+	start := parseDateStart("2024-01-01")
+	end := parseDateEnd("2024-01-01")
+	intensity, _ := rewriteDateIntensityProfile("medium")
+
+	got := generatePlannedEpochs(20, start, end, "seed", intensity)
+	if len(got) != 20 {
+		t.Fatalf("timestamps = %d, want 20", len(got))
+	}
+	for i, timestamp := range got {
+		if timestamp < start || timestamp > end {
+			t.Fatalf("timestamp %d outside target day: %s", i, formatEpochLocal(timestamp))
+		}
+		if i > 0 && timestamp < got[i-1] {
+			t.Fatalf("timestamps are not sorted at index %d: %s before %s", i, formatEpochLocal(timestamp), formatEpochLocal(got[i-1]))
+		}
+	}
+}
+
 func TestRewriteDateSeedSource(t *testing.T) {
 	candidates := []dateCandidate{{state: rewriteDatesState{Seed: "state-seed"}}}
 	if seed, source := rewriteDateSeed(rewriteDatesOptions{seed: "flag-seed"}, candidates); seed != "flag-seed" || source != "flag" {
@@ -625,6 +689,36 @@ func TestRewriteDatesRollbackMissingBranchMetadataFailsBeforeMutation(t *testing
 	}
 }
 
+func TestRewriteDatesDirtyRepoFailsBeforeMutation(t *testing.T) {
+	requireGitFilterRepoForTest(t)
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	runGitForTest(t, "", "init", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitEmptyForTest(t, repoDir, "first", "2020-01-01T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "second", "2020-01-02T10:00:00 +0000")
+	originalHead := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
+	dirtyPath := filepath.Join(repoDir, "dirty.txt")
+	if err := os.WriteFile(dirtyPath, []byte("keep me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "test-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if !strings.Contains(stderr.String(), "working tree must be clean before rewriting dates") {
+		t.Fatalf("missing dirty working tree error:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
+	}
+	if head := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD")); head != originalHead {
+		t.Fatalf("HEAD changed from %s to %s", originalHead, head)
+	}
+	if data, err := os.ReadFile(dirtyPath); err != nil || string(data) != "keep me\n" {
+		t.Fatalf("dirty file was changed or removed: data=%q err=%v", string(data), err)
+	}
+}
+
 func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	requireGitFilterRepoForTest(t)
 	t.Setenv("NO_COLOR", "1")
@@ -648,6 +742,9 @@ func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 		if rewrittenDates[subject] < parseDateStart("2024-01-01") || rewrittenDates[subject] > parseDateEnd("2024-01-10") {
 			t.Fatalf("%s date outside target range: %s", subject, formatEpochLocal(rewrittenDates[subject]))
 		}
+	}
+	if rewrittenDates["third"]-rewrittenDates["first"] < 7*86400 {
+		t.Fatalf("applied dates did not span target range: %s -> %s", formatEpochLocal(rewrittenDates["first"]), formatEpochLocal(rewrittenDates["third"]))
 	}
 
 	commitEmptyForTest(t, repoDir, "new", "2025-01-01T10:00:00 +0000")
