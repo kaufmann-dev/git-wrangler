@@ -22,7 +22,6 @@ import (
 const (
 	rewriteDatesStateRef     = "refs/git-wrangler/state/rewrite-dates"
 	rewriteDatesBackupPrefix = "refs/git-wrangler/backup/rewrite-dates"
-	rewriteDatesStateVersion = 2
 )
 
 var timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
@@ -80,10 +79,9 @@ type rewriteDateCommit struct {
 }
 
 type rewriteDatesState struct {
-	SchemaVersion int                       `json:"schema_version"`
-	Seed          string                    `json:"seed,omitempty"`
-	Branches      []rewriteDatesStateBranch `json:"branches,omitempty"`
-	Commits       []rewriteDatesStateCommit `json:"commits"`
+	Seed     string                    `json:"seed,omitempty"`
+	Branches []rewriteDatesStateBranch `json:"branches,omitempty"`
+	Commits  []rewriteDatesStateCommit `json:"commits"`
 }
 
 type rewriteDatesStateBranch struct {
@@ -145,7 +143,6 @@ const (
 )
 
 type dateRollbackPlan struct {
-	legacy        bool
 	branches      []dateRollbackBranchPlan
 	exact         int
 	replay        int
@@ -426,7 +423,6 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 	replayBranches := 0
 	replayCommits := 0
 	skippedBranches := 0
-	legacyFallbacks := 0
 	for _, scan := range scans {
 		if scan.err != nil {
 			renderErrorBlock(a, scan.repo.display+": "+scan.errLabel, scan.err.Error())
@@ -451,7 +447,7 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 			skipped++
 			continue
 		}
-		if !scan.rollbackPlan.legacy && scan.rollbackPlan.exact == 0 && scan.rollbackPlan.replay == 0 {
+		if scan.rollbackPlan.exact == 0 && scan.rollbackPlan.replay == 0 {
 			skipped++
 			continue
 		}
@@ -461,9 +457,6 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 		replayBranches += scan.rollbackPlan.replay
 		replayCommits += scan.rollbackPlan.replayCommits
 		skippedBranches += scan.rollbackPlan.skipped
-		if scan.rollbackPlan.legacy {
-			legacyFallbacks++
-		}
 		candidates = append(candidates, dateCandidate{
 			repo:             scan.repo,
 			stateFound:       scan.stateFound,
@@ -485,28 +478,12 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 		)
 		return status
 	}
-	var filterCmd []string
-	if legacyFallbacks > 0 {
-		var ok bool
-		filterCmd, ok = filterRepoCommand(a, "rewrite-dates rollback for legacy state")
-		if !ok {
-			renderSummary(a,
-				summaryCount{label: "with rollback", value: len(candidates), color: a.ui.Yellow},
-				summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
-				summaryCount{label: "failed", value: failed + legacyFallbacks, color: a.ui.Red},
-			)
-			return 1
-		}
-	}
-	renderRewriteDateRollbackPlan(a, candidates, knownTotal, unknownTotal, exactBranches, replayBranches, replayCommits, skippedBranches, legacyFallbacks)
+	renderRewriteDateRollbackPlan(a, candidates, knownTotal, unknownTotal, exactBranches, replayBranches, replayCommits, skippedBranches)
 	renderSummary(a,
 		summaryCount{label: "with rollback", value: len(candidates), color: a.ui.Yellow},
 		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
 		summaryCount{label: "failed", value: failed, color: a.ui.Red},
 	)
-	if legacyFallbacks > 0 {
-		renderWarning(a, fmt.Sprintf("%d repositories have legacy rewrite-dates state without branch metadata; exact object rollback is unavailable there, so they will use date-only rollback.", legacyFallbacks))
-	}
 	renderWarning(a, fmt.Sprintf("This rollback rewrites Git history in %d repositories. Exact rollback restores original commit objects and preserves signatures for known history; replayed new commits may get new hashes or lose signatures. A force push will be required to update any remote.", len(candidates)))
 	if !confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rollback for %d repositories?", len(candidates))) {
 		renderSummary(a,
@@ -524,7 +501,7 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 	results := parallelItemsWithWorkersProgress(a.ctx, applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rolling back commit dates", len(applies)), func(apply dateApply) (string, string) {
 		return apply.candidate.repo.display, apply.candidate.repo.display
 	}, func(apply dateApply) dateApplyResult {
-		out, err, restoreErr := applyRollbackDateCandidate(a, filterCmd, apply.candidate)
+		out, err, restoreErr := applyRollbackDateCandidate(a, apply.candidate)
 		return dateApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
 	if interrupted(a) {
@@ -651,7 +628,7 @@ func branchRefNames(branches []dateBranchRef) []string {
 
 func planRewriteDatesRollback(a *app, r repo, state rewriteDatesState, branches []dateBranchRef, commits []rewriteDateCommit) (dateRollbackPlan, error) {
 	if len(state.Branches) == 0 {
-		return dateRollbackPlan{legacy: true}, nil
+		return dateRollbackPlan{}, fmt.Errorf("rewrite state is missing branch rollback metadata")
 	}
 	byName := rewriteDatesBranchStateByName(state.Branches)
 	plan := dateRollbackPlan{}
@@ -972,7 +949,6 @@ func writeRewriteDatesState(a *app, dir string, state rewriteDatesState) error {
 }
 
 func normalizeRewriteDatesState(state rewriteDatesState) rewriteDatesState {
-	state.SchemaVersion = rewriteDatesStateVersion
 	sort.Slice(state.Branches, func(i, j int) bool {
 		if state.Branches[i].Name == state.Branches[j].Name {
 			return state.Branches[i].RunID < state.Branches[j].RunID
@@ -1582,7 +1558,7 @@ func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOption
 	}
 }
 
-func renderRewriteDateRollbackPlan(a *app, candidates []dateCandidate, knownTotal, unknownTotal, exactBranches, replayBranches, replayCommits, skippedBranches, legacyFallbacks int) {
+func renderRewriteDateRollbackPlan(a *app, candidates []dateCandidate, knownTotal, unknownTotal, exactBranches, replayBranches, replayCommits, skippedBranches int) {
 	fmt.Fprintln(a.stdout, "Date Rollback Plan")
 	renderKeyValuesTo(a.stdout, []keyValueRow{
 		{key: "Repositories", value: fmt.Sprintf("%d", len(candidates))},
@@ -1590,7 +1566,6 @@ func renderRewriteDateRollbackPlan(a *app, candidates []dateCandidate, knownTota
 		{key: "Unknown/new commits", value: fmt.Sprintf("%d", unknownTotal)},
 		{key: "Exact branch restores", value: fmt.Sprintf("%d", exactBranches)},
 		{key: "Branches replaying new commits", value: fmt.Sprintf("%d (%d commits)", replayBranches, replayCommits)},
-		{key: "Legacy date-only fallbacks", value: fmt.Sprintf("%d", legacyFallbacks)},
 		{key: "Skipped branches", value: fmt.Sprintf("%d", skippedBranches)},
 	})
 	fmt.Fprintln(a.stdout)
@@ -1607,11 +1582,7 @@ func renderRewriteDateRollbackPlan(a *app, candidates []dateCandidate, knownTota
 		renderRepoHeader(a, candidate.repo.display)
 		fmt.Fprintf(a.stdout, "  Known commits: %d\n", known)
 		fmt.Fprintf(a.stdout, "  Unknown/new commits: %d\n", unknown)
-		if candidate.rollbackPlan.legacy {
-			fmt.Fprintln(a.stdout, "  Mode: legacy date-only rollback")
-		} else {
-			fmt.Fprintf(a.stdout, "  Branches: %d exact, %d replay, %d skipped\n", candidate.rollbackPlan.exact, candidate.rollbackPlan.replay, candidate.rollbackPlan.skipped)
-		}
+		fmt.Fprintf(a.stdout, "  Branches: %d exact, %d replay, %d skipped\n", candidate.rollbackPlan.exact, candidate.rollbackPlan.replay, candidate.rollbackPlan.skipped)
 		warnings := rewriteDateCandidateWarnings(candidate)
 		if len(warnings) > 0 {
 			fmt.Fprintf(a.stdout, "  Warnings: %s\n", strings.Join(warnings, "; "))
@@ -1657,8 +1628,6 @@ func rewriteDateCandidateWarnings(candidate dateCandidate) []string {
 	if candidate.hasSignedObjects {
 		if candidate.rollbackPlan.replay > 0 {
 			warnings = append(warnings, "replayed commits may lose signatures")
-		} else if candidate.rollbackPlan.legacy {
-			warnings = append(warnings, "signatures may become invalid")
 		} else if candidate.rollbackPlan.exact == 0 && candidate.rollbackPlan.skipped == 0 {
 			warnings = append(warnings, "signatures may become invalid")
 		}
@@ -1691,18 +1660,8 @@ func applyRewriteDateCandidate(a *app, filterCmd []string, candidate dateCandida
 	return applyDateCallbackCandidate(a, filterCmd, candidate, mapping)
 }
 
-func applyRollbackDateCandidate(a *app, filterCmd []string, candidate dateCandidate) (string, error, error) {
-	if !candidate.rollbackPlan.legacy {
-		return applyExactRollbackDateCandidate(a, candidate)
-	}
-	mapping := map[string]dateCallbackDates{}
-	for _, commit := range candidate.commits {
-		if !commit.knownInState {
-			continue
-		}
-		mapping[commit.hash] = dateCallbackDates{Author: commit.originalAuthorDate, Committer: commit.originalCommitterDate}
-	}
-	return applyDateCallbackCandidate(a, filterCmd, candidate, mapping)
+func applyRollbackDateCandidate(a *app, candidate dateCandidate) (string, error, error) {
+	return applyExactRollbackDateCandidate(a, candidate)
 }
 
 func applyExactRollbackDateCandidate(a *app, candidate dateCandidate) (string, error, error) {
@@ -1780,11 +1739,9 @@ func applyDateCallbackCandidate(a *app, filterCmd []string, candidate dateCandid
 		return out, fmt.Errorf("could not read commit map: %w", err), restoreErr
 	}
 	candidate.state = updateRewriteDatesStateFromCommitMap(candidate.state, commitMap)
-	if !candidate.rollbackPlan.legacy {
-		candidate.state, err = updateRewriteDatesStateBranchesAfterRewrite(a, candidate.repo.dir, candidate.state, runID, candidate.branches, backupRefs)
-		if err != nil {
-			return out, fmt.Errorf("could not update branch rewrite state: %w", err), restoreErr
-		}
+	candidate.state, err = updateRewriteDatesStateBranchesAfterRewrite(a, candidate.repo.dir, candidate.state, runID, candidate.branches, backupRefs)
+	if err != nil {
+		return out, fmt.Errorf("could not update branch rewrite state: %w", err), restoreErr
 	}
 	if err := writeRewriteDatesState(a, candidate.repo.dir, candidate.state); err != nil {
 		return out, fmt.Errorf("could not update rewrite state: %w", err), restoreErr
