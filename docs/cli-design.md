@@ -179,7 +179,11 @@ Print `Git Wrangler Doctor`, a runtime key/value section, a dependency check tab
 
 ### `init`
 
-Keep prompts explicit. Use `GitHub` and `AI` sections. End with `OK Setup complete` and a short non-secret recap with sources.
+Keep prompts explicit. Use `GitHub` and `AI` sections. GitHub device authentication prints its one-time code, verification URL, and browser-launch prompt to stderr. Browser launch is best-effort; on failure, print one concise manual-open warning and continue waiting.
+
+While waiting for GitHub authorization, TTY stderr uses one transient `Waiting for GitHub authorization: <duration> remaining` line updated once per second. Non-TTY stderr prints one durable initial waiting line only. Clear or finish the waiting line before subsequent success, warning, or error output.
+
+When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, continue collecting non-secret configuration, and print environment-variable guidance for missing credentials. End with `OK Setup complete` and a short non-secret recap with `env`, `keyring`, or `missing` sources.
 
 ### `config`
 
