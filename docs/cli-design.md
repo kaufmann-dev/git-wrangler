@@ -101,7 +101,7 @@ Preferred count orders:
 - `remove-secrets`: rewritten, clean, skipped, failed.
 - `rewrite-authors`: rewritten, skipped, failed.
 - `rewrite-commits`: commit messages rewritten, repositories updated, failed.
-- `rewrite-dates`: rewritten, skipped, failed.
+- `rewrite-dates`: rewritten, skipped, failed for normal rewrites; rolled back, skipped, failed for rollback.
 - `rename-repo`: renamed, description updated, skipped, failed.
 
 ## Per-Command Output Contract
@@ -162,7 +162,7 @@ Validate AI settings, refresh `origin` unless `--no-fetch` is set, then use phas
 
 ### `rewrite-dates`
 
-Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, planning, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Preparation progress completes before durable output. Normal rewrite preview starts with a global date-plan header containing repository count, selected commit count, target range, filters, intensity, and seed source. Candidate repo blocks show selected commits, planned range, timezone, compact old-to-new samples, and tag/signature warnings when detected. Rollback preview starts with repositories, known commits, and unknown/new commits, then repo blocks with restore counts and samples. Warn and prompt once. Apply with progress and summarize `rewritten`, `skipped`, and `failed`.
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, planning, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Preparation progress completes before durable output. Normal rewrite preview starts with a global date-plan header containing repository count, selected commit count, target range, filters, intensity, and seed source. Candidate repo blocks show selected commits, planned range, timezone, compact old-to-new samples, and tag/signature warnings when detected. Rollback preview starts with repositories, known commits, unknown/new commits, exact branch restores, branches that replay new commits, legacy date-only fallbacks, and skipped branches; repo blocks show mode or branch action counts plus samples. Warn and prompt once. Apply with progress and summarize `rewritten`, `skipped`, and `failed` for normal rewrites or `rolled back`, `skipped`, and `failed` for rollback.
 
 ### `info`
 

@@ -236,7 +236,7 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("until", "", "End date for --days in YYYY-MM-DD format. Defaults to today."),
 			stringFlag("seed", "", "Deterministic planner seed."),
 			stringFlag("intensity", "medium", "Planning intensity: low, medium, or high."),
-			boolFlag("rollback", "Restore known commits to stored original dates."),
+			boolFlag("rollback", "Restore known history from stored rewrite state."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
