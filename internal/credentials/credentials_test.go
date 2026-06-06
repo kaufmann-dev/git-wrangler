@@ -37,6 +37,15 @@ func TestResolveGitHubTokenPrefersEnv(t *testing.T) {
 	}
 }
 
+func TestResolveGitHubTokenIgnoresGHToken(t *testing.T) {
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "gh-token")
+	got := ResolveGitHubToken(memoryStore{values: map[string]string{GitHubAccount("github.com"): "keyring-token"}}, "github.com")
+	if got.Value != "keyring-token" || got.Source != SourceKeyring {
+		t.Fatalf("resolved = %#v", got)
+	}
+}
+
 func TestResolveAIKeyUsesOpenAIEnvFallback(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "openai-token")
 	got := ResolveAIKey(memoryStore{}, "openai")
