@@ -14,6 +14,10 @@ func stringFlag(name, value, description string) flagSpec {
 	return flagSpec{name: name, stringValue: value, description: description, kind: "string"}
 }
 
+func stringArrayFlag(name, description string) flagSpec {
+	return flagSpec{name: name, description: description, kind: "stringArray"}
+}
+
 func boolFlag(name, description string) flagSpec {
 	return flagSpec{name: name, description: description, kind: "bool"}
 }

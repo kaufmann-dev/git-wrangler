@@ -38,7 +38,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 `internal/githubcli` owns `gh` subprocess behavior. `clone` and `rename-repo` must keep using `gh` as the GitHub transport and pass Git Wrangler-owned tokens through `GH_TOKEN`/`GH_HOST`; do not reimplement repository listing, clone, rename, or edit flows.
 
-`internal/run` owns command execution wrappers, default subprocess timeouts, and concurrency-safe fake-command support for tests.
+`internal/run` owns command execution wrappers, optional streaming stdout with buffered fake-runner fallback, default subprocess timeouts, and concurrency-safe fake-command support for tests.
 
 `internal/ui` owns output streams, colors, plain output behavior, status vocabulary, prompts, and terminal detection.
 
@@ -50,7 +50,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
