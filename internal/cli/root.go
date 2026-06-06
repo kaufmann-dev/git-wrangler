@@ -228,8 +228,15 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
 			repoFlag(),
 			noFetchFlag(),
-			stringFlag("start-date", "", "Earliest date in YYYY-MM-DD format."),
-			stringFlag("end-date", "", "Latest date in YYYY-MM-DD format."),
+			stringFlag("start-date", "", "Earliest target date in YYYY-MM-DD format."),
+			stringFlag("end-date", "", "Latest target date in YYYY-MM-DD format."),
+			stringFlag("rewrite-before", "", "Rewrite commits with original author dates before YYYY-MM-DD."),
+			stringFlag("rewrite-after", "", "Rewrite commits with original author dates on or after YYYY-MM-DD."),
+			intFlag("days", 0, "Target the last N days."),
+			stringFlag("until", "", "End date for --days in YYYY-MM-DD format. Defaults to today."),
+			stringFlag("seed", "", "Deterministic planner seed."),
+			stringFlag("intensity", "medium", "Planning intensity: low, medium, or high."),
+			boolFlag("rollback", "Restore known commits to stored original dates."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{
