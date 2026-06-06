@@ -1408,23 +1408,50 @@ func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, inten
 	if len(activeDays) == 0 {
 		activeDays = days
 	}
-	daySlots := make([]int64, 0, n)
-	dayIndex := 0
-	for len(daySlots) < n {
+	bursts := []int{}
+	remaining := n
+	for remaining > 0 {
 		burst := 1
 		if intensity.maxBurst > 1 {
 			burst += rng.Intn(intensity.maxBurst)
 		}
-		for i := 0; i < burst && len(daySlots) < n; i++ {
-			daySlots = append(daySlots, activeDays[dayIndex])
+		if burst > remaining {
+			burst = remaining
 		}
-		step := 1
+		if len(bursts) == 0 && remaining > 1 && len(activeDays) > 1 && burst == remaining {
+			burst--
+		}
+		bursts = append(bursts, burst)
+		remaining -= burst
+	}
+	dayIndexes := make([]int, len(bursts))
+	totalWeight := 0
+	gapWeights := make([]int, len(bursts)-1)
+	for i := range gapWeights {
+		weight := 1
 		if rng.Float64() < intensity.pauseChance {
-			step += 1 + rng.Intn(2)
+			weight += 1 + rng.Intn(2)
 		}
-		dayIndex += step
-		if dayIndex >= len(activeDays) {
-			dayIndex = len(activeDays) - 1
+		gapWeights[i] = weight
+		totalWeight += weight
+	}
+	cumulativeWeight := 0
+	for i := 1; i < len(dayIndexes); i++ {
+		cumulativeWeight += gapWeights[i-1]
+		dayIndex := int(math.Round(float64(cumulativeWeight) * float64(len(activeDays)-1) / float64(totalWeight)))
+		if len(dayIndexes) <= len(activeDays) {
+			dayIndex = maxInt(dayIndex, dayIndexes[i-1]+1)
+			maxIndex := len(activeDays) - (len(dayIndexes) - i)
+			if dayIndex > maxIndex {
+				dayIndex = maxIndex
+			}
+		}
+		dayIndexes[i] = dayIndex
+	}
+	daySlots := make([]int64, 0, n)
+	for i, burst := range bursts {
+		for range burst {
+			daySlots = append(daySlots, activeDays[dayIndexes[i]])
 		}
 	}
 	byDay := map[int64][]int{}
@@ -1432,7 +1459,13 @@ func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, inten
 		byDay[day] = append(byDay[day], i)
 	}
 	timestamps := make([]int64, n)
-	for day, indexes := range byDay {
+	plannedDays := make([]int64, 0, len(byDay))
+	for day := range byDay {
+		plannedDays = append(plannedDays, day)
+	}
+	sort.Slice(plannedDays, func(i, j int) bool { return plannedDays[i] < plannedDays[j] })
+	for _, day := range plannedDays {
+		indexes := byDay[day]
 		sort.Ints(indexes)
 		startOfWorkday := day + 8*3600 + int64(rng.Intn(60))*60
 		endOfWorkday := day + 18*3600
@@ -1712,6 +1745,9 @@ func applyExactRollbackDateCandidate(a *app, candidate dateCandidate) (string, e
 func applyDateCallbackCandidate(a *app, filterCmd []string, candidate dateCandidate, mapping map[string]dateCallbackDates) (string, error, error) {
 	if len(mapping) == 0 {
 		return "", fmt.Errorf("no commit date mapping generated"), nil
+	}
+	if !rewriteDatesWorkingTreeClean(a, candidate.repo.dir) {
+		return "", fmt.Errorf("working tree must be clean before rewriting dates"), nil
 	}
 	if err := writeRewriteDatesState(a, candidate.repo.dir, candidate.state); err != nil {
 		return "", fmt.Errorf("could not save rewrite state: %w", err), nil
