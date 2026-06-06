@@ -183,7 +183,7 @@ Keep prompts explicit. Use `GitHub` and `AI` sections. GitHub device authenticat
 
 While waiting for GitHub authorization, TTY stderr uses one transient `Waiting for GitHub authorization: <duration> remaining` line updated once per second. Non-TTY stderr prints one durable initial waiting line only. Clear or finish the waiting line before subsequent success, warning, or error output.
 
-When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, continue collecting non-secret configuration, and print environment-variable guidance for missing credentials. End with `OK Setup complete` and a short non-secret recap with `env`, `keyring`, or `missing` sources.
+When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, continue collecting non-secret configuration, and explain that secure credential storage is unavailable, secret setup was skipped, and environment variables must be used instead. Do not expose backend keyring errors. End with `OK Setup complete` and a short non-secret recap with `env`, `keyring`, or `missing` sources.
 
 ### `config`
 
