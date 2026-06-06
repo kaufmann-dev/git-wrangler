@@ -94,6 +94,88 @@ func TestCloneIgnoresInboundGHToken(t *testing.T) {
 	}
 }
 
+func TestCloneHidesUnavailableCredentialStorageError(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	backendErr := "org.freedesktop.secrets was not provided"
+	ghCalled := false
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			return "/usr/bin/" + name, nil
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			ghCalled = true
+			return "", "", errors.New("gh should not run")
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	a.creds = &fakeCredentialStore{err: errors.New(backendErr)}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"clone", "--user", "octo"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected unavailable credential storage failure")
+	}
+	if ghCalled {
+		t.Fatal("clone invoked gh without required authentication")
+	}
+	for _, want := range []string{"Secure credential storage is unavailable", "GIT_WRANGLER_GITHUB_TOKEN", "--visibility public"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("missing %q guidance:\n%s", want, stderr.String())
+		}
+	}
+	if strings.Contains(stderr.String(), backendErr) {
+		t.Fatalf("backend error was exposed:\n%s", stderr.String())
+	}
+}
+
+func TestPublicCloneContinuesWithoutCredentialStorage(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	into := filepath.Join(t.TempDir(), "clones")
+	var ghEnvs [][]string
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			return "/usr/bin/" + name, nil
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "gh" {
+				return "", "", errors.New("unexpected command: " + name)
+			}
+			ghEnvs = append(ghEnvs, append([]string{}, env...))
+			joinedArgs := strings.Join(args, " ")
+			if strings.HasPrefix(joinedArgs, "repo list octo") {
+				return "octo/repo\tpublic\n", "", nil
+			}
+			if strings.HasPrefix(joinedArgs, "repo clone octo/repo ") {
+				return "", "", nil
+			}
+			return "", "", errors.New("unexpected gh args: " + joinedArgs)
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	a.creds = &fakeCredentialStore{err: errors.New("keyring unavailable")}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"clone", "--user", "octo", "--visibility", "public", "--into", into})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("public clone returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	for _, env := range ghEnvs {
+		if strings.Contains(strings.Join(env, "\n"), "GH_TOKEN=") {
+			t.Fatalf("public clone passed auth env: %#v", env)
+		}
+	}
+}
+
 func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -131,6 +213,45 @@ func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	joined := strings.Join(ghEnv, "\n")
 	if !strings.Contains(joined, "GH_TOKEN=github-token") || !strings.Contains(joined, "GH_HOST=github.com") {
 		t.Fatalf("missing auth env in %#v", ghEnv)
+	}
+}
+
+func TestRenameRepoHidesUnavailableCredentialStorageError(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	backendErr := "org.freedesktop.secrets was not provided"
+	ghCalled := false
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			return "/usr/bin/" + name, nil
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			ghCalled = true
+			return "", "", errors.New("gh should not run")
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	a.creds = &fakeCredentialStore{err: errors.New(backendErr)}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"rename-repo"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected unavailable credential storage failure")
+	}
+	if ghCalled {
+		t.Fatal("rename-repo invoked gh without required authentication")
+	}
+	for _, want := range []string{"Secure credential storage is unavailable", "GIT_WRANGLER_GITHUB_TOKEN"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("missing %q guidance:\n%s", want, stderr.String())
+		}
+	}
+	if strings.Contains(stderr.String(), backendErr) {
+		t.Fatalf("backend error was exposed:\n%s", stderr.String())
 	}
 }
 

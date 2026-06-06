@@ -123,7 +123,7 @@ Show one progress line. Suppress routine per-repo success lines. Print actionabl
 
 ### `clone`
 
-Show GitHub auth source once when auth is used. Clone sequentially. Print existing-directory skips and failures. Suppress routine cloned lines for large runs; one or two individual success lines are acceptable. End with `cloned`, `skipped`, and `failed`.
+Show GitHub auth source once when auth is used. When secure credential storage is unavailable, hide backend errors and direct authenticated cloning to `GIT_WRANGLER_GITHUB_TOKEN`; public cloning continues without auth. Clone sequentially. Print existing-directory skips and failures. Suppress routine cloned lines for large runs; one or two individual success lines are acceptable. End with `cloned`, `skipped`, and `failed`.
 
 ### `commit`
 
@@ -191,7 +191,7 @@ When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, conti
 
 ### `rename-repo`
 
-Keep sequential interaction. Show auth source once. Use a repo header and concise prompts for each repository. Print active interaction skips/failures inline. End with a summary.
+When secure credential storage is unavailable, hide backend errors and direct users to `GIT_WRANGLER_GITHUB_TOKEN`. Keep sequential interaction. Show auth source once. Use a repo header and concise prompts for each repository. Print active interaction skips/failures inline. End with a summary.
 
 ### `root`, `help`, `completion`, and `version`
 
