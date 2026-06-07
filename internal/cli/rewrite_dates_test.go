@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -250,6 +251,97 @@ func TestGeneratePlannedEpochsActivityInvariants(t *testing.T) {
 	}
 }
 
+func TestRewriteDateDailyQuotasScaleWithDemand(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-12-31", "+0000")
+	medium, _ := rewriteDateIntensityProfile("medium")
+
+	smallCalendar := buildRewriteDateCalendarPlan(400, start, end, "demand", medium, "+0000")
+	largeCalendar := buildRewriteDateCalendarPlan(40000, start, end, "demand", medium, "+0000")
+	if calendarQuotaTotal(smallCalendar) != 400 || calendarQuotaTotal(largeCalendar) != 40000 {
+		t.Fatalf("quota sums = %d and %d", calendarQuotaTotal(smallCalendar), calendarQuotaTotal(largeCalendar))
+	}
+	if calendarForcedActiveDayCount(smallCalendar) != 0 || calendarForcedActiveDayCount(largeCalendar) != 0 {
+		t.Fatalf("volume activated rest days: small=%d large=%d", calendarForcedActiveDayCount(smallCalendar), calendarForcedActiveDayCount(largeCalendar))
+	}
+	if calendarRestDayCount(smallCalendar) == 0 || calendarRestDayCount(largeCalendar) == 0 {
+		t.Fatal("expected synchronized rest periods")
+	}
+	smallRest := restCalendarDaySet(smallCalendar)
+	largeRest := restCalendarDaySet(largeCalendar)
+	if len(smallRest) != len(largeRest) {
+		t.Fatalf("rest periods changed with volume: small=%d large=%d", len(smallRest), len(largeRest))
+	}
+	for day := range smallRest {
+		if !largeRest[day] {
+			t.Fatalf("rest day %s changed with volume", formatEpoch(day, "+0000"))
+		}
+	}
+
+	smallMedian, smallP90, smallMax := calendarDailyLoadStats(smallCalendar)
+	largeMedian, largeP90, largeMax := calendarDailyLoadStats(largeCalendar)
+	if smallMedian > 4 || smallMax <= 4 || smallMedian == smallP90 {
+		t.Fatalf("small load shape = median %d p90 %d max %d", smallMedian, smallP90, smallMax)
+	}
+	if largeMedian <= smallMedian*10 || largeP90 <= smallP90*10 || largeMax <= smallMax*10 {
+		t.Fatalf("large load did not scale: small=%d/%d/%d large=%d/%d/%d", smallMedian, smallP90, smallMax, largeMedian, largeP90, largeMax)
+	}
+}
+
+func TestRewriteDateAllRestFallbackUsesOneDay(t *testing.T) {
+	medium, _ := rewriteDateIntensityProfile("medium")
+	calendar := rewriteDateCalendarPlan{
+		tzOffset: "+0000",
+		days: []rewriteDateCalendarDay{
+			{epoch: parseDateStart("2024-01-01"), state: rewriteDateCalendarRest},
+			{epoch: parseDateStart("2024-01-02"), state: rewriteDateCalendarRest},
+			{epoch: parseDateStart("2024-01-03"), state: rewriteDateCalendarRest},
+		},
+	}
+	rng := rand.New(rand.NewSource(seedInt64("all-rest")))
+	ensureCalendarHasActiveDay(&calendar, medium, rng)
+	assignCalendarDailyQuotas(&calendar, 1000, medium, 1, rng)
+	if calendarForcedActiveDayCount(calendar) != 1 || calendarActiveDayCount(calendar) != 1 {
+		t.Fatalf("all-rest fallback activated %d forced days and %d total days", calendarForcedActiveDayCount(calendar), calendarActiveDayCount(calendar))
+	}
+	if calendarQuotaTotal(calendar) != 1000 {
+		t.Fatalf("all-rest fallback quota total = %d", calendarQuotaTotal(calendar))
+	}
+}
+
+func TestRewriteDateAttemptRankingUsesQuotaDeviationBeforeAdjustments(t *testing.T) {
+	left := rewriteDateTopologyCompression{dailyQuotaDeviation: 2, adjustedCommits: 20}
+	right := rewriteDateTopologyCompression{dailyQuotaDeviation: 3, adjustedCommits: 1}
+	if !rewriteDateCompressionLess(left, right) {
+		t.Fatal("lower daily quota deviation did not rank first")
+	}
+	left = rewriteDateTopologyCompression{forcedActiveDays: 1}
+	right = rewriteDateTopologyCompression{compressed: true}
+	if !rewriteDateCompressionLess(right, left) {
+		t.Fatal("fewer forced-active days did not rank first")
+	}
+	left = rewriteDateTopologyCompression{}
+	right = rewriteDateTopologyCompression{compressed: true}
+	if !rewriteDateCompressionLess(left, right) {
+		t.Fatal("uncompressed attempt did not rank first after forced-active days")
+	}
+}
+
+func TestRewriteDateRepositoryConcentrationDampsWorkloadVariation(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-12-31", "+0000")
+	medium, _ := rewriteDateIntensityProfile("medium")
+
+	dominant := buildRewriteDateCalendarPlanForRepos(4000, start, end, "repos", medium, "+0000", 1)
+	balanced := buildRewriteDateCalendarPlanForRepos(4000, start, end, "repos", medium, "+0000", 8)
+	if calendarQuotaTotal(dominant) != 4000 || calendarQuotaTotal(balanced) != 4000 {
+		t.Fatal("repository concentration changed selected commit totals")
+	}
+	if calendarLoadRange(dominant) <= calendarLoadRange(balanced) {
+		t.Fatalf("dominant repository did not retain stronger variation: dominant=%d balanced=%d", calendarLoadRange(dominant), calendarLoadRange(balanced))
+	}
+}
+
 func TestRewriteDateSeedSource(t *testing.T) {
 	candidates := []dateCandidate{{state: rewriteDatesState{Seed: "state-seed"}}}
 	if seed, source := rewriteDateSeed(rewriteDatesOptions{seed: "flag-seed"}, candidates); seed != "flag-seed" || source != "flag" {
@@ -490,6 +582,9 @@ func TestRewriteDatePlanningUsesDominantTimezone(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Planning timezone") || !strings.Contains(stdout.String(), "Active days") || !strings.Contains(stdout.String(), "Rest days") || !strings.Contains(stdout.String(), "Forced-active days") {
 		t.Fatalf("preview did not include calendar metadata:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Median commits/day") || !strings.Contains(stdout.String(), "P90 commits/day") || !strings.Contains(stdout.String(), "Maximum commits/day") {
+		t.Fatalf("preview did not include final daily load statistics:\n%s", stdout.String())
 	}
 
 	mapping := map[string]dateCallbackDates{}
@@ -1398,9 +1493,34 @@ func multiDayInactiveGapCount(epochs []int64, tzOffset string, minGap int) int {
 func calendarSignature(calendar rewriteDateCalendarPlan) string {
 	parts := make([]string, 0, len(calendar.days))
 	for _, day := range calendar.days {
-		parts = append(parts, fmt.Sprintf("%d:%s:%d", day.epoch, day.state, day.capacity))
+		parts = append(parts, fmt.Sprintf("%d:%s:%d", day.epoch, day.state, day.quota))
 	}
 	return strings.Join(parts, "|")
+}
+
+func calendarDailyLoadStats(calendar rewriteDateCalendarPlan) (int, int, int) {
+	loads := make([]int, 0, calendarActiveDayCount(calendar))
+	for _, day := range calendar.days {
+		if calendarDayHasSlots(day.state) {
+			loads = append(loads, day.quota)
+		}
+	}
+	sort.Ints(loads)
+	if len(loads) == 0 {
+		return 0, 0, 0
+	}
+	return loads[(len(loads)-1)/2], loads[int(math.Ceil(float64(len(loads))*0.90))-1], loads[len(loads)-1]
+}
+
+func calendarLoadRange(calendar rewriteDateCalendarPlan) int {
+	_, _, maximum := calendarDailyLoadStats(calendar)
+	minimum := maximum
+	for _, day := range calendar.days {
+		if calendarDayHasSlots(day.state) && day.quota < minimum {
+			minimum = day.quota
+		}
+	}
+	return maximum - minimum
 }
 
 func restCalendarDaySet(calendar rewriteDateCalendarPlan) map[int64]bool {
