@@ -93,6 +93,9 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 }
 
 func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
+	if !requireInteractive(a, "rename-repo") {
+		return 1
+	}
 	editDescription, _ := cmd.Flags().GetBool("description")
 	if !requireGit(a, "rename-repo") || !requireCommand(a, "gh", "rename-repo") {
 		return 1
