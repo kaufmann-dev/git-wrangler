@@ -19,6 +19,7 @@ func TestConfigSetShowUnsetSecretDoesNotPrintSecret(t *testing.T) {
 	store := &fakeCredentialStore{}
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), fakeRunner{}, strings.NewReader("secret-token\n"), &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = store
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"config", "set", "ai.api-key"})
@@ -96,6 +97,7 @@ func TestConfigSetSecretRequiresPromptInput(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = &fakeCredentialStore{}
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"config", "set", "ai.api-key"})
@@ -137,6 +139,7 @@ func TestConfigSetAIHeadersUsesConfigAndKeyring(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	a = newApp(context.Background(), fakeRunner{}, strings.NewReader("azure-secret\n"), &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = store
 	cmd = newRootCommand(a)
 	cmd.SetArgs([]string{"config", "set", "ai.headers.api-key"})
@@ -200,6 +203,7 @@ func TestInitUsesFakeAuthAndDoesNotPrintSecrets(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	store := &fakeCredentialStore{}
 	a := newApp(context.Background(), fakeRunner{}, stdin, &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = store
 	a.auth = fakeGitHubAuth{result: auth.GitHubResult{Token: "github-secret", Username: "octo"}}
 	cmd := newRootCommand(a)
@@ -231,6 +235,7 @@ func TestInitWithoutKeyringSkipsSecretPromptsAndSavesConfig(t *testing.T) {
 	stdin := strings.NewReader("example.com\ncustom\nhttps://ai.example.test/v1\nmodel-test\n")
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), fakeRunner{}, stdin, &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = &fakeCredentialStore{err: errors.New("keyring unavailable")}
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"init"})
@@ -272,6 +277,7 @@ func TestInitWithoutKeyringShowsOpenAIEnvironmentGuidance(t *testing.T) {
 	stdin := strings.NewReader("\n\n\n\n")
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), fakeRunner{}, stdin, &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = &fakeCredentialStore{err: errors.New("keyring unavailable")}
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"init"})

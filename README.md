@@ -109,6 +109,18 @@ git-wrangler status
 git-wrangler help
 ```
 
+Most repository workflow commands support `--guided` to collect their
+command-specific options interactively before execution:
+
+```bash
+git-wrangler push --guided
+git-wrangler rewrite-dates --guided
+```
+
+Guided setup requires both stdin and stderr to be terminals, prints the selected
+configuration to stderr, and cannot be combined with `--json`. Missing required
+values are prompted for in a terminal and fail in noninteractive runs.
+
 On browserless machines, `init` prints the GitHub device code and verification
 URL so authorization can be completed in a browser on another device. On
 machines without an available keyring, configure credentials through environment
@@ -205,7 +217,9 @@ and designed to fail safely.
   temporary index and stages the real index only after valid AI messages are
   available.
 - **Confirmation before mutation** — history rewrite commands ask before making
-  destructive changes. Use `--yes` only for intentional noninteractive runs.
+  destructive changes. Noninteractive runs that reach a confirmation fail with
+  guidance to pass `--yes`. Use `--yes` or `-y` only for intentional
+  noninteractive runs; they skip confirmations but never fill required values.
 - **Safer force pushes** — `push --force` uses `--force-with-lease`. Raw force
   push requires the separate `--force-unsafe` flag.
 - **Fail-safe bulk runs** — per-repository failures do not stop the whole run.

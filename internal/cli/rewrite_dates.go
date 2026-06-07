@@ -417,7 +417,11 @@ func runRewriteDatesRewrite(a *app, repos []repo, filterCmd []string, opts rewri
 		summaryCount{label: "failed", value: failed, color: a.ui.Red},
 	)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote. Tags may still point at old history, and commit or tag signatures may become invalid.", len(plan.candidates)))
-	if !confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates))) {
+	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates)))
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderSummary(a,
 			summaryCount{label: "rewritten", value: 0, color: a.ui.Green},
 			summaryCount{label: "skipped", value: skipped + len(plan.candidates), color: a.ui.Yellow},
@@ -548,7 +552,11 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 		summaryCount{label: "failed", value: failed, color: a.ui.Red},
 	)
 	renderWarning(a, fmt.Sprintf("This rollback rewrites Git history in %d repositories. Exact rollback restores original commit objects and preserves signatures for known history; replayed new commits may get new hashes or lose signatures. A force push will be required to update any remote.", len(candidates)))
-	if !confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rollback for %d repositories?", len(candidates))) {
+	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rollback for %d repositories?", len(candidates)))
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderSummary(a,
 			summaryCount{label: "rolled back", value: 0, color: a.ui.Green},
 			summaryCount{label: "skipped", value: skipped + len(candidates), color: a.ui.Yellow},
