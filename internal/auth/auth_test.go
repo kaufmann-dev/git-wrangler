@@ -31,6 +31,7 @@ func TestAuthenticateGitHubOpensBrowserAndAuthorizes(t *testing.T) {
 	})}
 	var openedURL string
 	var stderr bytes.Buffer
+	var promptText string
 	got, err := (GitHubDeviceAuthenticator{
 		ClientID:   "client-id",
 		HTTPClient: client,
@@ -38,7 +39,10 @@ func TestAuthenticateGitHubOpensBrowserAndAuthorizes(t *testing.T) {
 			openedURL = url
 			return nil
 		},
-	}).AuthenticateGitHub(context.Background(), "github.com", strings.NewReader("\n"), &stderr, nil)
+	}).AuthenticateGitHub(context.Background(), "github.com", func(prompt string) (string, error) {
+		promptText = prompt
+		return "", nil
+	}, &stderr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +52,13 @@ func TestAuthenticateGitHubOpensBrowserAndAuthorizes(t *testing.T) {
 	if openedURL != "https://github.com/login/device" {
 		t.Fatalf("opened URL = %q", openedURL)
 	}
-	for _, want := range []string{"user-code", "https://github.com/login/device", "Press Enter"} {
+	for _, want := range []string{"user-code", "https://github.com/login/device"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())
 		}
+	}
+	if !strings.Contains(promptText, "Press Enter") {
+		t.Fatalf("prompt = %q", promptText)
 	}
 }
 
@@ -62,7 +69,7 @@ func TestAuthenticateGitHubContinuesWhenBrowserFails(t *testing.T) {
 		ClientID:   "client-id",
 		HTTPClient: client,
 		BrowseURL:  func(string) error { return errors.New("raw launcher failure") },
-	}).AuthenticateGitHub(context.Background(), "github.com", strings.NewReader("\n"), &stderr, nil)
+	}).AuthenticateGitHub(context.Background(), "github.com", acceptPrompt, &stderr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +96,7 @@ func TestAuthenticateGitHubExpirationIsActionable(t *testing.T) {
 		ClientID:   "client-id",
 		HTTPClient: client,
 		BrowseURL:  func(string) error { return nil },
-	}).AuthenticateGitHub(context.Background(), "github.com", strings.NewReader("\n"), io.Discard, nil)
+	}).AuthenticateGitHub(context.Background(), "github.com", acceptPrompt, io.Discard, nil)
 	if err == nil || !strings.Contains(err.Error(), "authorization code expired") || !strings.Contains(err.Error(), "git-wrangler init") {
 		t.Fatalf("error = %v", err)
 	}
@@ -112,12 +119,39 @@ func TestAuthenticateGitHubCancellationStopsPolling(t *testing.T) {
 			cancel()
 			return nil
 		},
-	}).AuthenticateGitHub(ctx, "github.com", strings.NewReader("\n"), io.Discard, nil)
+	}).AuthenticateGitHub(ctx, "github.com", acceptPrompt, io.Discard, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
 	}
 	if tokenRequests != 0 {
 		t.Fatalf("token requests = %d, want 0", tokenRequests)
+	}
+}
+
+func TestAuthenticateGitHubStopsAtCancelledBrowserPrompt(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(req.URL.Path, "/login/device/code") {
+			return formResponse("device_code=device-code&user_code=user-code&verification_uri=https%3A%2F%2Fgithub.com%2Flogin%2Fdevice&expires_in=900&interval=5"), nil
+		}
+		t.Fatalf("unexpected request after cancelled prompt: %s", req.URL)
+		return nil, nil
+	})}
+	opened := false
+	_, err := (GitHubDeviceAuthenticator{
+		ClientID:   "client-id",
+		HTTPClient: client,
+		BrowseURL: func(string) error {
+			opened = true
+			return nil
+		},
+	}).AuthenticateGitHub(context.Background(), "github.com", func(string) (string, error) {
+		return "", context.Canceled
+	}, io.Discard, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v", err)
+	}
+	if opened {
+		t.Fatal("browser opened after prompt cancellation")
 	}
 }
 
@@ -149,6 +183,10 @@ func TestHTTPClientDefaultsToNonNilClient(t *testing.T) {
 	if got := (GitHubDeviceAuthenticator{}).httpClient(); got == nil {
 		t.Fatal("expected default HTTP client")
 	}
+}
+
+func acceptPrompt(string) (string, error) {
+	return "", nil
 }
 
 func successfulAuthClient(t *testing.T) *http.Client {

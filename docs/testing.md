@@ -9,6 +9,8 @@ Use unit tests for pure helpers:
 - `internal/repos` exact resolution and discovery.
 - CLI targeting helpers.
 - Injected TTY eligibility plus required, guided, secret, summary, and confirmation helper behavior.
+- Immediate context and EOF cancellation for normal, guided, required-value, confirmation, secret, and GitHub browser-opening prompts.
+- Cancellation restoring secret-input terminal state, suppressing later prompts and summaries, preventing mutation, and rendering one cancellation status.
 - JSON writer and JSON-mode suppression.
 - Worker-count helpers and ordered result collection.
 

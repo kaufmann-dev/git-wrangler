@@ -93,7 +93,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		{key: "Context budget", value: fmt.Sprintf("%d characters per commit", maxCharsInt)},
 	}, bodyLines)
 	confirmation := confirmOrSkip(a, yes, "Send this data to the configured API endpoint?")
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {
