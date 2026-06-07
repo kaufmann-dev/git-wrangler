@@ -46,18 +46,20 @@ type rewriteDatesOptions struct {
 }
 
 type rewriteDateIntensity struct {
-	name            string
-	description     string
-	activeRatio     float64
-	commitSpread    float64
-	maxBurst        int
-	elasticCapacity int
-	weekendWeight   float64
-	eveningChance   float64
-	sessionMinDays  int
-	sessionMaxDays  int
-	gapMinDays      int
-	gapMaxDays      int
+	name              string
+	description       string
+	activeRatio       float64
+	commitSpread      float64
+	demandScale       float64
+	daySigma          float64
+	sessionSigma      float64
+	persistence       float64
+	weekendMultiplier float64
+	eveningChance     float64
+	sessionMinDays    int
+	sessionMaxDays    int
+	gapMinDays        int
+	gapMaxDays        int
 }
 
 type dateBranchRef struct {
@@ -215,9 +217,9 @@ const (
 )
 
 type rewriteDateCalendarDay struct {
-	epoch    int64
-	state    rewriteDateCalendarDayState
-	capacity int
+	epoch int64
+	state rewriteDateCalendarDayState
+	quota int
 }
 
 type rewriteDateCalendarPlan struct {
@@ -233,6 +235,7 @@ type rewriteDateTopologyCompression struct {
 	forcedActiveDays    int
 	maxOneSecondRun     int
 	oneSecondEdges      int
+	dailyQuotaDeviation int
 	adjustedCommits     int
 	selectedEdges       int
 	candidateCompressed map[int]bool
@@ -1166,48 +1169,54 @@ func rewriteDateIntensityProfile(name string) (rewriteDateIntensity, bool) {
 	switch name {
 	case "", "medium":
 		return rewriteDateIntensity{
-			name:            "medium",
-			description:     "clustered weekday-heavy activity",
-			activeRatio:     0.32,
-			commitSpread:    0.50,
-			maxBurst:        4,
-			elasticCapacity: 12,
-			weekendWeight:   0.12,
-			eveningChance:   0.12,
-			sessionMinDays:  2,
-			sessionMaxDays:  5,
-			gapMinDays:      2,
-			gapMaxDays:      7,
+			name:              "medium",
+			description:       "clustered weekday-heavy activity",
+			activeRatio:       0.32,
+			commitSpread:      0.50,
+			demandScale:       8,
+			daySigma:          0.75,
+			sessionSigma:      0.35,
+			persistence:       0.55,
+			weekendMultiplier: 0.80,
+			eveningChance:     0.12,
+			sessionMinDays:    2,
+			sessionMaxDays:    5,
+			gapMinDays:        2,
+			gapMaxDays:        7,
 		}, true
 	case "low":
 		return rewriteDateIntensity{
-			name:            "low",
-			description:     "sparse activity with longer pauses",
-			activeRatio:     0.18,
-			commitSpread:    0.25,
-			maxBurst:        2,
-			elasticCapacity: 8,
-			weekendWeight:   0.04,
-			eveningChance:   0.05,
-			sessionMinDays:  1,
-			sessionMaxDays:  3,
-			gapMinDays:      5,
-			gapMaxDays:      14,
+			name:              "low",
+			description:       "sparse activity with longer pauses",
+			activeRatio:       0.18,
+			commitSpread:      0.25,
+			demandScale:       12,
+			daySigma:          0.35,
+			sessionSigma:      0.20,
+			persistence:       0.35,
+			weekendMultiplier: 0.65,
+			eveningChance:     0.05,
+			sessionMinDays:    1,
+			sessionMaxDays:    3,
+			gapMinDays:        5,
+			gapMaxDays:        14,
 		}, true
 	case "high":
 		return rewriteDateIntensity{
-			name:            "high",
-			description:     "denser activity with shorter pauses",
-			activeRatio:     0.55,
-			commitSpread:    0.72,
-			maxBurst:        8,
-			elasticCapacity: 24,
-			weekendWeight:   0.26,
-			eveningChance:   0.24,
-			sessionMinDays:  3,
-			sessionMaxDays:  8,
-			gapMinDays:      1,
-			gapMaxDays:      4,
+			name:              "high",
+			description:       "denser activity with shorter pauses",
+			activeRatio:       0.55,
+			commitSpread:      0.72,
+			demandScale:       5,
+			daySigma:          1.00,
+			sessionSigma:      0.50,
+			persistence:       0.70,
+			weekendMultiplier: 0.95,
+			eveningChance:     0.24,
+			sessionMinDays:    3,
+			sessionMaxDays:    8,
+			gapMinDays:        1,
+			gapMaxDays:        4,
 		}, true
 	default:
 		return rewriteDateIntensity{}, false
@@ -1241,7 +1250,9 @@ func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []s
 	var bestCandidates []dateCandidate
 	var bestCalendar rewriteDateCalendarPlan
 	var bestStats rewriteDateTopologyCompression
+	var firstErr error
 	hasBest := false
+	effectiveRepos := effectiveSelectedRepositoryCount(candidates)
 	for attempt := 0; attempt < 8; attempt++ {
 		attemptCandidates := cloneDateCandidates(candidates)
 		for i := range attemptCandidates {
@@ -1249,17 +1260,17 @@ func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []s
 			attemptCandidates[i].topologyCompressed = false
 		}
 		calendarSeed := rewriteDatePlanningSeed(seed, attempt)
-		calendar := buildRewriteDateCalendarPlan(len(selected), targetStart, targetEnd, calendarSeed, intensity, tzOffset)
+		calendar := buildRewriteDateCalendarPlanForRepos(len(selected), targetStart, targetEnd, calendarSeed, intensity, tzOffset, effectiveRepos)
 		timestamps := plannedEpochsForCalendar(calendar, len(selected), calendarSeed, intensity)
 		assignPlannedEpochs(attemptCandidates, selected, timestamps)
 		if err := enforceRewriteDateTopologyWithSelected(attemptCandidates, selected, targetStart, targetEnd); err != nil {
-			return nil, rewriteDateCalendarPlan{}, rewriteDateTopologyCompression{}, err
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 		calendar = markCalendarDaysForPlannedCommits(calendar, attemptCandidates, selected)
 		stats := rewriteDateTopologyCompressionStats(attemptCandidates, calendar, targetStart, targetEnd, len(selected))
-		if !stats.compressed {
-			return attemptCandidates, calendar, stats, nil
-		}
 		if !hasBest || rewriteDateCompressionLess(stats, bestStats) {
 			bestCandidates = attemptCandidates
 			bestCalendar = calendar
@@ -1270,6 +1281,9 @@ func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []s
 	if hasBest {
 		markTopologyCompressedCandidates(bestCandidates, bestStats)
 		return bestCandidates, bestCalendar, bestStats, nil
+	}
+	if firstErr != nil {
+		return nil, rewriteDateCalendarPlan{}, rewriteDateTopologyCompression{}, firstErr
 	}
 	return cloneDateCandidates(candidates), rewriteDateCalendarPlan{}, rewriteDateTopologyCompression{}, nil
 }
@@ -1310,13 +1324,38 @@ func rewriteDateCompressionLess(left, right rewriteDateTopologyCompression) bool
 	if left.forcedActiveDays != right.forcedActiveDays {
 		return left.forcedActiveDays < right.forcedActiveDays
 	}
+	if left.compressed != right.compressed {
+		return !left.compressed
+	}
 	if left.maxOneSecondRun != right.maxOneSecondRun {
 		return left.maxOneSecondRun < right.maxOneSecondRun
 	}
 	if left.oneSecondEdges != right.oneSecondEdges {
 		return left.oneSecondEdges < right.oneSecondEdges
 	}
+	if left.dailyQuotaDeviation != right.dailyQuotaDeviation {
+		return left.dailyQuotaDeviation < right.dailyQuotaDeviation
+	}
 	return left.adjustedCommits < right.adjustedCommits
+}
+
+func effectiveSelectedRepositoryCount(candidates []dateCandidate) float64 {
+	total := 0
+	for _, candidate := range candidates {
+		total += len(candidate.selected)
+	}
+	if total == 0 {
+		return 1
+	}
+	concentration := 0.0
+	for _, candidate := range candidates {
+		share := float64(len(candidate.selected)) / float64(total)
+		concentration += share * share
+	}
+	if concentration <= 0 {
+		return 1
+	}
+	return 1 / concentration
 }
 
 func markTopologyCompressedCandidates(candidates []dateCandidate, stats rewriteDateTopologyCompression) {
@@ -1657,6 +1696,7 @@ func verifySelectedTopology(candidate dateCandidate) error {
 
 func rewriteDateTopologyCompressionStats(candidates []dateCandidate, calendar rewriteDateCalendarPlan, targetStart, targetEnd int64, totalSelected int) rewriteDateTopologyCompression {
 	stats := rewriteDateTopologyCompression{forcedActiveDays: calendarForcedActiveDayCount(calendar), candidateCompressed: map[int]bool{}}
+	stats.dailyQuotaDeviation = calendarDailyQuotaDeviation(calendar, candidates)
 	exactRun := 0
 	edges := rewriteDateSelectedParentChildEdges(candidates)
 	for _, edge := range edges {
@@ -1687,6 +1727,32 @@ func rewriteDateTopologyCompressionStats(candidates []dateCandidate, calendar re
 		stats.candidateCompressed = map[int]bool{}
 	}
 	return stats
+}
+
+func calendarDailyQuotaDeviation(calendar rewriteDateCalendarPlan, candidates []dateCandidate) int {
+	actual := plannedDailyCommitCounts(candidates, calendar.tzOffset)
+	deviation := 0
+	for _, day := range calendar.days {
+		if !calendarDayHasSlots(day.state) {
+			continue
+		}
+		deviation += absInt(actual[day.epoch] - maxInt(1, day.quota))
+		delete(actual, day.epoch)
+	}
+	for _, count := range actual {
+		deviation += count
+	}
+	return deviation
+}
+
+func plannedDailyCommitCounts(candidates []dateCandidate, tzOffset string) map[int64]int {
+	counts := map[int64]int{}
+	for _, candidate := range candidates {
+		for _, idx := range candidate.selected {
+			counts[floorDayInOffset(candidate.commits[idx].plannedEpoch, tzOffset)]++
+		}
+	}
+	return counts
 }
 
 type rewriteDateSelectedEdge struct {
@@ -1797,6 +1863,10 @@ func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, inten
 }
 
 func buildRewriteDateCalendarPlan(selectedCount int, startEpoch, endEpoch int64, seed string, intensity rewriteDateIntensity, tzOffset string) rewriteDateCalendarPlan {
+	return buildRewriteDateCalendarPlanForRepos(selectedCount, startEpoch, endEpoch, seed, intensity, tzOffset, 1)
+}
+
+func buildRewriteDateCalendarPlanForRepos(selectedCount int, startEpoch, endEpoch int64, seed string, intensity rewriteDateIntensity, tzOffset string, effectiveRepos float64) rewriteDateCalendarPlan {
 	if startEpoch > endEpoch {
 		startEpoch, endEpoch = endEpoch, startEpoch
 	}
@@ -1834,7 +1904,8 @@ func buildRewriteDateCalendarPlan(selectedCount int, startEpoch, endEpoch int64,
 	} else {
 		activateCalendarSessions(&calendar, activeTarget, intensity, rng)
 	}
-	ensureCalendarCapacity(&calendar, selectedCount, intensity, rng)
+	ensureCalendarHasActiveDay(&calendar, intensity, rng)
+	assignCalendarDailyQuotas(&calendar, selectedCount, intensity, effectiveRepos, rng)
 	return calendar
 }
 
@@ -1853,7 +1924,7 @@ func plannedEpochsForCalendar(calendar rewriteDateCalendarPlan, n int, seed stri
 		if len(days) > 2 {
 			day = days[1+rng.Intn(len(days)-2)]
 		}
-		activeDays = []rewriteDateCalendarDay{{epoch: day, state: rewriteDateCalendarActive, capacity: n}}
+		activeDays = []rewriteDateCalendarDay{{epoch: day, state: rewriteDateCalendarActive, quota: n}}
 	}
 	allocations := allocateCommitsToCalendarDays(n, activeDays, rng)
 	timestamps := make([]int64, n)
@@ -1888,18 +1959,15 @@ func plannedCalendarActiveDayCount(selectedCount, dayCount, restDayCount int, in
 	if nonRestDays < 1 {
 		nonRestDays = 1
 	}
-	densityTarget := int(math.Ceil(float64(nonRestDays) * intensity.activeRatio))
+	demand := float64(selectedCount) / float64(nonRestDays)
+	activeFraction := intensity.activeRatio + (1-intensity.activeRatio)*(1-math.Exp(-demand/intensity.demandScale))
+	densityTarget := int(math.Round(float64(nonRestDays) * activeFraction))
 	spreadTarget := int(math.Ceil(float64(selectedCount) * intensity.commitSpread))
-	active := minInt(densityTarget, spreadTarget)
+	active := minInt(nonRestDays, selectedCount)
+	active = minInt(active, spreadTarget)
+	active = minInt(active, densityTarget)
 	if active < 1 {
 		active = 1
-	}
-	if active > nonRestDays {
-		active = nonRestDays
-	}
-	elasticCapacity := maxInt(1, intensity.elasticCapacity)
-	if selectedCount > active*elasticCapacity {
-		active = int(math.Ceil(float64(selectedCount) / float64(elasticCapacity)))
 	}
 	if active > nonRestDays {
 		active = nonRestDays
@@ -1946,7 +2014,6 @@ func activateCalendarSessions(calendar *rewriteDateCalendarPlan, activeTarget in
 			day := calendar.days[index]
 			if day.state == rewriteDateCalendarInactive && calendarSessionAcceptsDay(day.epoch, intensity, rng, calendar.tzOffset) {
 				calendar.days[index].state = rewriteDateCalendarActive
-				calendar.days[index].capacity = maxInt(1, intensity.maxBurst)
 			}
 			index++
 		}
@@ -1962,7 +2029,7 @@ func calendarSessionAcceptsDay(day int64, intensity rewriteDateIntensity, rng *r
 	if !isWeekendInOffset(day, tzOffset) {
 		return true
 	}
-	return rng.Float64() < intensity.weekendWeight
+	return rng.Float64() < intensity.weekendMultiplier
 }
 
 func activateWeightedCalendarDays(calendar *rewriteDateCalendarPlan, indexes []int, count int, intensity rewriteDateIntensity, rng *rand.Rand) int {
@@ -1972,7 +2039,6 @@ func activateWeightedCalendarDays(calendar *rewriteDateCalendarPlan, indexes []i
 		idx := indexes[position]
 		if calendar.days[idx].state == rewriteDateCalendarInactive {
 			calendar.days[idx].state = rewriteDateCalendarActive
-			calendar.days[idx].capacity = maxInt(1, intensity.maxBurst)
 			activated++
 			count--
 		}
@@ -2002,54 +2068,107 @@ func weightedCalendarIndex(calendar *rewriteDateCalendarPlan, indexes []int, int
 	return len(indexes) - 1
 }
 
-func ensureCalendarCapacity(calendar *rewriteDateCalendarPlan, selectedCount int, intensity rewriteDateIntensity, rng *rand.Rand) {
-	if selectedCount <= 0 {
-		return
-	}
+func ensureCalendarHasActiveDay(calendar *rewriteDateCalendarPlan, intensity rewriteDateIntensity, rng *rand.Rand) {
 	if calendarActiveDayCount(*calendar) == 0 {
-		activateWeightedCalendarDays(calendar, calendarDayIndexesByState(*calendar, true, rewriteDateCalendarInactive), 1, intensity, rng)
-	}
-	raiseCalendarCapacities(calendar, selectedCount, maxInt(1, intensity.elasticCapacity))
-	for calendarCapacity(*calendar) < selectedCount {
 		if activateWeightedCalendarDays(calendar, calendarDayIndexesByState(*calendar, true, rewriteDateCalendarInactive), 1, intensity, rng) == 0 {
-			break
+			forceWeightedRestCalendarDay(calendar, intensity, rng)
 		}
-		raiseCalendarCapacities(calendar, selectedCount, maxInt(1, intensity.elasticCapacity))
-	}
-	for calendarCapacity(*calendar) < selectedCount {
-		if forceWeightedRestCalendarDay(calendar, intensity, rng) == 0 {
-			break
-		}
-		raiseCalendarCapacities(calendar, selectedCount, maxInt(1, intensity.elasticCapacity))
-	}
-	if calendarCapacity(*calendar) < selectedCount {
-		raiseCalendarCapacities(calendar, selectedCount, selectedCount)
 	}
 }
 
-func raiseCalendarCapacities(calendar *rewriteDateCalendarPlan, selectedCount, limit int) {
-	if limit < 1 {
-		limit = 1
-	}
-	for calendarCapacity(*calendar) < selectedCount {
-		changed := false
-		for i := range calendar.days {
-			if !calendarDayHasSlots(calendar.days[i].state) {
-				continue
-			}
-			if calendar.days[i].capacity < 1 {
-				calendar.days[i].capacity = 1
-				changed = true
-			}
-			if calendar.days[i].capacity < limit && calendarCapacity(*calendar) < selectedCount {
-				calendar.days[i].capacity++
-				changed = true
-			}
-		}
-		if !changed {
-			return
+func assignCalendarDailyQuotas(calendar *rewriteDateCalendarPlan, selectedCount int, intensity rewriteDateIntensity, effectiveRepos float64, rng *rand.Rand) {
+	activeIndexes := make([]int, 0, calendarActiveDayCount(*calendar))
+	for i, day := range calendar.days {
+		if calendarDayHasSlots(day.state) {
+			activeIndexes = append(activeIndexes, i)
 		}
 	}
+	if len(activeIndexes) == 0 || selectedCount <= 0 {
+		return
+	}
+	weights := workloadWeights(*calendar, activeIndexes, intensity, effectiveRepos, rng)
+	quotas := proportionalDailyQuotas(selectedCount, weights, rng)
+	for i, idx := range activeIndexes {
+		calendar.days[idx].quota = quotas[i]
+	}
+}
+
+func workloadWeights(calendar rewriteDateCalendarPlan, activeIndexes []int, intensity rewriteDateIntensity, effectiveRepos float64, rng *rand.Rand) []float64 {
+	if effectiveRepos < 1 {
+		effectiveRepos = 1
+	}
+	damp := 0.65 + 0.35/math.Sqrt(effectiveRepos)
+	daySigma := intensity.daySigma * damp
+	sessionSigma := intensity.sessionSigma * damp
+	persistence := intensity.persistence * damp
+	weights := make([]float64, len(activeIndexes))
+	previousIndex := -2
+	ar := 0.0
+	sessionMultiplier := 1.0
+	for i, idx := range activeIndexes {
+		if idx != previousIndex+1 {
+			sessionMultiplier = math.Exp(rng.NormFloat64()*sessionSigma - sessionSigma*sessionSigma/2)
+			ar = rng.NormFloat64()
+		} else {
+			ar = persistence*ar + math.Sqrt(1-persistence*persistence)*rng.NormFloat64()
+		}
+		weight := sessionMultiplier * math.Exp(ar*daySigma-daySigma*daySigma/2)
+		if isWeekendInOffset(calendar.days[idx].epoch, calendar.tzOffset) {
+			weight *= intensity.weekendMultiplier
+		}
+		weights[i] = math.Max(weight, 0.000001)
+		previousIndex = idx
+	}
+	return weights
+}
+
+func proportionalDailyQuotas(commitCount int, weights []float64, rng *rand.Rand) []int {
+	quotas := make([]int, len(weights))
+	if commitCount <= 0 || len(weights) == 0 {
+		return quotas
+	}
+	active := minInt(commitCount, len(weights))
+	for i := 0; i < active; i++ {
+		quotas[i] = 1
+	}
+	remaining := commitCount - active
+	if remaining <= 0 {
+		return quotas
+	}
+	totalWeight := 0.0
+	for i := 0; i < active; i++ {
+		totalWeight += weights[i]
+	}
+	if totalWeight <= 0 {
+		totalWeight = float64(active)
+		for i := 0; i < active; i++ {
+			weights[i] = 1
+		}
+	}
+	type remainder struct {
+		index int
+		value float64
+		tie   float64
+	}
+	remainders := make([]remainder, 0, active)
+	allocated := 0
+	for i := 0; i < active; i++ {
+		exact := float64(remaining) * weights[i] / totalWeight
+		floor := int(math.Floor(exact))
+		quotas[i] += floor
+		allocated += floor
+		remainders = append(remainders, remainder{index: i, value: exact - float64(floor), tie: rng.Float64()})
+	}
+	sort.Slice(remainders, func(i, j int) bool {
+		if remainders[i].value == remainders[j].value {
+			return remainders[i].tie < remainders[j].tie
+		}
+		return remainders[i].value > remainders[j].value
+	})
+	for i := 0; i < remaining-allocated; i++ {
+		quotas[remainders[i].index]++
+	}
+	return quotas
 }
 
 func forceWeightedRestCalendarDay(calendar *rewriteDateCalendarPlan, intensity rewriteDateIntensity, rng *rand.Rand) int {
@@ -2060,7 +2179,7 @@ func forceWeightedRestCalendarDay(calendar *rewriteDateCalendarPlan, intensity r
 	position := weightedCalendarIndex(calendar, indexes, intensity, rng)
 	idx := indexes[position]
 	calendar.days[idx].state = rewriteDateCalendarForcedActive
-	calendar.days[idx].capacity = maxInt(1, intensity.maxBurst)
+	calendar.days[idx].quota = 1
 	return 1
 }
 
@@ -2088,8 +2207,8 @@ func activeCalendarDays(calendar rewriteDateCalendarPlan) []rewriteDateCalendarD
 	days := []rewriteDateCalendarDay{}
 	for _, day := range calendar.days {
 		if calendarDayHasSlots(day.state) {
-			if day.capacity < 1 {
-				day.capacity = 1
+			if day.quota < 1 {
+				day.quota = 1
 			}
 			days = append(days, day)
 		}
@@ -2102,11 +2221,11 @@ func calendarDayHasSlots(state rewriteDateCalendarDayState) bool {
 	return state == rewriteDateCalendarActive || state == rewriteDateCalendarForcedActive
 }
 
-func calendarCapacity(calendar rewriteDateCalendarPlan) int {
+func calendarQuotaTotal(calendar rewriteDateCalendarPlan) int {
 	total := 0
 	for _, day := range calendar.days {
 		if calendarDayHasSlots(day.state) {
-			total += maxInt(1, day.capacity)
+			total += maxInt(1, day.quota)
 		}
 	}
 	return total
@@ -2156,13 +2275,13 @@ func markCalendarDaysForPlannedCommits(calendar rewriteDateCalendarPlan, candida
 		switch calendar.days[idx].state {
 		case rewriteDateCalendarRest:
 			calendar.days[idx].state = rewriteDateCalendarForcedActive
-			if calendar.days[idx].capacity < 1 {
-				calendar.days[idx].capacity = 1
+			if calendar.days[idx].quota < 1 {
+				calendar.days[idx].quota = 1
 			}
 		case rewriteDateCalendarInactive:
 			calendar.days[idx].state = rewriteDateCalendarActive
-			if calendar.days[idx].capacity < 1 {
-				calendar.days[idx].capacity = 1
+			if calendar.days[idx].quota < 1 {
+				calendar.days[idx].quota = 1
 			}
 		}
 	}
@@ -2174,45 +2293,17 @@ func allocateCommitsToCalendarDays(commitCount int, days []rewriteDateCalendarDa
 	if commitCount <= 0 || len(days) == 0 {
 		return allocations
 	}
-	for i := range allocations {
-		if i >= commitCount {
-			return allocations
-		}
-		allocations[i] = 1
+	quotaTotal := 0
+	weights := make([]float64, len(days))
+	for i, day := range days {
+		allocations[i] = maxInt(1, day.quota)
+		quotaTotal += allocations[i]
+		weights[i] = float64(allocations[i])
 	}
-	remaining := commitCount - len(days)
-	for remaining > 0 {
-		candidates := []int{}
-		for i, day := range days {
-			if allocations[i] < maxInt(1, day.capacity) {
-				candidates = append(candidates, i)
-			}
-		}
-		if len(candidates) == 0 {
-			for i := range days {
-				candidates = append(candidates, i)
-			}
-		}
-		idx := candidates[rng.Intn(len(candidates))]
-		capacity := maxInt(1, days[idx].capacity)
-		room := capacity - allocations[idx]
-		if room < 1 {
-			room = remaining
-		}
-		extra := 1
-		if room > 1 && remaining > 1 && rng.Float64() < 0.35 {
-			extra += rng.Intn(minInt(room, remaining))
-		}
-		if extra > room {
-			extra = room
-		}
-		if extra > remaining {
-			extra = remaining
-		}
-		allocations[idx] += extra
-		remaining -= extra
+	if quotaTotal == commitCount {
+		return allocations
 	}
-	return allocations
+	return proportionalDailyQuotas(commitCount, weights, rng)
 }
 
 func randomIntBetween(rng *rand.Rand, minValue, maxValue int) int {
@@ -2231,7 +2322,7 @@ func randomIntBetween(rng *rand.Rand, minValue, maxValue int) int {
 func planningDayWeight(day int64, restDays map[int64]bool, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) float64 {
 	weight := 1.0
 	if isWeekendInOffset(day, tzOffset) {
-		weight = intensity.weekendWeight
+		weight = intensity.weekendMultiplier
 	}
 	if restDays != nil && restDays[day] {
 		weight *= 0.015
@@ -2269,6 +2360,9 @@ func plannedEpochsForDay(day int64, count int, startEpoch, endEpoch int64, rng *
 	}
 	workStart := day + startHour*3600 + int64(rng.Intn(45))*60
 	workEnd := day + endHour*3600 + int64(rng.Intn(45))*60
+	expansion := 1 - math.Exp(-float64(maxInt(0, count-1))/24)
+	workStart -= int64(float64(workStart-dayStart) * expansion)
+	workEnd += int64(float64(dayEnd-workEnd) * expansion)
 	if workEnd < workStart {
 		workEnd = workStart
 	}
@@ -2573,6 +2667,7 @@ func positiveMod(value, mod int64) int64 {
 }
 
 func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOptions) {
+	medianLoad, p90Load, maxLoad := plannedDailyLoadStats(plan.candidates, plan.tzOffset)
 	fmt.Fprintln(a.stdout, "Date Rewrite Plan")
 	renderKeyValuesTo(a.stdout, []keyValueRow{
 		{key: "Repositories", value: fmt.Sprintf("%d", len(plan.candidates))},
@@ -2582,6 +2677,9 @@ func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOption
 		{key: "Active days", value: fmt.Sprintf("%d", calendarActiveDayCount(plan.calendar))},
 		{key: "Rest days", value: fmt.Sprintf("%d", calendarRestDayCount(plan.calendar))},
 		{key: "Forced-active days", value: fmt.Sprintf("%d", calendarForcedActiveDayCount(plan.calendar))},
+		{key: "Median commits/day", value: fmt.Sprintf("%d", medianLoad)},
+		{key: "P90 commits/day", value: fmt.Sprintf("%d", p90Load)},
+		{key: "Maximum commits/day", value: fmt.Sprintf("%d", maxLoad)},
 		{key: "Filters", value: rewriteDateFilterDescription(opts)},
 		{key: "Intensity", value: fmt.Sprintf("%s (%s)", plan.intensity.name, plan.intensity.description)},
 		{key: "Seed", value: fmt.Sprintf("%s (%s)", plan.seed, plan.seedSource)},
@@ -2610,6 +2708,21 @@ func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOption
 		}
 		fmt.Fprintln(a.stdout)
 	}
+}
+
+func plannedDailyLoadStats(candidates []dateCandidate, tzOffset string) (int, int, int) {
+	countsByDay := plannedDailyCommitCounts(candidates, tzOffset)
+	counts := make([]int, 0, len(countsByDay))
+	for _, count := range countsByDay {
+		counts = append(counts, count)
+	}
+	if len(counts) == 0 {
+		return 0, 0, 0
+	}
+	sort.Ints(counts)
+	median := counts[(len(counts)-1)/2]
+	p90 := counts[int(math.Ceil(float64(len(counts))*0.90))-1]
+	return median, p90, counts[len(counts)-1]
 }
 
 func renderRewriteDateRollbackPlan(a *app, candidates []dateCandidate, knownTotal, unknownTotal, exactBranches, replayBranches, replayCommits, skippedBranches int) {
@@ -3257,6 +3370,13 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func minInt(a, b int) int {
