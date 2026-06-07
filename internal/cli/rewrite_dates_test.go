@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,112 +18,6 @@ import (
 
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
-
-func TestWeekdayAndWeekend(t *testing.T) {
-	// Thursday (Epoch 0)
-	if wd := weekdayFromEpoch(0); wd != 4 {
-		t.Errorf("expected 4 for epoch 0, got %d", wd)
-	}
-	if isWeekend(0) {
-		t.Error("expected epoch 0 (Thursday) to not be a weekend")
-	}
-
-	// Saturday (1970-01-03: epoch 172800)
-	if wd := weekdayFromEpoch(172800); wd != 6 {
-		t.Errorf("expected 6 for epoch 172800, got %d", wd)
-	}
-	if !isWeekend(172800) {
-		t.Error("expected epoch 172800 (Saturday) to be a weekend")
-	}
-
-	// Sunday (1970-01-04: epoch 259200)
-	if wd := weekdayFromEpoch(259200); wd != 0 {
-		t.Errorf("expected 0 for epoch 259200, got %d", wd)
-	}
-	if !isWeekend(259200) {
-		t.Error("expected epoch 259200 (Sunday) to be a weekend")
-	}
-
-	// Monday (1970-01-05: epoch 345600)
-	if wd := weekdayFromEpoch(345600); wd != 1 {
-		t.Errorf("expected 1 for epoch 345600, got %d", wd)
-	}
-	if isWeekend(345600) {
-		t.Error("expected epoch 345600 (Monday) to not be a weekend")
-	}
-}
-
-func TestWriteDateCallbackUsesBytesLiterals(t *testing.T) {
-	path, err := writeDateCallback(map[string]int64{"abc123": 1600000000}, "+0200")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(path)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(data)
-	if !strings.Contains(text, `mapping[b'abc123'] = (b'1600000000 +0200', b'1600000000 +0200')`) {
-		t.Fatalf("unexpected callback:\n%s", text)
-	}
-}
-
-func TestFirstCommitEpochChecksMalformedOutput(t *testing.T) {
-	t.Parallel()
-	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-		if name == "git" && len(args) >= 1 && args[0] == "log" {
-			return "not-a-timestamp\n", "", nil
-		}
-		return "", "", nil
-	}}
-	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
-	if _, err := firstCommitEpoch(a, "repo", "--reverse"); err == nil {
-		t.Fatal("expected malformed timestamp error")
-	}
-}
-
-func TestDistributeCommitTimes(t *testing.T) {
-	commits := []commitTime{
-		{hash: "a", epoch: 100},
-		{hash: "b", epoch: 200},
-		{hash: "c", epoch: 300},
-	}
-	// Use realistic Unix epochs (September 2020)
-	start := int64(1600000000)
-	end := int64(1600864000) // 10 days later
-
-	mapping := distributeCommitTimes(commits, start, end)
-	if len(mapping) != 3 {
-		t.Fatalf("expected mapping length 3, got %d", len(mapping))
-	}
-
-	timeA, okA := mapping["a"]
-	timeB, okB := mapping["b"]
-	timeC, okC := mapping["c"]
-
-	if !okA || !okB || !okC {
-		t.Fatal("missing mapped hashes in result")
-	}
-
-	// Given date snap, hour shifts, and potential weekend shifts,
-	// timestamps should fall roughly within [start - 2 days, end + 2 days].
-	margin := int64(2 * 86400)
-	if timeA < start-margin || timeA > end+margin {
-		t.Errorf("timeA %d out of bounds [%d, %d]", timeA, start-margin, end+margin)
-	}
-	if timeB < start-margin || timeB > end+margin {
-		t.Errorf("timeB %d out of bounds [%d, %d]", timeB, start-margin, end+margin)
-	}
-	if timeC < start-margin || timeC > end+margin {
-		t.Errorf("timeC %d out of bounds [%d, %d]", timeC, start-margin, end+margin)
-	}
-
-	// The distributed times should be strictly sorted chronologically (monotonically increasing)
-	if timeA >= timeB || timeB >= timeC {
-		t.Errorf("expected strictly sorted times (A < B < C), got: A=%d, B=%d, C=%d", timeA, timeB, timeC)
-	}
-}
 
 func TestRewriteDatesFlagValidation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
@@ -183,75 +79,148 @@ func TestRewriteDateTargetRangeDays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.targetStart != parseDateStart("2024-01-25") {
+	if plan.targetStart != parseDateStartInOffset("2024-01-25", "+0000") {
 		t.Fatalf("targetStart = %s", formatEpochLocal(plan.targetStart))
 	}
-	if plan.targetEnd != parseDateEnd("2024-01-31") {
+	if plan.targetEnd != parseDateEndInOffset("2024-01-31", "+0000") {
 		t.Fatalf("targetEnd = %s", formatEpochLocal(plan.targetEnd))
 	}
 }
 
-func TestGeneratePlannedEpochsSpansTargetRange(t *testing.T) {
-	start := parseDateStart("2020-01-01")
-	end := parseDateEnd("2020-01-10")
-	intensity := rewriteDateIntensity{name: "test", activeRatio: 1, pauseChance: 0.5, maxBurst: 8}
+func TestGeneratePlannedEpochsDeterministicBySeed(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-06-30", "+0000")
+	intensity, _ := rewriteDateIntensityProfile("medium")
 
-	got := generatePlannedEpochs(2, start, end, "seed", intensity)
-	if len(got) != 2 {
-		t.Fatalf("timestamps = %d, want 2", len(got))
+	got := generatePlannedEpochs(80, start, end, "seed-a", intensity, "+0000")
+	again := generatePlannedEpochs(80, start, end, "seed-a", intensity, "+0000")
+	different := generatePlannedEpochs(80, start, end, "seed-b", intensity, "+0000")
+	assertEpochsEqual(t, got, again)
+	if epochsEqual(got, different) {
+		t.Fatal("different seed produced the same plan")
 	}
-	if floorDay(got[0]) != floorDay(start) {
-		t.Fatalf("first timestamp = %s, want first target day", formatEpochLocal(got[0]))
+	assertSortedEpochsInRange(t, got, start, end)
+}
+
+func TestRewriteDatePlanningSeedSalt(t *testing.T) {
+	if got := rewriteDatePlanningSeed("seed", 0); got != "seed" {
+		t.Fatalf("attempt 0 seed = %q", got)
 	}
-	if floorDay(got[1]) != floorDay(end) {
-		t.Fatalf("last timestamp = %s, want last target day", formatEpochLocal(got[1]))
+	if got := rewriteDatePlanningSeed("seed", 3); got != "seed\x00rewrite-dates-topology\x003" {
+		t.Fatalf("attempt 3 seed = %q", got)
 	}
 }
 
-func TestGeneratePlannedEpochsUsesFullLongRange(t *testing.T) {
-	start := parseDateStart("2020-01-01")
-	end := parseDateEnd("2026-06-06")
+func TestRewriteDateRestPolicyThresholds(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		days            int
+		selected        int
+		sparse          bool
+		soft            int
+		seasonal        bool
+		generated       int
+		summerVacations bool
+	}{
+		{name: "13 days", days: 13, selected: 30},
+		{name: "14 days", days: 14, selected: 30, sparse: true},
+		{name: "59 days", days: 59, selected: 30, sparse: true},
+		{name: "60 days below 10 commits", days: 60, selected: 9, sparse: true},
+		{name: "60 days at 10 commits", days: 60, selected: 10, sparse: true, soft: 1},
+		{name: "179 days", days: 179, selected: 10, sparse: true, soft: 1},
+		{name: "180 days below 20 commits", days: 180, selected: 19, sparse: true},
+		{name: "180 days at 20 commits", days: 180, selected: 20, sparse: true, seasonal: true, generated: 1},
+		{name: "364 days", days: 364, selected: 20, sparse: true, seasonal: true, generated: 1},
+		{name: "365 days below 30 commits", days: 365, selected: 29, sparse: true, seasonal: true, generated: 1},
+		{name: "365 days at 30 commits", days: 365, selected: 30, sparse: true, seasonal: true, generated: 1, summerVacations: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := rewriteDateRestPolicyForRange(tc.days, tc.selected)
+			if got.sparseInactiveDays != tc.sparse || got.softRestBlocks != tc.soft || got.seasonalYearEnd != tc.seasonal || got.generatedRestBlocks != tc.generated || got.summerVacations != tc.summerVacations {
+				t.Fatalf("policy = %+v", got)
+			}
+		})
+	}
+}
+
+func TestSyntheticRestBlocksIncludeJanuaryYearEndIntersection(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-06-29", "+0000")
+	days := daysInRangeInOffset(start, end, "+0000")
 	intensity, _ := rewriteDateIntensityProfile("medium")
 
-	got := generatePlannedEpochs(1837, start, end, "seed", intensity)
-	if len(got) != 1837 {
-		t.Fatalf("timestamps = %d, want 1837", len(got))
-	}
-	if got[0] < start || got[len(got)-1] > end {
-		t.Fatalf("timestamps outside target range: %s -> %s", formatEpochLocal(got[0]), formatEpochLocal(got[len(got)-1]))
-	}
-	if got[len(got)-1] < parseDateStart("2026-01-01") {
-		t.Fatalf("last timestamp stopped before 2026: %s", formatEpochLocal(got[len(got)-1]))
-	}
-	for i := 1; i < len(got); i++ {
-		if got[i] < got[i-1] {
-			t.Fatalf("timestamps are not sorted at index %d: %s before %s", i, formatEpochLocal(got[i]), formatEpochLocal(got[i-1]))
+	blocks := syntheticRestBlocks(days, 20, intensity, rand.New(rand.NewSource(seedInt64("rest"))), "+0000")
+	jan1 := parseDateStartInOffset("2024-01-01", "+0000")
+	found := false
+	for _, block := range blocks {
+		if block.startDay <= jan1 && block.endDay >= jan1 {
+			found = true
+			break
 		}
 	}
-	again := generatePlannedEpochs(1837, start, end, "seed", intensity)
-	for i := range got {
-		if got[i] != again[i] {
-			t.Fatalf("same seed differs at index %d: %d != %d", i, got[i], again[i])
+	if !found {
+		t.Fatalf("year-end rest did not include January intersection: %+v", blocks)
+	}
+}
+
+func TestGeneratePlannedEpochsSmallSelectionsAvoidEdges(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-01-10", "+0000")
+	intensity, _ := rewriteDateIntensityProfile("medium")
+
+	one := generatePlannedEpochs(1, start, end, "one", intensity, "+0000")
+	if len(one) != 1 {
+		t.Fatalf("one timestamp count = %d", len(one))
+	}
+	if floorDayInOffset(one[0], "+0000") == floorDayInOffset(start, "+0000") || floorDayInOffset(one[0], "+0000") == floorDayInOffset(end, "+0000") {
+		t.Fatalf("single commit landed on an edge day: %s", formatEpoch(one[0], "+0000"))
+	}
+
+	for _, n := range []int{2, 3} {
+		got := generatePlannedEpochs(n, start, end, fmt.Sprintf("small-%d", n), intensity, "+0000")
+		assertSortedEpochsInRange(t, got, start, end)
+		if floorDayInOffset(got[0], "+0000") == floorDayInOffset(start, "+0000") && floorDayInOffset(got[len(got)-1], "+0000") == floorDayInOffset(end, "+0000") {
+			t.Fatalf("%d commits were forced to target endpoints: %s -> %s", n, formatEpoch(got[0], "+0000"), formatEpoch(got[len(got)-1], "+0000"))
 		}
 	}
 }
 
-func TestGeneratePlannedEpochsSingleDay(t *testing.T) {
-	start := parseDateStart("2024-01-01")
-	end := parseDateEnd("2024-01-01")
-	intensity, _ := rewriteDateIntensityProfile("medium")
+func TestGeneratePlannedEpochsSingleDayHighVolume(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-01-01", "+0000")
+	intensity, _ := rewriteDateIntensityProfile("high")
 
-	got := generatePlannedEpochs(20, start, end, "seed", intensity)
-	if len(got) != 20 {
-		t.Fatalf("timestamps = %d, want 20", len(got))
+	got := generatePlannedEpochs(200, start, end, "seed", intensity, "+0000")
+	if len(got) != 200 {
+		t.Fatalf("timestamps = %d, want 200", len(got))
 	}
-	for i, timestamp := range got {
-		if timestamp < start || timestamp > end {
-			t.Fatalf("timestamp %d outside target day: %s", i, formatEpochLocal(timestamp))
-		}
-		if i > 0 && timestamp < got[i-1] {
-			t.Fatalf("timestamps are not sorted at index %d: %s before %s", i, formatEpochLocal(timestamp), formatEpochLocal(got[i-1]))
-		}
+	assertSortedEpochsInRange(t, got, start, end)
+}
+
+func TestGeneratePlannedEpochsActivityInvariants(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-12-31", "+0000")
+	low, _ := rewriteDateIntensityProfile("low")
+	medium, _ := rewriteDateIntensityProfile("medium")
+	high, _ := rewriteDateIntensityProfile("high")
+
+	lowPlan := generatePlannedEpochs(120, start, end, "activity", low, "+0000")
+	mediumPlan := generatePlannedEpochs(120, start, end, "activity", medium, "+0000")
+	highPlan := generatePlannedEpochs(120, start, end, "activity", high, "+0000")
+
+	if maxInactiveGapDays(mediumPlan, "+0000") < 2 {
+		t.Fatalf("medium plan lacks a multi-day inactive gap")
+	}
+	if maxInactiveGapDays(highPlan, "+0000") > maxInactiveGapDays(mediumPlan, "+0000") {
+		t.Fatalf("high intensity has a longer max gap than medium")
+	}
+	if activeDayCount(lowPlan, "+0000") >= activeDayCount(mediumPlan, "+0000") {
+		t.Fatalf("low active days = %d, medium active days = %d", activeDayCount(lowPlan, "+0000"), activeDayCount(mediumPlan, "+0000"))
+	}
+	weekend := weekendActiveDayCount(mediumPlan, "+0000")
+	total := activeDayCount(mediumPlan, "+0000")
+	if weekend*2 >= total {
+		t.Fatalf("weekend active days are not a minority: weekend=%d total=%d", weekend, total)
 	}
 }
 
@@ -454,6 +423,101 @@ func TestRewriteDateExplicitTargetReportsFixedBoundary(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "repo") || !strings.Contains(err.Error(), "child123") {
 		t.Fatalf("error lacks concrete repo/commit: %v", err)
+	}
+}
+
+func TestRewriteDatePlanningUsesDominantTimezone(t *testing.T) {
+	commits := []rewriteDateCommit{
+		testRewriteDateCommit("a", parseDateStartInOffset("2020-01-01", "+0530")),
+		testRewriteDateCommit("b", parseDateStartInOffset("2020-01-02", "+0530"), "a"),
+		testRewriteDateCommit("c", parseDateStartInOffset("2020-01-03", "-0700"), "b"),
+	}
+	commits[0].originalAuthorTZ = "+0530"
+	commits[0].authorTZ = "+0530"
+	commits[1].originalAuthorTZ = "+0530"
+	commits[1].authorTZ = "+0530"
+	commits[2].originalAuthorTZ = "-0700"
+	commits[2].authorTZ = "-0700"
+	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, []int{0, 1, 2})}
+
+	plan, err := planRewriteDateCandidates(candidates, rewriteDatesOptions{
+		startDate: "2024-01-01",
+		endDate:   "2024-01-02",
+		seed:      "seed",
+		intensity: "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.tzOffset != "+0530" || plan.candidates[0].tzOffset != "+0530" {
+		t.Fatalf("planning timezone = plan %q candidate %q", plan.tzOffset, plan.candidates[0].tzOffset)
+	}
+	if plan.targetStart != parseDateStartInOffset("2024-01-01", "+0530") || plan.targetEnd != parseDateEndInOffset("2024-01-02", "+0530") {
+		t.Fatalf("target range = %s -> %s", formatEpoch(plan.targetStart, "+0530"), formatEpoch(plan.targetEnd, "+0530"))
+	}
+
+	var stdout bytes.Buffer
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, io.Discard)
+	renderRewriteDatePlan(a, plan, rewriteDatesOptions{intensity: "medium"})
+	if !strings.Contains(stdout.String(), "2024-01-01 00:00:00 +0530") || !strings.Contains(stdout.String(), "Timezone: +0530") {
+		t.Fatalf("preview did not use planning timezone:\n%s", stdout.String())
+	}
+
+	mapping := map[string]dateCallbackDates{}
+	for _, idx := range plan.candidates[0].selected {
+		commit := plan.candidates[0].commits[idx]
+		date := fmt.Sprintf("%d %s", commit.plannedEpoch, plan.candidates[0].tzOffset)
+		mapping[commit.hash] = dateCallbackDates{Author: date, Committer: date}
+	}
+	callback, err := writeDateCallbackDates(mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(callback)
+	data, err := os.ReadFile(callback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "+0530") {
+		t.Fatalf("callback did not use planning timezone:\n%s", string(data))
+	}
+}
+
+func TestRewriteDateTopologyCompressionWarning(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	commits := make([]rewriteDateCommit, 0, 9)
+	for i := 0; i < 8; i++ {
+		parents := []string{}
+		if i > 0 {
+			parents = append(parents, fmt.Sprintf("c%d", i-1))
+		}
+		commits = append(commits, testRewriteDateCommit(fmt.Sprintf("c%d", i), start+1000+int64(i), parents...))
+	}
+	commits = append(commits, testRewriteDateCommit("fixed-child", start+8, "c7"))
+	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, []int{0, 1, 2, 3, 4, 5, 6, 7})}
+
+	plan, err := planRewriteDateCandidates(candidates, rewriteDatesOptions{
+		startDate: "2024-01-01",
+		endDate:   "2024-01-03",
+		seed:      "seed",
+		intensity: "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.candidates[0].topologyCompressed {
+		t.Fatal("expected topology compression warning flag")
+	}
+	warnings := strings.Join(rewriteDateCandidateWarnings(plan.candidates[0]), "; ")
+	if !strings.Contains(warnings, "topology constraints compressed some planned timestamps") {
+		t.Fatalf("missing compression warning: %s", warnings)
+	}
+	for i := 1; i < 8; i++ {
+		left := plan.candidates[0].commits[i-1].plannedEpoch
+		right := plan.candidates[0].commits[i].plannedEpoch
+		if right-left != 1 {
+			t.Fatalf("gap %d = %d, want 1", i, right-left)
+		}
 	}
 }
 
@@ -855,12 +919,12 @@ func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	}
 	rewrittenDates := commitAuthorDatesBySubject(t, repoDir)
 	for _, subject := range []string{"first", "second", "third"} {
-		if rewrittenDates[subject] < parseDateStart("2024-01-01") || rewrittenDates[subject] > parseDateEnd("2024-01-10") {
+		if rewrittenDates[subject] < parseDateStartInOffset("2024-01-01", "+0000") || rewrittenDates[subject] > parseDateEndInOffset("2024-01-10", "+0000") {
 			t.Fatalf("%s date outside target range: %s", subject, formatEpochLocal(rewrittenDates[subject]))
 		}
 	}
-	if rewrittenDates["third"]-rewrittenDates["first"] < 7*86400 {
-		t.Fatalf("applied dates did not span target range: %s -> %s", formatEpochLocal(rewrittenDates["first"]), formatEpochLocal(rewrittenDates["third"]))
+	if rewrittenDates["first"] > rewrittenDates["second"] || rewrittenDates["second"] > rewrittenDates["third"] {
+		t.Fatalf("applied dates are not ordered: first=%s second=%s third=%s", formatEpochLocal(rewrittenDates["first"]), formatEpochLocal(rewrittenDates["second"]), formatEpochLocal(rewrittenDates["third"]))
 	}
 
 	commitEmptyForTest(t, repoDir, "new", "2025-01-01T10:00:00 +0000")
@@ -1146,6 +1210,75 @@ func parseGitDateForTest(t *testing.T, value string) int64 {
 		t.Fatal(err)
 	}
 	return parsed.Unix()
+}
+
+func assertEpochsEqual(t *testing.T, left, right []int64) {
+	t.Helper()
+	if !epochsEqual(left, right) {
+		t.Fatalf("epochs differ:\nleft:  %v\nright: %v", left, right)
+	}
+}
+
+func epochsEqual(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func assertSortedEpochsInRange(t *testing.T, epochs []int64, start, end int64) {
+	t.Helper()
+	for i, epoch := range epochs {
+		if epoch < start || epoch > end {
+			t.Fatalf("timestamp %d outside range: %s", i, formatEpochLocal(epoch))
+		}
+		if i > 0 && epoch < epochs[i-1] {
+			t.Fatalf("timestamps are not sorted at index %d: %s before %s", i, formatEpochLocal(epoch), formatEpochLocal(epochs[i-1]))
+		}
+	}
+}
+
+func activeDayCount(epochs []int64, tzOffset string) int {
+	return len(activeDaySet(epochs, tzOffset))
+}
+
+func weekendActiveDayCount(epochs []int64, tzOffset string) int {
+	count := 0
+	for day := range activeDaySet(epochs, tzOffset) {
+		if isWeekendInOffset(day, tzOffset) {
+			count++
+		}
+	}
+	return count
+}
+
+func maxInactiveGapDays(epochs []int64, tzOffset string) int {
+	days := make([]int64, 0, len(activeDaySet(epochs, tzOffset)))
+	for day := range activeDaySet(epochs, tzOffset) {
+		days = append(days, day)
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i] < days[j] })
+	maxGap := 0
+	for i := 1; i < len(days); i++ {
+		gap := int((days[i]-days[i-1])/86400) - 1
+		if gap > maxGap {
+			maxGap = gap
+		}
+	}
+	return maxGap
+}
+
+func activeDaySet(epochs []int64, tzOffset string) map[int64]bool {
+	days := map[int64]bool{}
+	for _, epoch := range epochs {
+		days[floorDayInOffset(epoch, tzOffset)] = true
+	}
+	return days
 }
 
 func testRewriteDateCandidate(name string, commits []rewriteDateCommit, selected []int) dateCandidate {
