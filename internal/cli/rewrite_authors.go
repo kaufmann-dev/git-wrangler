@@ -64,7 +64,7 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	}, nil)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
 	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies)))
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {

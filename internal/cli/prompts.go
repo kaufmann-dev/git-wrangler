@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,17 +20,24 @@ const (
 	confirmationDeclined confirmationResult = iota
 	confirmationAccepted
 	confirmationUnavailable
+	confirmationCancelled
 )
 
+var errPromptCancelled = errors.New("prompt cancelled")
+
 type promptSession struct {
+	ctx         context.Context
+	cancel      context.CancelFunc
 	stdin       io.Reader
 	stderr      io.Writer
 	input       *bufio.Reader
 	interactive func() bool
+	readSecret  func() ([]byte, error)
+	restore     func() error
 }
 
-func newPromptSession(stdin io.Reader, stderr io.Writer) *promptSession {
-	p := &promptSession{stdin: stdin, stderr: stderr, input: bufio.NewReader(stdin)}
+func newPromptSession(ctx context.Context, cancel context.CancelFunc, stdin io.Reader, stderr io.Writer) *promptSession {
+	p := &promptSession{ctx: ctx, cancel: cancel, stdin: stdin, stderr: stderr, input: bufio.NewReader(stdin)}
 	p.interactive = func() bool {
 		in, inOK := stdin.(*os.File)
 		out, outOK := stderr.(*os.File)
@@ -43,26 +52,119 @@ func (p *promptSession) available() bool {
 
 func (p *promptSession) read(prompt string) (string, error) {
 	fmt.Fprint(p.stderr, prompt)
-	answer, err := p.input.ReadString('\n')
+	answer, err := p.readWithContext(func() (string, error) {
+		return p.input.ReadString('\n')
+	})
 	return strings.TrimRight(answer, "\r\n"), err
 }
 
 func (p *promptSession) secret(prompt string) (string, error) {
 	fmt.Fprint(p.stderr, prompt)
-	if f, ok := p.stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		answer, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(p.stderr)
+	if p.readSecret != nil {
+		answer, err := p.readSecretWithContext(p.readSecret, p.restore)
+		if !errors.Is(err, errPromptCancelled) {
+			fmt.Fprintln(p.stderr)
+		}
 		return strings.TrimRight(string(answer), "\r\n"), err
 	}
-	answer, err := p.input.ReadString('\n')
+	if f, ok := p.stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		state, err := term.GetState(int(f.Fd()))
+		if err != nil {
+			return "", err
+		}
+		readSecret := func() ([]byte, error) { return term.ReadPassword(int(f.Fd())) }
+		restore := func() error { return term.Restore(int(f.Fd()), state) }
+		answer, err := p.readSecretWithContext(readSecret, restore)
+		if !errors.Is(err, errPromptCancelled) {
+			fmt.Fprintln(p.stderr)
+		}
+		return strings.TrimRight(string(answer), "\r\n"), err
+	}
+	answer, err := p.readWithContext(func() (string, error) {
+		return p.input.ReadString('\n')
+	})
 	return strings.TrimRight(answer, "\r\n"), err
+}
+
+func (p *promptSession) readSecretWithContext(readSecret func() ([]byte, error), restore func() error) ([]byte, error) {
+	type result struct {
+		value []byte
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		value, err := readSecret()
+		results <- result{value: value, err: err}
+	}()
+	select {
+	case <-p.ctx.Done():
+		if restore != nil {
+			_ = restore()
+		}
+		p.closeInput()
+		return nil, errPromptCancelled
+	case result := <-results:
+		if p.ctx.Err() != nil {
+			if restore != nil {
+				_ = restore()
+			}
+			p.closeInput()
+			return nil, errPromptCancelled
+		}
+		if errors.Is(result.err, io.EOF) {
+			p.cancel()
+			return nil, errPromptCancelled
+		}
+		if result.err != nil {
+			return nil, result.err
+		}
+		return result.value, nil
+	}
+}
+
+func (p *promptSession) readWithContext(read func() (string, error)) (string, error) {
+	type result struct {
+		value string
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		value, err := read()
+		results <- result{value: value, err: err}
+	}()
+	select {
+	case <-p.ctx.Done():
+		p.closeInput()
+		return "", errPromptCancelled
+	case result := <-results:
+		if p.ctx.Err() != nil {
+			return "", errPromptCancelled
+		}
+		if errors.Is(result.err, io.EOF) {
+			p.cancel()
+			return "", errPromptCancelled
+		}
+		if result.err != nil {
+			return "", result.err
+		}
+		return result.value, nil
+	}
+}
+
+func (p *promptSession) closeInput() {
+	if closer, ok := p.stdin.(io.Closer); ok {
+		go func() { _ = closer.Close() }()
+	}
 }
 
 func (p *promptSession) confirm(question string) confirmationResult {
 	if !p.available() {
 		return confirmationUnavailable
 	}
-	answer, _ := p.read(question + " [y/N] ")
+	answer, err := p.read(question + " [y/N] ")
+	if errors.Is(err, errPromptCancelled) {
+		return confirmationCancelled
+	}
 	if answer == "y" || answer == "Y" {
 		return confirmationAccepted
 	}

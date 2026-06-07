@@ -78,7 +78,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 	}
 	renderWarning(a, fmt.Sprintf("This operation will modify .gitignore and create commits in %d repositories.", len(applies)))
 	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Apply and commit .gitignore updates for %d repositories?", len(applies)))
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {

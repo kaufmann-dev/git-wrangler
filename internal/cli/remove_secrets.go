@@ -122,7 +122,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if len(applies) > 0 {
 		renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
 		confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Purge these files from history in %d repositories?", len(applies)))
-		if confirmation == confirmationUnavailable {
+		if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 			return 1
 		}
 		if confirmation == confirmationDeclined {
