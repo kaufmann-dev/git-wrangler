@@ -2004,25 +2004,210 @@ func activateCalendarSessions(calendar *rewriteDateCalendarPlan, activeTarget in
 	if len(calendar.days) == 0 {
 		return
 	}
-	index := 0
-	if len(calendar.days) > activeTarget+2 && intensity.gapMaxDays > 0 {
-		index = rng.Intn(minInt(len(calendar.days), intensity.gapMaxDays+1))
-	}
-	for calendarActiveDayCount(*calendar) < activeTarget && index < len(calendar.days) {
-		sessionLength := randomIntBetween(rng, intensity.sessionMinDays, intensity.sessionMaxDays)
-		for dayOffset := 0; dayOffset < sessionLength && index < len(calendar.days) && calendarActiveDayCount(*calendar) < activeTarget; dayOffset++ {
-			day := calendar.days[index]
-			if day.state == rewriteDateCalendarInactive && calendarSessionAcceptsDay(day.epoch, intensity, rng, calendar.tzOffset) {
-				calendar.days[index].state = rewriteDateCalendarActive
-			}
-			index++
+	sessionLengths := calendarSessionLengths(activeTarget, intensity, rng)
+	anchors := make([]int, len(sessionLengths))
+	for i := range sessionLengths {
+		windowStart := i * len(calendar.days) / len(sessionLengths)
+		windowEnd := ((i + 1) * len(calendar.days) / len(sessionLengths)) - 1
+		if windowEnd < windowStart {
+			windowEnd = windowStart
 		}
-		index += randomIntBetween(rng, intensity.gapMinDays, intensity.gapMaxDays)
+		anchor := calendarSessionAnchorInWindow(calendar, windowStart, windowEnd, intensity, rng)
+		anchors[i] = anchor
+		if anchor < 0 {
+			continue
+		}
+		calendar.days[anchor].state = rewriteDateCalendarActive
+	}
+	for i, anchor := range anchors {
+		if anchor >= 0 {
+			continue
+		}
+		windowStart := i * len(calendar.days) / len(sessionLengths)
+		windowEnd := ((i + 1) * len(calendar.days) / len(sessionLengths)) - 1
+		anchor = nearestCalendarSessionAnchor(calendar, windowStart, windowEnd, intensity, rng)
+		anchors[i] = anchor
+		if anchor >= 0 {
+			calendar.days[anchor].state = rewriteDateCalendarActive
+		}
+	}
+	for i, anchor := range anchors {
+		if anchor < 0 {
+			continue
+		}
+		growCalendarSession(calendar, anchor, sessionLengths[i]-1, intensity, rng)
 	}
 	if calendarActiveDayCount(*calendar) < activeTarget {
 		eligible := calendarDayIndexesByState(*calendar, true, rewriteDateCalendarInactive)
 		activateWeightedCalendarDays(calendar, eligible, activeTarget-calendarActiveDayCount(*calendar), intensity, rng)
 	}
+}
+
+func calendarSessionLengths(activeTarget int, intensity rewriteDateIntensity, rng *rand.Rand) []int {
+	lengths := []int{}
+	for remaining := activeTarget; remaining > 0; {
+		minLength := maxInt(1, intensity.sessionMinDays)
+		maxLength := maxInt(minLength, intensity.sessionMaxDays)
+		if minLength > remaining {
+			minLength = remaining
+		}
+		if maxLength > remaining {
+			maxLength = remaining
+		}
+		length := randomIntBetween(rng, minLength, maxLength)
+		if intensity.gapMaxDays > 0 {
+			shortGapBiasSamples := maxInt(0, (maxLength-intensity.gapMaxDays)/2)
+			for sample := 0; sample < shortGapBiasSamples; sample++ {
+				length = minInt(length, randomIntBetween(rng, minLength, maxLength))
+			}
+		}
+		lengths = append(lengths, length)
+		remaining -= length
+	}
+	return lengths
+}
+
+func calendarSessionAnchorInWindow(calendar *rewriteDateCalendarPlan, windowStart, windowEnd int, intensity rewriteDateIntensity, rng *rand.Rand) int {
+	if len(calendar.days) == 0 {
+		return -1
+	}
+	windowStart = maxInt(0, minInt(windowStart, len(calendar.days)-1))
+	windowEnd = maxInt(windowStart, minInt(windowEnd, len(calendar.days)-1))
+	windowInset := (windowEnd - windowStart + 1) / 4
+	centerCandidates := inactiveCalendarDayIndexesInWindow(*calendar, windowStart+windowInset, windowEnd-windowInset)
+	centerCandidates = trimCalendarEdgeIndexes(centerCandidates, len(calendar.days))
+	if len(centerCandidates) > 0 {
+		return centerCandidates[weightedCalendarIndex(calendar, centerCandidates, intensity, rng)]
+	}
+	windowCandidates := inactiveCalendarDayIndexesInWindow(*calendar, windowStart, windowEnd)
+	windowCandidates = trimCalendarEdgeIndexes(windowCandidates, len(calendar.days))
+	if len(windowCandidates) > 0 {
+		return windowCandidates[weightedCalendarIndex(calendar, windowCandidates, intensity, rng)]
+	}
+	return -1
+}
+
+func nearestCalendarSessionAnchor(calendar *rewriteDateCalendarPlan, windowStart, windowEnd int, intensity rewriteDateIntensity, rng *rand.Rand) int {
+	if len(calendar.days) == 0 {
+		return -1
+	}
+	windowStart = maxInt(0, minInt(windowStart, len(calendar.days)-1))
+	windowEnd = maxInt(windowStart, minInt(windowEnd, len(calendar.days)-1))
+	allCandidates := inactiveCalendarDayIndexesInWindow(*calendar, 0, len(calendar.days)-1)
+	allCandidates = trimCalendarEdgeIndexes(allCandidates, len(calendar.days))
+	if len(allCandidates) == 0 {
+		return -1
+	}
+	nearest := allCandidates[:0]
+	nearestDistance := len(calendar.days) + 1
+	for _, idx := range allCandidates {
+		distance := distanceFromCalendarWindow(idx, windowStart, windowEnd)
+		if distance < nearestDistance {
+			nearestDistance = distance
+			nearest = nearest[:0]
+		}
+		if distance == nearestDistance {
+			nearest = append(nearest, idx)
+		}
+	}
+	return nearest[weightedCalendarIndex(calendar, nearest, intensity, rng)]
+}
+
+func inactiveCalendarDayIndexesInWindow(calendar rewriteDateCalendarPlan, windowStart, windowEnd int) []int {
+	if len(calendar.days) == 0 {
+		return nil
+	}
+	windowStart = maxInt(0, minInt(windowStart, len(calendar.days)-1))
+	windowEnd = maxInt(windowStart, minInt(windowEnd, len(calendar.days)-1))
+	indexes := []int{}
+	for i := windowStart; i <= windowEnd; i++ {
+		if calendar.days[i].state == rewriteDateCalendarInactive {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes
+}
+
+func trimCalendarEdgeIndexes(indexes []int, dayCount int) []int {
+	if dayCount <= 2 {
+		return indexes
+	}
+	trimmed := make([]int, 0, len(indexes))
+	for _, idx := range indexes {
+		if idx > 0 && idx < dayCount-1 {
+			trimmed = append(trimmed, idx)
+		}
+	}
+	if len(trimmed) == 0 {
+		return indexes
+	}
+	return trimmed
+}
+
+func distanceFromCalendarWindow(index, windowStart, windowEnd int) int {
+	if index < windowStart {
+		return windowStart - index
+	}
+	if index > windowEnd {
+		return index - windowEnd
+	}
+	return 0
+}
+
+func growCalendarSession(calendar *rewriteDateCalendarPlan, anchor, additionalDays int, intensity rewriteDateIntensity, rng *rand.Rand) {
+	if additionalDays <= 0 || anchor < 0 || anchor >= len(calendar.days) {
+		return
+	}
+	left := anchor - 1
+	right := anchor + 1
+	leftOpen := left >= 0
+	rightOpen := right < len(calendar.days)
+	for additionalDays > 0 && (leftOpen || rightOpen) {
+		side := chooseCalendarSessionGrowthSide(calendar, left, leftOpen, right, rightOpen, intensity, rng)
+		if side < 0 {
+			day := calendar.days[left]
+			if day.state == rewriteDateCalendarRest {
+				leftOpen = false
+				continue
+			}
+			if day.state == rewriteDateCalendarInactive && calendarSessionAcceptsDay(day.epoch, intensity, rng, calendar.tzOffset) {
+				calendar.days[left].state = rewriteDateCalendarActive
+				additionalDays--
+			}
+			left--
+			leftOpen = left >= 0
+			continue
+		}
+		day := calendar.days[right]
+		if day.state == rewriteDateCalendarRest {
+			rightOpen = false
+			continue
+		}
+		if day.state == rewriteDateCalendarInactive && calendarSessionAcceptsDay(day.epoch, intensity, rng, calendar.tzOffset) {
+			calendar.days[right].state = rewriteDateCalendarActive
+			additionalDays--
+		}
+		right++
+		rightOpen = right < len(calendar.days)
+	}
+}
+
+func chooseCalendarSessionGrowthSide(calendar *rewriteDateCalendarPlan, left int, leftOpen bool, right int, rightOpen bool, intensity rewriteDateIntensity, rng *rand.Rand) int {
+	if leftOpen && !rightOpen {
+		return -1
+	}
+	if rightOpen && !leftOpen {
+		return 1
+	}
+	if !leftOpen && !rightOpen {
+		return 0
+	}
+	leftWeight := planningDayWeight(calendar.days[left].epoch, nil, intensity, rng, calendar.tzOffset)
+	rightWeight := planningDayWeight(calendar.days[right].epoch, nil, intensity, rng, calendar.tzOffset)
+	if rng.Float64()*(leftWeight+rightWeight) < leftWeight {
+		return -1
+	}
+	return 1
 }
 
 func calendarSessionAcceptsDay(day int64, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) bool {
