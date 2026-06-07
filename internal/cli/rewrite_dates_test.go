@@ -119,6 +119,48 @@ func TestRewriteDateCalendarDeterministicBySeed(t *testing.T) {
 	}
 }
 
+func TestRewriteDateCalendarSessionsCoverLongTargetRange(t *testing.T) {
+	start := parseDateStartInOffset("2021-01-01", "+0000")
+	end := parseDateEndInOffset("2026-06-30", "+0000")
+	seeds := []string{"coverage-a", "coverage-b", "coverage-c"}
+
+	for _, intensityName := range []string{"low", "medium", "high"} {
+		t.Run(intensityName, func(t *testing.T) {
+			intensity, _ := rewriteDateIntensityProfile(intensityName)
+			for _, seed := range seeds {
+				calendar := buildRewriteDateCalendarPlan(71, start, end, seed, intensity, "+0000")
+				activeTarget := plannedCalendarActiveDayCount(71, len(calendar.days), calendarRestDayCount(calendar), intensity)
+				if calendarActiveDayCount(calendar) != activeTarget {
+					t.Fatalf("%s active days = %d, want %d", seed, calendarActiveDayCount(calendar), activeTarget)
+				}
+				if covered := activeCalendarCoverageWindowCount(calendar, 4); covered != 4 {
+					t.Fatalf("%s covered %d of 4 range quarters; active days: %s", seed, covered, activeCalendarDayLabels(calendar))
+				}
+			}
+		})
+	}
+}
+
+func TestRewriteDateCalendarSingleSessionUsesInteriorAnchor(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-01-31", "+0000")
+	low, _ := rewriteDateIntensityProfile("low")
+
+	calendar := buildRewriteDateCalendarPlan(4, start, end, "single-session", low, "+0000")
+	activeIndexes := []int{}
+	for i, day := range calendar.days {
+		if calendarDayHasSlots(day.state) {
+			activeIndexes = append(activeIndexes, i)
+		}
+	}
+	if len(activeIndexes) != 1 {
+		t.Fatalf("active indexes = %v, want one active day", activeIndexes)
+	}
+	if activeIndexes[0] == 0 || activeIndexes[0] == len(calendar.days)-1 {
+		t.Fatalf("single session landed on range edge: %s", formatEpoch(calendar.days[activeIndexes[0]].epoch, "+0000"))
+	}
+}
+
 func TestRewriteDatePlanningSeedSalt(t *testing.T) {
 	if got := rewriteDatePlanningSeed("seed", 0); got != "seed" {
 		t.Fatalf("attempt 0 seed = %q", got)
@@ -336,6 +378,9 @@ func TestRewriteDateRepositoryConcentrationDampsWorkloadVariation(t *testing.T) 
 	balanced := buildRewriteDateCalendarPlanForRepos(4000, start, end, "repos", medium, "+0000", 8)
 	if calendarQuotaTotal(dominant) != 4000 || calendarQuotaTotal(balanced) != 4000 {
 		t.Fatal("repository concentration changed selected commit totals")
+	}
+	if calendarPlacementSignature(dominant) != calendarPlacementSignature(balanced) {
+		t.Fatal("repository concentration changed temporal placement")
 	}
 	if calendarLoadRange(dominant) <= calendarLoadRange(balanced) {
 		t.Fatalf("dominant repository did not retain stronger variation: dominant=%d balanced=%d", calendarLoadRange(dominant), calendarLoadRange(balanced))
@@ -1496,6 +1541,42 @@ func calendarSignature(calendar rewriteDateCalendarPlan) string {
 		parts = append(parts, fmt.Sprintf("%d:%s:%d", day.epoch, day.state, day.quota))
 	}
 	return strings.Join(parts, "|")
+}
+
+func calendarPlacementSignature(calendar rewriteDateCalendarPlan) string {
+	parts := make([]string, 0, len(calendar.days))
+	for _, day := range calendar.days {
+		parts = append(parts, fmt.Sprintf("%d:%s", day.epoch, day.state))
+	}
+	return strings.Join(parts, "|")
+}
+
+func activeCalendarCoverageWindowCount(calendar rewriteDateCalendarPlan, windowCount int) int {
+	if len(calendar.days) == 0 || windowCount <= 0 {
+		return 0
+	}
+	covered := map[int]bool{}
+	for i, day := range calendar.days {
+		if calendarDayHasSlots(day.state) {
+			window := i * windowCount / len(calendar.days)
+			if window >= windowCount {
+				window = windowCount - 1
+			}
+			covered[window] = true
+		}
+	}
+	return len(covered)
+}
+
+func activeCalendarDayLabels(calendar rewriteDateCalendarPlan) string {
+	loc := locationForTimezoneOffset(calendar.tzOffset)
+	labels := []string{}
+	for _, day := range calendar.days {
+		if calendarDayHasSlots(day.state) {
+			labels = append(labels, time.Unix(day.epoch, 0).In(loc).Format("2006-01-02"))
+		}
+	}
+	return strings.Join(labels, ", ")
 }
 
 func calendarDailyLoadStats(calendar rewriteDateCalendarPlan) (int, int, int) {
