@@ -14,6 +14,29 @@ Commands without `--repo`: `clone`, `init`, `config`, `doctor`, `version`, `comp
 
 Remote-aware reporting and history rewrite planning is `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates` run `git fetch --prune origin` for target repositories before inspecting remote-tracking refs unless `--no-fetch` is set.
 
+## Guided Setup And Prompting
+
+Prompting is available only when both stdin and stderr are TTYs. Missing required
+values prompt automatically when prompting is available and fail otherwise,
+including when `--yes` is present. A command that reaches a final confirmation
+without prompting availability fails nonzero and tells the user to pass
+`--yes`. `--yes` and `-y` skip confirmations only.
+
+Command-local `--guided` is available on `activity`, `clone`, `pull`, `fetch`,
+`push`, `commit`, `fix-gitignore`, `license`, `rename-branch`, `reset`, `review`,
+`untrack`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`,
+`rewrite-dates`, `info`, and `status`. It prompts for all command-specific
+behavior options, applies answers through Cobra flag setters, and prints the
+selected configuration to stderr before execution. It excludes meta flags such
+as `--help`, `--version`, `--guided`, `--yes`, and `--json`.
+
+`--guided` fails outside a TTY and cannot be combined with `--json`.
+`rewrite-dates --guided` first selects rewrite or rollback, skips incompatible
+planning prompts for rollback, and selects the target-range mode before asking
+for the applicable range values. `init` and `rename-repo` remain dedicated
+interactive workflows and require a TTY. Secret `config set` values also require
+a TTY.
+
 ## Command Matrix
 
 | Command           | Group   | Targeting                                    | Mutates                                                                                       | Confirmation                                                                                            | Required runtime tools                                            | Auth/config usage                                         |

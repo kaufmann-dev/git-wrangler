@@ -406,6 +406,9 @@ func secretValue(a *app, args []string, prompt string) (string, bool) {
 		a.plainErrorf("%s does not accept a plaintext value.", args[0])
 		return "", false
 	}
+	if !requireInteractive(a, "secret config values") {
+		return "", false
+	}
 	value, err := promptSecret(a, prompt)
 	if err != nil || value == "" {
 		a.plainErrorf("secret input is required.")

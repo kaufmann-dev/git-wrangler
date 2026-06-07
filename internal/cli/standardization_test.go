@@ -147,7 +147,7 @@ func TestRewriteAuthorsDeclineSkipsSuccessfully(t *testing.T) {
 		},
 	}
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), runner, []string{"rewrite-authors", "--name", "New Name", "--email", "new@example.test"}, strings.NewReader("n\n"), &stdout, &stderr)
+	err := executeInteractive(t, context.Background(), runner, []string{"rewrite-authors", "--name", "New Name", "--email", "new@example.test"}, strings.NewReader("n\n"), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("declined rewrite-authors returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}

@@ -122,7 +122,11 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 	renderTable(a, []tableColumn{{header: "Repository"}, {header: "Branch"}, {header: "Ahead"}, {header: "Behind"}, {header: "Dirty"}}, tableRows)
 	fmt.Fprintln(a.stdout)
 	renderWarning(a, fmt.Sprintf("This will hard reset %d repositories and discard local commits or working tree changes.", len(applies)))
-	if !confirmOrSkip(a, yes, fmt.Sprintf("Proceed with reset for %d repositories?", len(applies))) {
+	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Proceed with reset for %d repositories?", len(applies)))
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderSummary(a,
 			summaryCount{label: "reset", value: 0, color: a.ui.Green},
 			summaryCount{label: "skipped", value: len(applies) + len(skips), color: a.ui.Yellow},

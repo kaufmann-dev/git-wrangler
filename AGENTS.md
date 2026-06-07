@@ -56,6 +56,8 @@ Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, 
 
 `--yes` is command-local and skips confirmations only. It must not fill required values such as names, branch names, config values, API keys, or secrets. Multi-repository commands must ask at most one confirmation for the whole candidate set, never once per repository. Declining a confirmation before mutation is a successful skip/no-op, not a failure.
 
+`--guided` is command-local on repository workflow commands. It requires both stdin and stderr to be TTYs, prompts for every command-specific behavior option but no meta flags, applies answers through Cobra flag setters, and prints a selected-configuration summary to stderr before execution. Missing required values prompt by default only when both streams are TTYs. `--guided --json` is invalid. Non-TTY confirmations fail with guidance to pass `--yes`; `--yes` and `-y` skip confirmations only.
+
 `--json` is command-local and limited to `status`, `info`, `review`, `doctor`, `config show`, and `version`. JSON mode writes one document to stdout, suppresses colors/progress/prompts/human summaries, keeps stderr empty except Cobra parse errors or unavoidable process-level failures, and must not expose stored secrets.
 
 `--no-fetch` is command-local and limited to `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates`. It skips only the automatic origin refresh; it must not change repository targeting or other command behavior.

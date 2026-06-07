@@ -24,6 +24,9 @@ func initCommand(a *app) *cobra.Command {
 }
 
 func runInit(a *app) int {
+	if !requireInteractive(a, "init") {
+		return 1
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
@@ -43,20 +46,26 @@ func runInit(a *app) int {
 	if cfg.GitHub.Host == "" {
 		cfg.GitHub.Host = config.DefaultGitHubHost
 	}
-	if keyringAvailable && confirm(a, "Authenticate GitHub now?") {
-		wait := newAuthorizationWait(a)
-		result, err := a.auth.AuthenticateGitHub(a.ctx, cfg.GitHub.Host, a.input, a.stderr, wait.update)
-		wait.done()
-		if err != nil {
-			a.plainErrorf("%s", err.Error())
+	if keyringAvailable {
+		confirmation := confirm(a, "Authenticate GitHub now?")
+		if confirmation == confirmationUnavailable {
 			return 1
 		}
-		if err := a.creds.Set(credentials.GitHubAccount(cfg.GitHub.Host), result.Token); err != nil {
-			a.plainErrorf("%s", err.Error())
-			return 1
+		if confirmation == confirmationAccepted {
+			wait := newAuthorizationWait(a)
+			result, err := a.auth.AuthenticateGitHub(a.ctx, cfg.GitHub.Host, a.input, a.stderr, wait.update)
+			wait.done()
+			if err != nil {
+				a.plainErrorf("%s", err.Error())
+				return 1
+			}
+			if err := a.creds.Set(credentials.GitHubAccount(cfg.GitHub.Host), result.Token); err != nil {
+				a.plainErrorf("%s", err.Error())
+				return 1
+			}
+			cfg.GitHub.Username = result.Username
+			a.ok("Stored GitHub authentication for " + result.Username)
 		}
-		cfg.GitHub.Username = result.Username
-		a.ok("Stored GitHub authentication for " + result.Username)
 	}
 	if !keyringAvailable && credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host).Value == "" {
 		a.warn("Secure credential storage is unavailable, so Git Wrangler skipped GitHub authentication setup. Set GIT_WRANGLER_GITHUB_TOKEN instead.")
@@ -82,17 +91,23 @@ func runInit(a *app) int {
 		return 1
 	}
 	cfg.AI.Model = model
-	if keyringAvailable && confirm(a, "Store an AI API key now?") {
-		token, err := promptSecret(a, "AI API key: ")
-		if err != nil || token == "" {
-			a.plainErrorf("secret input is required.")
+	if keyringAvailable {
+		confirmation := confirm(a, "Store an AI API key now?")
+		if confirmation == confirmationUnavailable {
 			return 1
 		}
-		if err := a.creds.Set(credentials.AIAccount(cfg.AI.Provider), token); err != nil {
-			a.plainErrorf("%s", err.Error())
-			return 1
+		if confirmation == confirmationAccepted {
+			token, err := promptSecret(a, "AI API key: ")
+			if err != nil || token == "" {
+				a.plainErrorf("secret input is required.")
+				return 1
+			}
+			if err := a.creds.Set(credentials.AIAccount(cfg.AI.Provider), token); err != nil {
+				a.plainErrorf("%s", err.Error())
+				return 1
+			}
+			a.ok("Stored AI API key")
 		}
-		a.ok("Stored AI API key")
 	}
 	if !keyringAvailable && credentials.ResolveAIKey(a.creds, cfg.AI.Provider).Value == "" {
 		guidance := "Secure credential storage is unavailable, so Git Wrangler skipped AI API key setup. Set GIT_WRANGLER_AI_API_KEY instead."
