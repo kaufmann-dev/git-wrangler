@@ -37,7 +37,7 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	overwriteConfirmed := true
 	if overwriteCount > 0 {
 		confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Overwrite existing LICENSE files in %d repositories?", overwriteCount))
-		if confirmation == confirmationUnavailable {
+		if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 			return 1
 		}
 		overwriteConfirmed = confirmation == confirmationAccepted

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -195,6 +196,9 @@ func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string
 		return "", false
 	}
 	answer, err := promptRead(a, prompt)
+	if errors.Is(err, errPromptCancelled) {
+		return "", false
+	}
 	if err != nil || answer == "" {
 		a.plainErrorf("--%s is required.", name)
 		return "", false

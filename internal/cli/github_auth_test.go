@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/config"
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
@@ -214,6 +215,56 @@ func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	joined := strings.Join(ghEnv, "\n")
 	if !strings.Contains(joined, "GH_TOKEN=github-token") || !strings.Contains(joined, "GH_HOST=github.com") {
 		t.Fatalf("missing auth env in %#v", ghEnv)
+	}
+}
+
+func TestRenameRepoCancellationStopsBeforeMutation(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	rootDir := t.TempDir()
+	repo := filepath.Join(rootDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mutated := false
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name == "gh" && strings.Join(args, " ") == "repo view --json name -q .name" {
+				return "repo\n", "", nil
+			}
+			if name == "gh" {
+				mutated = true
+			}
+			return "", "", errors.New("unexpected command")
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := newBlockingPromptReader()
+	var stdout, stderr bytes.Buffer
+	a := newApp(ctx, runner, reader, &stdout, &stderr)
+	makeInteractive(a)
+	a.creds = &fakeCredentialStore{values: map[string]string{credentials.GitHubAccount("github.com"): "github-token"}}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"rename-repo"})
+	t.Chdir(rootDir)
+	result := make(chan error, 1)
+	go func() { result <- cmd.Execute() }()
+	<-reader.started
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("expected cancellation failure")
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("rename-repo cancellation waited for input")
+	}
+	if mutated {
+		t.Fatal("rename-repo mutated after prompt cancellation")
+	}
+	if got := strings.Count(stdout.String(), "SKIP stopped: operation cancelled"); got != 1 {
+		t.Fatalf("cancellation status count = %d\n%s", got, stdout.String())
 	}
 }
 
