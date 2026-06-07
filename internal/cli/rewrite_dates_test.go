@@ -311,29 +311,38 @@ func TestRewriteDatesCommitMapUpdatesOnlyCurrentSHA(t *testing.T) {
 }
 
 func TestRewriteDatesExactRollbackStateUpdates(t *testing.T) {
-	state := rewriteDatesState{Commits: []rewriteDatesStateCommit{
-		{
-			OriginalSHA:            "original",
-			CurrentSHA:             "rewritten",
-			OriginalAuthorDate:     "100 +0000",
-			OriginalAuthorEpoch:    100,
-			OriginalAuthorTZ:       "+0000",
-			OriginalCommitterDate:  "100 +0000",
-			OriginalCommitterEpoch: 100,
-			OriginalCommitterTZ:    "+0000",
+	state := rewriteDatesState{
+		Branches: []rewriteDatesStateBranch{{
+			Name:          "refs/heads/main",
+			OriginalHead:  "original",
+			RewrittenHead: "rewritten",
+			BackupRef:     "refs/git-wrangler/backup/rewrite-dates/run/heads/main",
+			RunID:         "run",
+		}},
+		Commits: []rewriteDatesStateCommit{
+			{
+				OriginalSHA:            "original",
+				CurrentSHA:             "rewritten",
+				OriginalAuthorDate:     "100 +0000",
+				OriginalAuthorEpoch:    100,
+				OriginalAuthorTZ:       "+0000",
+				OriginalCommitterDate:  "100 +0000",
+				OriginalCommitterEpoch: 100,
+				OriginalCommitterTZ:    "+0000",
+			},
+			{
+				OriginalSHA:            "new-before-second-rewrite",
+				CurrentSHA:             "new-after-second-rewrite",
+				OriginalAuthorDate:     "200 +0000",
+				OriginalAuthorEpoch:    200,
+				OriginalAuthorTZ:       "+0000",
+				OriginalCommitterDate:  "200 +0000",
+				OriginalCommitterEpoch: 200,
+				OriginalCommitterTZ:    "+0000",
+			},
 		},
-		{
-			OriginalSHA:            "new-before-rollback",
-			CurrentSHA:             "new-before-rollback",
-			OriginalAuthorDate:     "200 +0000",
-			OriginalAuthorEpoch:    200,
-			OriginalAuthorTZ:       "+0000",
-			OriginalCommitterDate:  "200 +0000",
-			OriginalCommitterEpoch: 200,
-			OriginalCommitterTZ:    "+0000",
-		},
-	}}
-	updated := updateRewriteDatesStateAfterExactRollback(state, map[string]string{"new-before-rollback": "new-after-rollback"})
+	}
+	updated := updateRewriteDatesStateAfterExactRollback(state, map[string]string{"new-after-second-rewrite": "new-after-rollback"})
 	byOriginal := map[string]rewriteDatesStateCommit{}
 	for _, commit := range updated.Commits {
 		byOriginal[commit.OriginalSHA] = commit
@@ -341,8 +350,68 @@ func TestRewriteDatesExactRollbackStateUpdates(t *testing.T) {
 	if byOriginal["original"].CurrentSHA != "original" {
 		t.Fatalf("known commit current SHA = %q", byOriginal["original"].CurrentSHA)
 	}
-	if byOriginal["new-before-rollback"].CurrentSHA != "new-after-rollback" {
-		t.Fatalf("replayed commit current SHA = %q", byOriginal["new-before-rollback"].CurrentSHA)
+	if byOriginal["new-before-second-rewrite"].CurrentSHA != "new-after-rollback" {
+		t.Fatalf("replayed commit current SHA = %q", byOriginal["new-before-second-rewrite"].CurrentSHA)
+	}
+	if updated.Branches[0].RewrittenHead != "original" {
+		t.Fatalf("branch rewritten head = %q", updated.Branches[0].RewrittenHead)
+	}
+}
+
+func TestRewriteDatesBranchStatePreservesOriginalBaseline(t *testing.T) {
+	t.Parallel()
+	state := rewriteDatesState{
+		Branches: []rewriteDatesStateBranch{{
+			Name:          "refs/heads/main",
+			OriginalHead:  "original",
+			RewrittenHead: "first-rewrite-base",
+			BackupRef:     "refs/git-wrangler/backup/rewrite-dates/first/heads/main",
+			RunID:         "first",
+		}},
+		Commits: []rewriteDatesStateCommit{{
+			OriginalSHA:            "original",
+			CurrentSHA:             "second-rewrite-base",
+			OriginalAuthorDate:     "100 +0000",
+			OriginalAuthorEpoch:    100,
+			OriginalAuthorTZ:       "+0000",
+			OriginalCommitterDate:  "100 +0000",
+			OriginalCommitterEpoch: 100,
+			OriginalCommitterTZ:    "+0000",
+		}},
+	}
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git for-each-ref --format=%(refname)%00%(objectname) refs/heads":
+			return "refs/heads/main\x00second-rewrite-tip\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+	updated, err := updateRewriteDatesStateBranchesAfterRewrite(
+		a,
+		"repo",
+		state,
+		"second",
+		[]dateBranchRef{{Name: "refs/heads/main", SHA: "first-rewrite-tip"}},
+		[]rewriteDatesBackupRef{{Branch: dateBranchRef{Name: "refs/heads/main", SHA: "first-rewrite-tip"}, Ref: "refs/git-wrangler/backup/rewrite-dates/second/heads/main"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Branches) != 1 {
+		t.Fatalf("branches = %d", len(updated.Branches))
+	}
+	branch := updated.Branches[0]
+	if branch.OriginalHead != "original" || branch.BackupRef != "refs/git-wrangler/backup/rewrite-dates/first/heads/main" {
+		t.Fatalf("original baseline changed: %+v", branch)
+	}
+	if branch.RewrittenHead != "second-rewrite-base" {
+		t.Fatalf("current rewritten baseline = %q", branch.RewrittenHead)
+	}
+	if branch.RunID != "second" {
+		t.Fatalf("run id = %q", branch.RunID)
 	}
 }
 
@@ -454,6 +523,34 @@ func TestRewriteDateRollbackBranchClassification(t *testing.T) {
 	}
 }
 
+func TestRewriteDatesBranchValidationRejectsMissingMetadataWithKnownRewrite(t *testing.T) {
+	t.Parallel()
+	state := rewriteDatesState{Commits: []rewriteDatesStateCommit{{
+		OriginalSHA:            "original",
+		CurrentSHA:             "rewritten",
+		OriginalAuthorDate:     "100 +0000",
+		OriginalAuthorEpoch:    100,
+		OriginalAuthorTZ:       "+0000",
+		OriginalCommitterDate:  "100 +0000",
+		OriginalCommitterEpoch: 100,
+		OriginalCommitterTZ:    "+0000",
+	}}}
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git merge-base --is-ancestor rewritten rewritten":
+			return "", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+	err := validateRewriteDatesBranchBaselines(a, "repo", state, []dateBranchRef{{Name: "refs/heads/main", SHA: "rewritten"}})
+	if err == nil || !strings.Contains(err.Error(), "contains rewritten commits but has no matching branch rollback metadata") {
+		t.Fatalf("validation error = %v", err)
+	}
+}
+
 func TestRewriteDateFilterArgsExcludeGitWranglerRefs(t *testing.T) {
 	args := rewriteDateFilterArgs([]dateBranchRef{
 		{Name: "refs/heads/main"},
@@ -509,7 +606,7 @@ func TestRewriteDatesStateBlobRefReadWrite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(stdin, `"seed": "seed"`) || !strings.Contains(stdin, `"original_sha": "a"`) || !strings.Contains(stdin, `"backup_ref": "refs/git-wrangler/backup/rewrite-dates/run/heads/main"`) {
+		if !strings.Contains(stdin, `"version": 1`) || !strings.Contains(stdin, `"seed": "seed"`) || !strings.Contains(stdin, `"original_sha": "a"`) || !strings.Contains(stdin, `"original_backup_ref": "refs/git-wrangler/backup/rewrite-dates/run/heads/main"`) {
 			t.Fatalf("unexpected state stdin:\n%s", stdin)
 		}
 		if updatedRef != rewriteDatesStateRef {
@@ -524,7 +621,7 @@ func TestRewriteDatesStateBlobRefReadWrite(t *testing.T) {
 			case "git rev-parse --verify --quiet refs/git-wrangler/state/rewrite-dates":
 				return "blob123\n", "", nil
 			case "git cat-file -p blob123":
-				return `{"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"a","rewritten_head":"b","backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","run_id":"run"}],"commits":[{"original_sha":"a","current_sha":"b","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"101 +0000","original_committer_epoch":101,"original_committer_tz":"+0000"}]}` + "\n", "", nil
+				return `{"version":1,"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"a","current_rewritten_head":"b","original_backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","last_run_id":"run"}],"commits":[{"original_sha":"a","current_sha":"b","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"101 +0000","original_committer_epoch":101,"original_committer_tz":"+0000"}]}` + "\n", "", nil
 			default:
 				return "", "", nil
 			}
@@ -540,6 +637,25 @@ func TestRewriteDatesStateBlobRefReadWrite(t *testing.T) {
 	})
 }
 
+func TestRewriteDatesLegacyStateFails(t *testing.T) {
+	t.Parallel()
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git rev-parse --verify --quiet refs/git-wrangler/state/rewrite-dates":
+			return "blob123\n", "", nil
+		case "git cat-file -p blob123":
+			return `{"seed":"legacy","commits":[]}` + "\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+	if _, _, err := readRewriteDatesState(a, "repo"); err == nil || !strings.Contains(err.Error(), "unsupported rewrite-dates state version 0") {
+		t.Fatalf("legacy state error = %v", err)
+	}
+}
+
 func TestRewriteDatesExactRollbackDoesNotRequireFilterRepo(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := t.TempDir()
@@ -547,7 +663,7 @@ func TestRewriteDatesExactRollbackDoesNotRequireFilterRepo(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stateJSON := `{"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"original","rewritten_head":"rewritten","backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","run_id":"run"}],"commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
+	stateJSON := `{"version":1,"seed":"seed","branches":[{"name":"refs/heads/main","original_head":"original","current_rewritten_head":"rewritten","original_backup_ref":"refs/git-wrangler/backup/rewrite-dates/run/heads/main","last_run_id":"run"}],"commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
 	filterRepoLookups := 0
 	filterRepoRuns := 0
 	branchRestored := false
@@ -631,7 +747,7 @@ func TestRewriteDatesRollbackMissingBranchMetadataFailsBeforeMutation(t *testing
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stateJSON := `{"seed":"seed","commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
+	stateJSON := `{"version":1,"seed":"seed","commits":[{"original_sha":"original","current_sha":"rewritten","original_author_date":"100 +0000","original_author_epoch":100,"original_author_tz":"+0000","original_committer_date":"100 +0000","original_committer_epoch":100,"original_committer_tz":"+0000"}]}`
 	mutated := false
 	filterRepoLookups := 0
 	runner := fakeRunner{
@@ -779,6 +895,143 @@ func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	parents := commitParentsBySubject(t, repoDir)
 	if got, want := parents["new"], []string{originalSHAs["third"]}; strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("new parents = %v, want %v", got, want)
+	}
+}
+
+func TestRewriteDatesTempRepoRepeatedRewriteRollbackRestoresOriginalBaseline(t *testing.T) {
+	requireGitFilterRepoForTest(t)
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	runGitForTest(t, "", "init", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitEmptyForTest(t, repoDir, "first", "2020-01-01T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "second", "2020-01-02T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "third", "2020-01-03T10:00:00 +0000")
+	originalSHAs := commitSHAsBySubject(t, repoDir)
+	originalHead := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "first-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("first rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2025-01-01", "--end-date", "2025-01-10", "--seed", "second-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("second rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	if head := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD")); head == originalHead {
+		t.Fatal("second rewrite did not change HEAD")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--rollback", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	rolledBackSHAs := commitSHAsBySubject(t, repoDir)
+	for _, subject := range []string{"first", "second", "third"} {
+		if rolledBackSHAs[subject] != originalSHAs[subject] {
+			t.Fatalf("%s SHA = %s, want original %s", subject, rolledBackSHAs[subject], originalSHAs[subject])
+		}
+	}
+	rolledBackDates := commitAuthorDatesBySubject(t, repoDir)
+	wantDates := map[string]int64{
+		"first":  parseGitDateForTest(t, "2020-01-01T10:00:00 +0000"),
+		"second": parseGitDateForTest(t, "2020-01-02T10:00:00 +0000"),
+		"third":  parseGitDateForTest(t, "2020-01-03T10:00:00 +0000"),
+	}
+	for subject, wantEpoch := range wantDates {
+		if rolledBackDates[subject] != wantEpoch {
+			t.Fatalf("%s date = %s, want %s", subject, formatEpochLocal(rolledBackDates[subject]), formatEpochLocal(wantEpoch))
+		}
+	}
+
+	headAfterRollback := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
+	stdout.Reset()
+	stderr.Reset()
+	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--rollback", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("second rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	if head := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD")); head != headAfterRollback {
+		t.Fatalf("second rollback changed HEAD from %s to %s", headAfterRollback, head)
+	}
+}
+
+func TestRewriteDatesTempRepoRollbackReplaysCommitIncludedInSecondRewrite(t *testing.T) {
+	requireGitFilterRepoForTest(t)
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	runGitForTest(t, "", "init", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitEmptyForTest(t, repoDir, "first", "2020-01-01T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "second", "2020-01-02T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "third", "2020-01-03T10:00:00 +0000")
+	originalSHAs := commitSHAsBySubject(t, repoDir)
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "first-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("first rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	commitEmptyForTest(t, repoDir, "new", "2025-01-01T10:00:00 +0000")
+	newBeforeSecondRewrite := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
+
+	stdout.Reset()
+	stderr.Reset()
+	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2026-01-01", "--end-date", "2026-01-10", "--seed", "second-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("second rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--rollback", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	rolledBackDates := commitAuthorDatesBySubject(t, repoDir)
+	want := map[string]int64{
+		"first":  parseGitDateForTest(t, "2020-01-01T10:00:00 +0000"),
+		"second": parseGitDateForTest(t, "2020-01-02T10:00:00 +0000"),
+		"third":  parseGitDateForTest(t, "2020-01-03T10:00:00 +0000"),
+		"new":    parseGitDateForTest(t, "2025-01-01T10:00:00 +0000"),
+	}
+	for subject, wantEpoch := range want {
+		if rolledBackDates[subject] != wantEpoch {
+			t.Fatalf("%s date = %s, want %s", subject, formatEpochLocal(rolledBackDates[subject]), formatEpochLocal(wantEpoch))
+		}
+	}
+	rolledBackSHAs := commitSHAsBySubject(t, repoDir)
+	for _, subject := range []string{"first", "second", "third"} {
+		if rolledBackSHAs[subject] != originalSHAs[subject] {
+			t.Fatalf("%s SHA = %s, want original %s", subject, rolledBackSHAs[subject], originalSHAs[subject])
+		}
+	}
+	if rolledBackSHAs["new"] == newBeforeSecondRewrite {
+		t.Fatal("new commit was not replayed onto the restored original base")
+	}
+	parents := commitParentsBySubject(t, repoDir)
+	if got, wantParents := parents["new"], []string{originalSHAs["third"]}; strings.Join(got, " ") != strings.Join(wantParents, " ") {
+		t.Fatalf("new parents = %v, want %v", got, wantParents)
+	}
+
+	headAfterRollback := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
+	stdout.Reset()
+	stderr.Reset()
+	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--rollback", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("second rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	if head := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD")); head != headAfterRollback {
+		t.Fatalf("second rollback changed HEAD from %s to %s", headAfterRollback, head)
 	}
 }
 
