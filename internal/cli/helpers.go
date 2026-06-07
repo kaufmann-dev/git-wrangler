@@ -9,9 +9,7 @@ import (
 
 	"github.com/kaufmann-dev/git-wrangler/internal/repos"
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
-	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 func (a *app) status(stream io.Writer, color, symbol string, parts ...string) {
@@ -138,36 +136,40 @@ func noRepos(a *app) int {
 	return 0
 }
 
-func confirm(a *app, question string) bool {
-	fmt.Fprintf(a.stderr, "%s [y/N] ", question)
-	answer, _ := a.input.ReadString('\n')
-	answer = strings.TrimRight(answer, "\r\n")
-	return answer == "y" || answer == "Y"
+func confirm(a *app, question string) confirmationResult {
+	result := a.prompts.confirm(question)
+	if result == confirmationUnavailable {
+		a.plainErrorf("confirmation requires an interactive terminal; pass --yes to confirm noninteractively.")
+		a.promptFailed = true
+	}
+	return result
 }
 
-func confirmOrSkip(a *app, yes bool, question string) bool {
-	return yes || confirm(a, question)
+func confirmOrSkip(a *app, yes bool, question string) confirmationResult {
+	if yes {
+		return confirmationAccepted
+	}
+	return confirm(a, question)
 }
 
 func promptRead(a *app, prompt string) (string, error) {
-	fmt.Fprint(a.stderr, prompt)
-	answer, err := a.input.ReadString('\n')
-	return strings.TrimRight(answer, "\r\n"), err
+	return a.prompts.read(prompt)
 }
 
 func promptSecret(a *app, prompt string) (string, error) {
-	fmt.Fprint(a.stderr, prompt)
-	if f, ok := a.stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		answer, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(a.stderr)
-		return strings.TrimRight(string(answer), "\r\n"), err
-	}
-	answer, err := a.input.ReadString('\n')
-	return strings.TrimRight(answer, "\r\n"), err
+	return a.prompts.secret(prompt)
 }
 
 func interactive(a *app) bool {
-	return ui.IsTerminal(a.stdin)
+	return a.prompts.available()
+}
+
+func requireInteractive(a *app, command string) bool {
+	if interactive(a) {
+		return true
+	}
+	a.plainErrorf("%s requires an interactive terminal for stdin and stderr.", command)
+	return false
 }
 
 func yesFlag(cmd *cobra.Command) bool {
@@ -188,7 +190,7 @@ func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string
 	if value != "" {
 		return value, true
 	}
-	if yesFlag(cmd) || !interactive(a) {
+	if !interactive(a) {
 		a.plainErrorf("--%s is required.", name)
 		return "", false
 	}

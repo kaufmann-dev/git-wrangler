@@ -92,7 +92,11 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		{key: "Repositories", value: fmt.Sprintf("%d", len(changes))},
 		{key: "Context budget", value: fmt.Sprintf("%d characters per commit", maxCharsInt)},
 	}, bodyLines)
-	if !confirmOrSkip(a, yes, "Send this data to the configured API endpoint?") {
+	confirmation := confirmOrSkip(a, yes, "Send this data to the configured API endpoint?")
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderStatusLine(a, a.stdout, statusSkip, "stopped before sending any data", "")
 		return 0
 	}

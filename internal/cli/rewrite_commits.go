@@ -126,10 +126,13 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		if yes {
 			return true
 		}
-		return confirm(a, question)
+		return confirm(a, question) == confirmationAccepted
 	})
 	scanProgress.done()
 	apiProgress.done()
+	if a.promptFailed {
+		return 1
+	}
 	if errors.Is(err, ai.ErrCancelled) {
 		renderStatusLine(a, a.stdout, statusSkip, "stopped before sending any data", "")
 		return 0
@@ -148,7 +151,11 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	fmt.Fprintln(a.stderr)
 	renderWarning(a, "This operation rewrites Git history. A force push will be required to update remotes.")
-	if !confirmOrSkip(a, yes, "Apply these generated commit messages to all listed repositories?") {
+	confirmation := confirmOrSkip(a, yes, "Apply these generated commit messages to all listed repositories?")
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderStatusLine(a, a.stdout, statusSkip, "rewrite cancelled", "generated AI messages were temporary and have been discarded")
 		return 0
 	}

@@ -200,6 +200,7 @@ func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	store := &fakeCredentialStore{values: map[string]string{credentials.GitHubAccount("github.com"): "github-token"}}
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), runner, strings.NewReader("\n"), &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = store
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"rename-repo"})
@@ -233,6 +234,7 @@ func TestRenameRepoHidesUnavailableCredentialStorageError(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = &fakeCredentialStore{err: errors.New(backendErr)}
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"rename-repo"})

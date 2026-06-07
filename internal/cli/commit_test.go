@@ -304,6 +304,7 @@ func TestCommitCancelBeforeAPIDoesNotStageRealIndex(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), runner, strings.NewReader("n\n"), &stdout, &stderr)
+	makeInteractive(a)
 	a.creds = &fakeCredentialStore{values: map[string]string{credentials.AIAccount("openai"): "test-key"}}
 	cmd := newRootCommand(a)
 	cmd.SetArgs([]string{"commit"})
