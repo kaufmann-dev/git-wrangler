@@ -63,7 +63,11 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 		{key: "New email", value: newEmail},
 	}, nil)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
-	if !confirmOrSkip(a, yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies))) {
+	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies)))
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderSummary(a,
 			summaryCount{label: "rewritten", value: 0, color: a.ui.Green},
 			summaryCount{label: "skipped", value: len(applies), color: a.ui.Yellow},

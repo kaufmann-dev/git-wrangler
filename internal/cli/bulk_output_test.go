@@ -191,7 +191,7 @@ func TestPushSummaryCountsOutcomes(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), runner, []string{"push", "--force-unsafe"}, strings.NewReader("y\n"), &stdout, &stderr)
+	err := executeInteractive(t, context.Background(), runner, []string{"push", "--force-unsafe"}, strings.NewReader("y\n"), &stdout, &stderr)
 	assertExitCode(t, err, 1)
 	if strings.Count(stderr.String(), "Raw force push") != 1 {
 		t.Fatalf("expected one confirmation prompt:\n%s", stderr.String())
@@ -391,7 +391,7 @@ func TestRenameRepoRunsGitHubMutationsSerially(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithRunner(context.Background(), runner, []string{"rename-repo"}, strings.NewReader("new-a\nnew-b\n"), &stdout, &stderr); err != nil {
+	if err := executeInteractive(t, context.Background(), runner, []string{"rename-repo"}, strings.NewReader("new-a\nnew-b\n"), &stdout, &stderr); err != nil {
 		t.Fatalf("rename-repo returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	if maxActiveRenames != 1 {

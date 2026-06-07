@@ -22,18 +22,20 @@ import (
 )
 
 type app struct {
-	ctx    context.Context
-	stdout io.Writer
-	stderr io.Writer
-	stdin  io.Reader
-	input  *bufio.Reader
-	ui     ui.Theme
-	runner run.Runner
-	git    git.Client
-	gh     githubcli.Client
-	creds  credentials.Store
-	auth   auth.GitHubAuthenticator
-	json   bool
+	ctx          context.Context
+	stdout       io.Writer
+	stderr       io.Writer
+	stdin        io.Reader
+	input        *bufio.Reader
+	prompts      *promptSession
+	ui           ui.Theme
+	runner       run.Runner
+	git          git.Client
+	gh           githubcli.Client
+	creds        credentials.Store
+	auth         auth.GitHubAuthenticator
+	json         bool
+	promptFailed bool
 }
 
 type repo struct {
@@ -85,7 +87,7 @@ func newApp(ctx context.Context, runner run.Runner, stdin io.Reader, stdout, std
 	if runner == nil {
 		runner = run.New()
 	}
-	return &app{
+	a := &app{
 		ctx:    ctx,
 		stdout: stdout,
 		stderr: stderr,
@@ -98,6 +100,9 @@ func newApp(ctx context.Context, runner run.Runner, stdin io.Reader, stdout, std
 		creds:  credentials.NewKeyringStore(),
 		auth:   auth.NewGitHubDeviceAuthenticator(),
 	}
+	a.prompts = newPromptSession(stdin, stderr)
+	a.input = a.prompts.input
+	return a
 }
 
 func execute(ctx context.Context, runner run.Runner, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -318,8 +323,15 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.json = jsonFlagValue(cmd)
+			a.promptFailed = false
+			if err := runGuidedSetup(a, cmd); err != nil {
+				return err
+			}
 			if code := runFn(a, cmd, args); code != 0 {
 				return exitError{code: code}
+			}
+			if a.promptFailed {
+				return exitError{code: 1}
 			}
 			return nil
 		},
@@ -327,7 +339,11 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 	for _, spec := range specs {
 		switch spec.kind {
 		case "bool":
-			cmd.Flags().Bool(spec.name, false, spec.description)
+			if spec.name == "yes" {
+				cmd.Flags().BoolP(spec.name, "y", false, spec.description)
+			} else {
+				cmd.Flags().Bool(spec.name, false, spec.description)
+			}
 		case "int":
 			cmd.Flags().Int(spec.name, spec.intValue, spec.description)
 		case "stringArray":
@@ -335,6 +351,9 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 		default:
 			cmd.Flags().String(spec.name, spec.stringValue, spec.description)
 		}
+	}
+	if _, ok := guidedPrompts[cmd.Name()]; ok || cmd.Name() == "rewrite-dates" {
+		cmd.Flags().Bool("guided", false, "Interactively configure command options.")
 	}
 	return cmd
 }

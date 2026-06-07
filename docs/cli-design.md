@@ -76,7 +76,13 @@ Separate repo blocks with exactly one blank line. Do not print clean/no-change r
 
 Destructive warnings use one style through `renderWarning`. They go to stderr and describe the irreversible action concretely.
 
-Multi-repository commands ask at most one confirmation for the candidate set. `--yes` skips confirmations only; it must not fill required values such as names, branches, config values, API keys, or secrets.
+Setup prompts, guided prompts, secret prompts, and final confirmations use the shared prompt session. Prompting is available only when both stdin and stderr are TTYs. Tests inject prompt eligibility and streams through that session.
+
+Missing required values prompt by default when prompting is available and fail otherwise. `--yes` and `-y` skip confirmations only; they must not fill required values such as names, branches, config values, API keys, or secrets.
+
+Guided commands use command-local `--guided` to prompt for every command-specific behavior option, including targeting and fetch behavior. They never prompt for or summarize meta flags such as `--help`, `--version`, `--guided`, `--yes`, or `--json`. Guided answers are applied through Cobra flag setters, and the selected configuration is summarized on stderr before normal validation and execution. `--guided` requires prompting availability and cannot be combined with `--json`.
+
+Multi-repository commands ask at most one confirmation for the candidate set. A confirmation reached without prompting availability fails nonzero and tells the user to pass `--yes`.
 
 A declined confirmation before mutation is a successful skip/no-op. It should be counted in the summary, not treated as a failure.
 
@@ -179,9 +185,9 @@ Print `Git Wrangler Doctor`, a runtime key/value section, a dependency check tab
 
 ### `init`
 
-Keep prompts explicit. Use `GitHub` and `AI` sections. GitHub device authentication prints its one-time code, verification URL, and browser-launch prompt to stderr. Browser launch is best-effort; on failure, print one concise manual-open warning and continue waiting.
+Require prompting availability before doing work. Keep prompts explicit. Use `GitHub` and `AI` sections. GitHub device authentication prints its one-time code, verification URL, and browser-launch prompt to stderr. Browser launch is best-effort; on failure, print one concise manual-open warning and continue waiting.
 
-While waiting for GitHub authorization, TTY stderr uses one transient `Waiting for GitHub authorization: <duration> remaining` line updated once per second. Non-TTY stderr prints one durable initial waiting line only. Clear or finish the waiting line before subsequent success, warning, or error output.
+While waiting for GitHub authorization, stderr uses one transient `Waiting for GitHub authorization: <duration> remaining` line updated once per second. Clear or finish the waiting line before subsequent success, warning, or error output.
 
 When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, continue collecting non-secret configuration, and explain that secure credential storage is unavailable, secret setup was skipped, and environment variables must be used instead. Do not expose backend keyring errors. End with `OK Setup complete` and a short non-secret recap with `env`, `keyring`, or `missing` sources.
 
@@ -191,7 +197,7 @@ When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, conti
 
 ### `rename-repo`
 
-When secure credential storage is unavailable, hide backend errors and direct users to `GIT_WRANGLER_GITHUB_TOKEN`. Keep sequential interaction. Show auth source once. Use a repo header and concise prompts for each repository. Print active interaction skips/failures inline. End with a summary.
+Require prompting availability before doing work. When secure credential storage is unavailable, hide backend errors and direct users to `GIT_WRANGLER_GITHUB_TOKEN`. Keep sequential interaction. Show auth source once. Use a repo header and concise prompts for each repository. Print active interaction skips/failures inline. End with a summary.
 
 ### `root`, `help`, `completion`, and `version`
 

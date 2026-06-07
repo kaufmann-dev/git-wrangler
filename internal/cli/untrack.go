@@ -71,7 +71,11 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		return status
 	}
 	renderWarning(a, fmt.Sprintf("This operation will stop tracking ignored files and create commits in %d repositories.", len(applies)))
-	if !confirmOrSkip(a, yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies))) {
+	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies)))
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		renderSummary(a,
 			summaryCount{label: "updated", value: 0, color: a.ui.Green},
 			summaryCount{label: "skipped", value: len(applies), color: a.ui.Yellow},

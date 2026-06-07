@@ -84,6 +84,25 @@ type fakeGitHubAuth struct {
 	waitEvents []auth.WaitEvent
 }
 
+func makeInteractive(a *app) {
+	a.prompts.interactive = func() bool { return true }
+}
+
+func executeInteractive(t interface {
+	Helper()
+	Fatalf(string, ...any)
+}, ctx context.Context, runner run.Runner, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	t.Helper()
+	a := newApp(ctx, runner, stdin, stdout, stderr)
+	makeInteractive(a)
+	root := newRootCommand(a)
+	root.SetArgs(args)
+	root.SetIn(stdin)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	return root.Execute()
+}
+
 func (f fakeGitHubAuth) AuthenticateGitHub(ctx context.Context, host string, stdin io.Reader, stderr io.Writer, onWait func(auth.WaitEvent)) (auth.GitHubResult, error) {
 	if onWait != nil {
 		for _, event := range f.waitEvents {
