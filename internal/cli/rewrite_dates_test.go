@@ -102,6 +102,22 @@ func TestGeneratePlannedEpochsDeterministicBySeed(t *testing.T) {
 	assertSortedEpochsInRange(t, got, start, end)
 }
 
+func TestRewriteDateCalendarDeterministicBySeed(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-12-31", "+0000")
+	intensity, _ := rewriteDateIntensityProfile("medium")
+
+	got := buildRewriteDateCalendarPlan(160, start, end, "seed-a", intensity, "+0000")
+	again := buildRewriteDateCalendarPlan(160, start, end, "seed-a", intensity, "+0000")
+	different := buildRewriteDateCalendarPlan(160, start, end, "seed-b", intensity, "+0000")
+	if calendarSignature(got) != calendarSignature(again) {
+		t.Fatalf("same seed produced different calendars:\n%s\n%s", calendarSignature(got), calendarSignature(again))
+	}
+	if calendarSignature(got) == calendarSignature(different) {
+		t.Fatal("different seed produced the same calendar")
+	}
+}
+
 func TestRewriteDatePlanningSeedSalt(t *testing.T) {
 	if got := rewriteDatePlanningSeed("seed", 0); got != "seed" {
 		t.Fatalf("attempt 0 seed = %q", got)
@@ -211,11 +227,21 @@ func TestGeneratePlannedEpochsActivityInvariants(t *testing.T) {
 	if maxInactiveGapDays(mediumPlan, "+0000") < 2 {
 		t.Fatalf("medium plan lacks a multi-day inactive gap")
 	}
+	if multiDayInactiveGapCount(mediumPlan, "+0000", 2) < 3 {
+		t.Fatalf("medium plan lacks multiple multi-day inactive gaps")
+	}
 	if maxInactiveGapDays(highPlan, "+0000") > maxInactiveGapDays(mediumPlan, "+0000") {
 		t.Fatalf("high intensity has a longer max gap than medium")
 	}
 	if activeDayCount(lowPlan, "+0000") >= activeDayCount(mediumPlan, "+0000") {
 		t.Fatalf("low active days = %d, medium active days = %d", activeDayCount(lowPlan, "+0000"), activeDayCount(mediumPlan, "+0000"))
+	}
+	if activeDayCount(highPlan, "+0000") <= activeDayCount(mediumPlan, "+0000") {
+		t.Fatalf("high active days = %d, medium active days = %d", activeDayCount(highPlan, "+0000"), activeDayCount(mediumPlan, "+0000"))
+	}
+	denseMedium := generatePlannedEpochs(1000, start, end, "dense-activity", medium, "+0000")
+	if activeDayCount(denseMedium, "+0000") >= 360 {
+		t.Fatalf("medium dense plan used nearly every day: active=%d", activeDayCount(denseMedium, "+0000"))
 	}
 	weekend := weekendActiveDayCount(mediumPlan, "+0000")
 	total := activeDayCount(mediumPlan, "+0000")
@@ -462,6 +488,9 @@ func TestRewriteDatePlanningUsesDominantTimezone(t *testing.T) {
 	if !strings.Contains(stdout.String(), "2024-01-01 00:00:00 +0530") || !strings.Contains(stdout.String(), "Timezone: +0530") {
 		t.Fatalf("preview did not use planning timezone:\n%s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "Planning timezone") || !strings.Contains(stdout.String(), "Active days") || !strings.Contains(stdout.String(), "Rest days") || !strings.Contains(stdout.String(), "Forced-active days") {
+		t.Fatalf("preview did not include calendar metadata:\n%s", stdout.String())
+	}
 
 	mapping := map[string]dateCallbackDates{}
 	for _, idx := range plan.candidates[0].selected {
@@ -517,6 +546,72 @@ func TestRewriteDateTopologyCompressionWarning(t *testing.T) {
 		right := plan.candidates[0].commits[i].plannedEpoch
 		if right-left != 1 {
 			t.Fatalf("gap %d = %d, want 1", i, right-left)
+		}
+	}
+}
+
+func TestRewriteDateSharedCalendarKeepsRestDaysBlankAcrossRepositories(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	candidates := []dateCandidate{
+		testRewriteDateCandidate("repo-a", testRewriteDateCommits("a", 90, start, 86400*4), indexesForCount(90)),
+		testRewriteDateCandidate("repo-b", testRewriteDateCommits("b", 90, start+43200, 86400*4), indexesForCount(90)),
+	}
+
+	plan, err := planRewriteDateCandidates(candidates, rewriteDatesOptions{
+		startDate: "2024-01-01",
+		endDate:   "2024-12-31",
+		seed:      "shared-rest",
+		intensity: "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restDays := restCalendarDaySet(plan.calendar)
+	if len(restDays) == 0 {
+		t.Fatal("calendar did not include rest days")
+	}
+	for _, candidate := range plan.candidates {
+		for _, day := range plannedCommitDays(candidate, plan.tzOffset) {
+			if restDays[day] {
+				t.Fatalf("%s planned a selected commit on rest day %s", candidate.repo.display, formatEpoch(day, plan.tzOffset))
+			}
+		}
+	}
+}
+
+func TestRewriteDateRestDaysStayBlankInUTCActivityModel(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "-0700")
+	commits := testRewriteDateCommits("c", 120, start, 86400*3)
+	for i := range commits {
+		commits[i].authorTZ = "-0700"
+		commits[i].originalAuthorTZ = "-0700"
+	}
+	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, indexesForCount(len(commits)))}
+
+	plan, err := planRewriteDateCandidates(candidates, rewriteDatesOptions{
+		startDate: "2024-01-01",
+		endDate:   "2024-12-31",
+		seed:      "utc-rest",
+		intensity: "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restDays := restCalendarDaySet(plan.calendar)
+	if len(restDays) == 0 {
+		t.Fatal("calendar did not include rest days")
+	}
+	utcActiveDays := map[string]bool{}
+	for _, candidate := range plan.candidates {
+		for _, commitIndex := range candidate.selected {
+			utcActiveDays[time.Unix(candidate.commits[commitIndex].plannedEpoch, 0).UTC().Format("2006-01-02")] = true
+		}
+	}
+	loc := locationForTimezoneOffset(plan.tzOffset)
+	for day := range restDays {
+		activityDay := time.Unix(day, 0).In(loc).Format("2006-01-02")
+		if utcActiveDays[activityDay] {
+			t.Fatalf("rest day %s has activity in UTC day model", activityDay)
 		}
 	}
 }
@@ -917,6 +1012,9 @@ func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rewrite-dates failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
+	if !strings.Contains(stdout.String(), "Planning timezone") || !strings.Contains(stdout.String(), "Active days") {
+		t.Fatalf("--repo preview did not use calendar model:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
+	}
 	rewrittenDates := commitAuthorDatesBySubject(t, repoDir)
 	for _, subject := range []string{"first", "second", "third"} {
 		if rewrittenDates[subject] < parseDateStartInOffset("2024-01-01", "+0000") || rewrittenDates[subject] > parseDateEndInOffset("2024-01-10", "+0000") {
@@ -1279,6 +1377,64 @@ func activeDaySet(epochs []int64, tzOffset string) map[int64]bool {
 		days[floorDayInOffset(epoch, tzOffset)] = true
 	}
 	return days
+}
+
+func multiDayInactiveGapCount(epochs []int64, tzOffset string, minGap int) int {
+	days := make([]int64, 0, len(activeDaySet(epochs, tzOffset)))
+	for day := range activeDaySet(epochs, tzOffset) {
+		days = append(days, day)
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i] < days[j] })
+	count := 0
+	for i := 1; i < len(days); i++ {
+		gap := int((days[i]-days[i-1])/86400) - 1
+		if gap >= minGap {
+			count++
+		}
+	}
+	return count
+}
+
+func calendarSignature(calendar rewriteDateCalendarPlan) string {
+	parts := make([]string, 0, len(calendar.days))
+	for _, day := range calendar.days {
+		parts = append(parts, fmt.Sprintf("%d:%s:%d", day.epoch, day.state, day.capacity))
+	}
+	return strings.Join(parts, "|")
+}
+
+func restCalendarDaySet(calendar rewriteDateCalendarPlan) map[int64]bool {
+	days := map[int64]bool{}
+	for _, day := range calendar.days {
+		if day.state == rewriteDateCalendarRest {
+			days[day.epoch] = true
+		}
+	}
+	return days
+}
+
+func plannedCommitDays(candidate dateCandidate, tzOffset string) []int64 {
+	days := make([]int64, 0, len(candidate.selected))
+	for _, commitIndex := range candidate.selected {
+		days = append(days, floorDayInOffset(candidate.commits[commitIndex].plannedEpoch, tzOffset))
+	}
+	return days
+}
+
+func testRewriteDateCommits(prefix string, count int, start, step int64) []rewriteDateCommit {
+	commits := make([]rewriteDateCommit, 0, count)
+	for i := 0; i < count; i++ {
+		commits = append(commits, testRewriteDateCommit(fmt.Sprintf("%s%03d", prefix, i), start+int64(i)*step))
+	}
+	return commits
+}
+
+func indexesForCount(count int) []int {
+	indexes := make([]int, count)
+	for i := range indexes {
+		indexes[i] = i
+	}
+	return indexes
 }
 
 func testRewriteDateCandidate(name string, commits []rewriteDateCommit, selected []int) dateCandidate {
