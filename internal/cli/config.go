@@ -28,7 +28,7 @@ func configCommand(a *app) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.json = jsonFlagValue(cmd)
 			if code := runConfigShow(a); code != 0 {
-				return exitError{code: code}
+				return commandExitError(a, code)
 			}
 			return nil
 		},
@@ -54,7 +54,7 @@ func configSetCommand(a *app) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if code := runConfigSet(a, args); code != 0 {
-				return exitError{code: code}
+				return commandExitError(a, code)
 			}
 			return nil
 		},
@@ -68,7 +68,7 @@ func configUnsetCommand(a *app) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if code := runConfigUnset(a, args[0]); code != 0 {
-				return exitError{code: code}
+				return commandExitError(a, code)
 			}
 			return nil
 		},
@@ -410,6 +410,9 @@ func secretValue(a *app, args []string, prompt string) (string, bool) {
 		return "", false
 	}
 	value, err := promptSecret(a, prompt)
+	if errors.Is(err, errPromptCancelled) {
+		return "", false
+	}
 	if err != nil || value == "" {
 		a.plainErrorf("secret input is required.")
 		return "", false

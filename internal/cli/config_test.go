@@ -107,8 +107,11 @@ func TestConfigSetSecretRequiresPromptInput(t *testing.T) {
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected config set to fail without secret input")
 	}
-	if !strings.Contains(stderr.String(), "secret input is required") {
-		t.Fatalf("unexpected stderr:\n%s", stderr.String())
+	if strings.Contains(stderr.String(), "secret input is required") {
+		t.Fatalf("EOF was reported as missing secret input:\n%s", stderr.String())
+	}
+	if strings.Count(stdout.String(), "SKIP stopped: operation cancelled") != 1 {
+		t.Fatalf("unexpected stdout:\n%s", stdout.String())
 	}
 }
 
