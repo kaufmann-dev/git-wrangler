@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,7 +32,7 @@ type WaitEvent struct {
 }
 
 type GitHubAuthenticator interface {
-	AuthenticateGitHub(ctx context.Context, host string, stdin io.Reader, stderr io.Writer, onWait func(WaitEvent)) (GitHubResult, error)
+	AuthenticateGitHub(ctx context.Context, host string, prompt func(string) (string, error), stderr io.Writer, onWait func(WaitEvent)) (GitHubResult, error)
 }
 
 type GitHubDeviceAuthenticator struct {
@@ -46,7 +45,7 @@ func NewGitHubDeviceAuthenticator() GitHubDeviceAuthenticator {
 	return GitHubDeviceAuthenticator{ClientID: GitHubOAuthClientID}
 }
 
-func (a GitHubDeviceAuthenticator) AuthenticateGitHub(ctx context.Context, host string, stdin io.Reader, stderr io.Writer, onWait func(WaitEvent)) (GitHubResult, error) {
+func (a GitHubDeviceAuthenticator) AuthenticateGitHub(ctx context.Context, host string, prompt func(string) (string, error), stderr io.Writer, onWait func(WaitEvent)) (GitHubResult, error) {
 	if a.ClientID == "" {
 		return GitHubResult{}, errors.New("GitHub OAuth client ID is not configured")
 	}
@@ -61,8 +60,10 @@ func (a GitHubDeviceAuthenticator) AuthenticateGitHub(ctx context.Context, host 
 	}
 	fmt.Fprintf(stderr, "GitHub one-time code: %s\n", code.UserCode)
 	fmt.Fprintf(stderr, "GitHub verification URL: %s\n", code.VerificationURI)
-	fmt.Fprintln(stderr, "Press Enter to open the verification URL in a browser...")
-	if err := waitForEnter(stdin); err != nil {
+	if prompt == nil {
+		return GitHubResult{}, errors.New("browser-opening prompt is not configured")
+	}
+	if _, err := prompt("Press Enter to open the verification URL in a browser...\n"); err != nil {
 		return GitHubResult{}, err
 	}
 	browseURL := a.BrowseURL
@@ -110,15 +111,6 @@ func (c contextHTTPClient) PostForm(endpoint string, values url.Values) (*http.R
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return c.client.Do(req)
-}
-
-func waitForEnter(r io.Reader) error {
-	if reader, ok := r.(*bufio.Reader); ok {
-		_, err := reader.ReadString('\n')
-		return err
-	}
-	_, err := bufio.NewReader(r).ReadString('\n')
-	return err
 }
 
 func emitWaitEvents(expiresIn int, onWait func(WaitEvent)) func() {

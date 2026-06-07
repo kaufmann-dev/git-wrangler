@@ -116,6 +116,15 @@ func interrupted(a *app) bool {
 	if a == nil || a.ctx.Err() == nil {
 		return false
 	}
-	renderStatusLine(a, a.stdout, statusSkip, "stopped", "operation cancelled")
+	renderCancellation(a)
 	return true
+}
+
+func renderCancellation(a *app) {
+	if a == nil {
+		return
+	}
+	a.cancelOnce.Do(func() {
+		renderStatusLine(a, a.stdout, statusSkip, "stopped", "operation cancelled")
+	})
 }

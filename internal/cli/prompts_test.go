@@ -3,23 +3,286 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
+type blockingPromptReader struct {
+	started chan struct{}
+	release chan string
+	once    sync.Once
+}
+
+func newBlockingPromptReader() *blockingPromptReader {
+	return &blockingPromptReader{started: make(chan struct{}), release: make(chan string, 1)}
+}
+
+func (r *blockingPromptReader) Read(p []byte) (int, error) {
+	r.once.Do(func() { close(r.started) })
+	value := <-r.release
+	copy(p, value)
+	return len(value), nil
+}
+
+func (r *blockingPromptReader) Close() error { return nil }
+
 func TestPromptSessionRequiresStdinAndStderrTTY(t *testing.T) {
-	p := newPromptSession(strings.NewReader(""), io.Discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	p := newPromptSession(ctx, cancel, strings.NewReader(""), io.Discard)
 	if p.available() {
 		t.Fatal("buffered streams should not be interactive")
 	}
 	p.interactive = func() bool { return true }
 	if !p.available() {
 		t.Fatal("injected TTY eligibility was ignored")
+	}
+}
+
+func TestPromptCancellationReturnsImmediatelyAcrossPromptKinds(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*app) error
+	}{
+		{name: "normal", call: func(a *app) error { _, err := promptRead(a, "Value: "); return err }},
+		{name: "guided string", call: func(a *app) error { _, err := guidedStringValue(a, "Name", ""); return err }},
+		{name: "guided required", call: func(a *app) error { _, err := guidedRequiredStringValue(a, "Name", ""); return err }},
+		{name: "guided boolean", call: func(a *app) error { _, err := guidedBooleanValue(a, "Enabled", false); return err }},
+		{name: "guided enum", call: func(a *app) error { _, err := guidedEnumValue(a, "Mode", "one", []string{"one", "two"}); return err }},
+		{name: "guided repeatable", call: func(a *app) error {
+			cmd := &cobra.Command{Use: "test"}
+			cmd.Flags().StringArray("item", nil, "")
+			return applyGuidedPrompt(a, cmd, guidedRepeatable("item", "Items"))
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			reader := newBlockingPromptReader()
+			a := newApp(ctx, fakeRunner{}, reader, io.Discard, io.Discard)
+			makeInteractive(a)
+			result := make(chan error, 1)
+			go func() { result <- test.call(a) }()
+			<-reader.started
+			cancel()
+			select {
+			case err := <-result:
+				if !errors.Is(err, errPromptCancelled) {
+					t.Fatalf("error = %v", err)
+				}
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("prompt cancellation waited for input")
+			}
+		})
+	}
+}
+
+func TestInteractiveEOFCancelsPromptWithoutReturningPartialInput(t *testing.T) {
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader("partial"), io.Discard, io.Discard)
+	makeInteractive(a)
+	value, err := promptRead(a, "Value: ")
+	if value != "" || !errors.Is(err, errPromptCancelled) {
+		t.Fatalf("value = %q, error = %v", value, err)
+	}
+	if a.ctx.Err() == nil {
+		t.Fatal("EOF did not cancel the application context")
+	}
+}
+
+func TestConfirmationCancellationIsNotDecline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := newBlockingPromptReader()
+	a := newApp(ctx, fakeRunner{}, reader, io.Discard, io.Discard)
+	makeInteractive(a)
+	result := make(chan confirmationResult, 1)
+	go func() { result <- confirm(a, "Proceed?") }()
+	<-reader.started
+	cancel()
+	select {
+	case got := <-result:
+		if got != confirmationCancelled {
+			t.Fatalf("confirmation = %v", got)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("confirmation cancellation waited for input")
+	}
+	if a.promptFailed {
+		t.Fatal("cancelled confirmation was treated as unavailable")
+	}
+}
+
+func TestCommandConfirmationCancellationPerformsNoMutation(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	rootDir := tempGitRepos(t, "repo")
+	t.Chdir(rootDir)
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := newBlockingPromptReader()
+	mutated := false
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			mutated = true
+			return "", "", nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(ctx, runner, reader, &stdout, &stderr)
+	makeInteractive(a)
+	root := newRootCommand(a)
+	root.SetArgs([]string{"push", "--force-unsafe"})
+	result := make(chan error, 1)
+	go func() { result <- root.Execute() }()
+	<-reader.started
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("expected cancellation failure")
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("confirmation cancellation waited for input")
+	}
+	if mutated {
+		t.Fatal("mutation ran after confirmation cancellation")
+	}
+	if strings.Contains(stdout.String(), "declined") || strings.Contains(stdout.String(), "Summary:") {
+		t.Fatalf("cancellation was treated as a decline:\n%s", stdout.String())
+	}
+}
+
+func TestSecretCancellationRestoresTerminalState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	a := newApp(ctx, fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	a.prompts.readSecret = func() ([]byte, error) {
+		close(started)
+		<-release
+		return []byte("late-secret"), nil
+	}
+	restored := make(chan struct{}, 1)
+	a.prompts.restore = func() error {
+		restored <- struct{}{}
+		return nil
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := promptSecret(a, "Secret: ")
+		result <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, errPromptCancelled) {
+			t.Fatalf("error = %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("secret cancellation waited for input")
+	}
+	select {
+	case <-restored:
+	default:
+		t.Fatal("terminal state was not restored")
+	}
+	close(release)
+}
+
+func TestAbandonedPromptReadCannotMutateGuidedState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := newBlockingPromptReader()
+	var stderr bytes.Buffer
+	a := newApp(ctx, fakeRunner{}, reader, io.Discard, &stderr)
+	makeInteractive(a)
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().StringArray("item", nil, "")
+	result := make(chan error, 1)
+	go func() { result <- applyGuidedPrompt(a, cmd, guidedRepeatable("item", "Items")) }()
+	<-reader.started
+	cancel()
+	if err := <-result; !errors.Is(err, errPromptCancelled) {
+		t.Fatalf("error = %v", err)
+	}
+	before := stderr.String()
+	reader.release <- "late, values\n"
+	time.Sleep(10 * time.Millisecond)
+	items, _ := cmd.Flags().GetStringArray("item")
+	if len(items) != 0 {
+		t.Fatalf("items mutated after cancellation: %#v", items)
+	}
+	if stderr.String() != before {
+		t.Fatalf("abandoned read printed output: %q", stderr.String())
+	}
+}
+
+func TestGuidedCancellationStopsPromptsAndSummary(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := newBlockingPromptReader()
+	var stdout, stderr bytes.Buffer
+	a := newApp(ctx, fakeRunner{}, reader, &stdout, &stderr)
+	makeInteractive(a)
+	cmd := commandByName(t, newRootCommand(a), "activity")
+	_ = cmd.Flags().Set("guided", "true")
+	result := make(chan error, 1)
+	go func() { result <- runGuidedSetup(a, cmd) }()
+	<-reader.started
+	cancel()
+	if err := <-result; !errors.Is(err, errPromptCancelled) {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(stderr.String(), "Year") || strings.Contains(stderr.String(), "Selected configuration") {
+		t.Fatalf("guided setup continued after cancellation:\n%s", stderr.String())
+	}
+}
+
+func TestCustomAndStandardCommandCancellationRenderOnce(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "standard guided", args: []string{"activity", "--guided"}},
+		{name: "custom init", args: []string{"init"}},
+		{name: "custom config", args: []string{"config", "set", "ai.api-key"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "1")
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			ctx, cancel := context.WithCancel(context.Background())
+			reader := newBlockingPromptReader()
+			var stdout, stderr bytes.Buffer
+			a := newApp(ctx, fakeRunner{}, reader, &stdout, &stderr)
+			makeInteractive(a)
+			a.creds = &fakeCredentialStore{}
+			root := newRootCommand(a)
+			root.SetArgs(test.args)
+			result := make(chan error, 1)
+			go func() { result <- root.Execute() }()
+			<-reader.started
+			cancel()
+			select {
+			case err := <-result:
+				if err == nil {
+					t.Fatal("expected nonzero cancellation")
+				}
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("command cancellation waited for input")
+			}
+			if got := strings.Count(stdout.String(), "SKIP stopped: operation cancelled"); got != 1 {
+				t.Fatalf("cancellation status count = %d\nstdout:\n%s\nstderr:\n%s", got, stdout.String(), stderr.String())
+			}
+			for _, misleading := range []string{"is required", "Enter one", "Selected configuration"} {
+				if strings.Contains(stderr.String(), misleading) {
+					t.Fatalf("misleading cancellation output %q:\n%s", misleading, stderr.String())
+				}
+			}
+		})
 	}
 }
 

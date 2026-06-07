@@ -152,7 +152,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	fmt.Fprintln(a.stderr)
 	renderWarning(a, "This operation rewrites Git history. A force push will be required to update remotes.")
 	confirmation := confirmOrSkip(a, yes, "Apply these generated commit messages to all listed repositories?")
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {
