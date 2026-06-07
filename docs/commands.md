@@ -174,15 +174,11 @@ Without `--repo`, all discovered repositories are planned together. With `--repo
 
 `--start-date` and `--end-date` define the target range, not the commit-selection range. If one target bound is omitted, it is inferred globally from selected original author dates. If both are omitted, the global selected original min/max range is used. `--days N` instead targets the last N days ending on `--until YYYY-MM-DD`, or today when `--until` is omitted, and cannot be combined with `--start-date` or `--end-date`.
 
-Planning is global across all candidate repositories and distributes the generated activity across the full target range, so each repository does not get the same artificial first and last activity anchors. Parent/child ordering is enforced per repository with at least one second between selected relatives. Unselected commits act as fixed date boundaries. Explicitly impossible target ranges fail before mutation with the repository and commit named; inferred ranges may expand minimally to satisfy ordering.
+Planning is global across all candidate repositories and distributes generated activity across the target range, so each repository does not get the same artificial first and last activity anchors. One planning timezone is used per run: the dominant original author timezone among selected commits, or the local offset when no selected commit has a valid timezone. That timezone is used for target-date parsing, preview dates, and rewritten author/committer callback dates. Parent/child ordering is enforced per repository with at least one second between selected relatives. Unselected commits act as fixed date boundaries. Explicitly impossible target ranges fail before mutation with the repository and commit named; inferred ranges may expand minimally to satisfy ordering.
 
-Intensity profiles control the generated activity shape:
+`--intensity` controls the generated activity shape without changing the command surface. `low` creates sparser weekday-heavy activity with fewer active days, longer pauses, lower weekend/evening weight, and smaller bursts. `medium` is the balanced default. `high` creates denser activity with shorter and fewer pauses, more weekend/evening probability, and larger same-day bursts; rest is reduced but not disabled.
 
-| Intensity | Active days | Pause chance | Max burst |
-| --------- | ----------- | ------------ | --------- |
-| `low`     | 45%         | 35%          | 2 commits |
-| `medium`  | 65%         | 20%          | 4 commits |
-| `high`    | 85%         | 8%           | 8 commits |
+For longer target ranges, the planner may add synthetic vacation- or holiday-like pauses. These pauses are generated from the seed, are deterministic, and are only applied when the target range and selected commit count are large enough. They are soft exclusions: the planner avoids them first, but may reintroduce those days when commit density or topology constraints require it.
 
 The planner seed comes from `--seed`, then existing per-repository rewrite state, then a generated seed. Preview output shows the seed source. The command stores versioned per-repository state in a JSON blob ref at `refs/git-wrangler/state/rewrite-dates`. Unsupported or unversioned rewrite-date state fails before mutation. For each branch, the first rewrite stores the original head and original backup ref; later rewrites keep that baseline and update only the current rewritten baseline head. The command reads `.git/filter-repo/commit-map` after each normal rewrite and updates only current SHA mappings. Stored original dates are never overwritten.
 
