@@ -215,9 +215,9 @@ and designed to fail safely.
   explicit offline/local-only runs.
 - **Origin preservation** — history rewrite commands that use `git-filter-repo`
   restore the `origin` remote after it is removed.
-- **Exact date rollback** — `rewrite-dates --rollback` restores original commit
-  objects from stored backup refs when possible, replaying only new commits made
-  after the rewrite.
+- **Exact date rollback** — `rewrite-dates --rollback` restores the first
+  stored original baseline from backup refs, even after repeated rewrites,
+  replaying only new commits made after that baseline.
 - **Warnings on stderr** — destructive operations warn clearly without polluting
   normal command output.
 

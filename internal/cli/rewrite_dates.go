@@ -22,6 +22,7 @@ import (
 const (
 	rewriteDatesStateRef     = "refs/git-wrangler/state/rewrite-dates"
 	rewriteDatesBackupPrefix = "refs/git-wrangler/backup/rewrite-dates"
+	rewriteDatesStateVersion = 1
 )
 
 var timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
@@ -79,6 +80,7 @@ type rewriteDateCommit struct {
 }
 
 type rewriteDatesState struct {
+	Version  int                       `json:"version"`
 	Seed     string                    `json:"seed,omitempty"`
 	Branches []rewriteDatesStateBranch `json:"branches,omitempty"`
 	Commits  []rewriteDatesStateCommit `json:"commits"`
@@ -87,9 +89,9 @@ type rewriteDatesState struct {
 type rewriteDatesStateBranch struct {
 	Name          string `json:"name"`
 	OriginalHead  string `json:"original_head"`
-	RewrittenHead string `json:"rewritten_head"`
-	BackupRef     string `json:"backup_ref"`
-	RunID         string `json:"run_id"`
+	RewrittenHead string `json:"current_rewritten_head"`
+	BackupRef     string `json:"original_backup_ref"`
+	RunID         string `json:"last_run_id"`
 }
 
 type rewriteDatesStateCommit struct {
@@ -551,6 +553,11 @@ func scanRewriteDatesRepo(a *app, r repo, opts rewriteDatesOptions) dateRewriteS
 	if err != nil {
 		return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not read rewrite state"}
 	}
+	if !opts.rollback && stateFound {
+		if err := validateRewriteDatesBranchBaselines(a, r.dir, state, branches); err != nil {
+			return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not validate rewrite state"}
+		}
+	}
 	commits, err := collectRewriteDateCommits(a, r.dir, branchRefNames(branches))
 	if err != nil {
 		return dateRewriteScan{repo: r, hasHead: true, err: err, errLabel: "could not read commit metadata"}
@@ -635,24 +642,16 @@ func planRewriteDatesRollback(a *app, r repo, state rewriteDatesState, branches 
 	for _, branch := range branches {
 		meta, ok := byName[branch.Name]
 		if !ok {
-			inferred, inferredOK, err := inferRewriteDatesRollbackBranch(a, r.dir, branch, state)
+			containsKnown, err := branchContainsKnownRewrittenCommit(a, r.dir, branch.SHA, state)
 			if err != nil {
 				return dateRollbackPlan{}, err
 			}
-			if !inferredOK {
-				containsKnown, err := branchContainsKnownRewrittenCommit(a, r.dir, branch.SHA, state)
-				if err != nil {
-					return dateRollbackPlan{}, err
-				}
-				if containsKnown {
-					return dateRollbackPlan{}, fmt.Errorf("%s contains rewritten commits but has no matching branch rollback metadata", branch.Name)
-				}
-				plan.branches = append(plan.branches, dateRollbackBranchPlan{Name: branch.Name, CurrentHead: branch.SHA, Action: dateRollbackSkip})
-				plan.skipped++
-				continue
+			if containsKnown {
+				return dateRollbackPlan{}, fmt.Errorf("%s contains rewritten commits but has no matching branch rollback metadata", branch.Name)
 			}
-			meta = inferred
-			meta.Name = branch.Name
+			plan.branches = append(plan.branches, dateRollbackBranchPlan{Name: branch.Name, CurrentHead: branch.SHA, Action: dateRollbackSkip})
+			plan.skipped++
+			continue
 		}
 		branchPlan, err := classifyRewriteDatesRollbackBranch(a, r.dir, branch, meta)
 		if err != nil {
@@ -740,48 +739,6 @@ func classifyRewriteDatesRollbackBranch(a *app, dir string, branch dateBranchRef
 	return dateRollbackBranchPlan{}, fmt.Errorf("%s is not at the stored original head, stored rewritten head, or a descendant of either; rollback cannot map ancestry safely", branch.Name)
 }
 
-func inferRewriteDatesRollbackBranch(a *app, dir string, branch dateBranchRef, state rewriteDatesState) (rewriteDatesStateBranch, bool, error) {
-	var best rewriteDatesStateBranch
-	bestCount := -1
-	for _, meta := range state.Branches {
-		if meta.OriginalHead == "" || meta.RewrittenHead == "" || meta.BackupRef == "" {
-			continue
-		}
-		if branch.SHA == meta.OriginalHead || branch.SHA == meta.RewrittenHead {
-			meta.Name = branch.Name
-			return meta, true, nil
-		}
-		originalAncestor, err := gitIsAncestor(a, dir, meta.OriginalHead, branch.SHA)
-		if err != nil {
-			return rewriteDatesStateBranch{}, false, err
-		}
-		if originalAncestor {
-			meta.Name = branch.Name
-			return meta, true, nil
-		}
-		rewrittenAncestor, err := gitIsAncestor(a, dir, meta.RewrittenHead, branch.SHA)
-		if err != nil {
-			return rewriteDatesStateBranch{}, false, err
-		}
-		if !rewrittenAncestor {
-			continue
-		}
-		count, err := rewriteDatesReplayCommitCount(a, dir, branch.SHA, meta.RewrittenHead)
-		if err != nil {
-			return rewriteDatesStateBranch{}, false, err
-		}
-		if bestCount == -1 || count < bestCount {
-			best = meta
-			best.Name = branch.Name
-			bestCount = count
-		}
-	}
-	if bestCount == -1 {
-		return rewriteDatesStateBranch{}, false, nil
-	}
-	return best, true, nil
-}
-
 func branchContainsKnownRewrittenCommit(a *app, dir, branchHead string, state rewriteDatesState) (bool, error) {
 	for _, commit := range state.Commits {
 		if commit.CurrentSHA == "" || commit.OriginalSHA == "" || commit.CurrentSHA == commit.OriginalSHA {
@@ -796,6 +753,58 @@ func branchContainsKnownRewrittenCommit(a *app, dir, branchHead string, state re
 		}
 	}
 	return false, nil
+}
+
+func validateRewriteDatesBranchBaselines(a *app, dir string, state rewriteDatesState, branches []dateBranchRef) error {
+	byName := rewriteDatesBranchStateByName(state.Branches)
+	for _, branch := range branches {
+		meta, ok := byName[branch.Name]
+		if !ok {
+			containsKnown, err := branchContainsKnownRewrittenCommit(a, dir, branch.SHA, state)
+			if err != nil {
+				return err
+			}
+			if containsKnown {
+				return fmt.Errorf("%s contains rewritten commits but has no matching branch rollback metadata", branch.Name)
+			}
+			continue
+		}
+		if err := validateRewriteDatesBranchBaseline(a, dir, branch, meta); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRewriteDatesBranchBaseline(a *app, dir string, branch dateBranchRef, meta rewriteDatesStateBranch) error {
+	if meta.OriginalHead == "" || meta.RewrittenHead == "" || meta.BackupRef == "" {
+		return fmt.Errorf("%s has incomplete branch rollback metadata", branch.Name)
+	}
+	backupHead, err := resolveRewriteDatesCommit(a, dir, meta.BackupRef)
+	if err != nil {
+		return fmt.Errorf("%s backup ref %s is unavailable: %w", branch.Name, meta.BackupRef, err)
+	}
+	if backupHead != meta.OriginalHead {
+		return fmt.Errorf("%s backup ref %s points to %s, expected %s", branch.Name, meta.BackupRef, prefix(backupHead, 8), prefix(meta.OriginalHead, 8))
+	}
+	if branch.SHA == meta.OriginalHead || branch.SHA == meta.RewrittenHead {
+		return nil
+	}
+	originalAncestor, err := gitIsAncestor(a, dir, meta.OriginalHead, branch.SHA)
+	if err != nil {
+		return err
+	}
+	if originalAncestor {
+		return nil
+	}
+	rewrittenAncestor, err := gitIsAncestor(a, dir, meta.RewrittenHead, branch.SHA)
+	if err != nil {
+		return err
+	}
+	if rewrittenAncestor {
+		return nil
+	}
+	return fmt.Errorf("%s is not at or descended from the stored original or rewritten baseline; rewrite cannot update rollback metadata safely", branch.Name)
 }
 
 func resolveRewriteDatesCommit(a *app, dir, rev string) (string, error) {
@@ -926,6 +935,9 @@ func readRewriteDatesState(a *app, dir string) (rewriteDatesState, bool, error) 
 	if err := json.Unmarshal([]byte(data), &state); err != nil {
 		return rewriteDatesState{}, true, err
 	}
+	if state.Version != rewriteDatesStateVersion {
+		return rewriteDatesState{}, true, fmt.Errorf("unsupported rewrite-dates state version %d; remove %s before running rewrite-dates again", state.Version, rewriteDatesStateRef)
+	}
 	return normalizeRewriteDatesState(state), true, nil
 }
 
@@ -949,6 +961,7 @@ func writeRewriteDatesState(a *app, dir string, state rewriteDatesState) error {
 }
 
 func normalizeRewriteDatesState(state rewriteDatesState) rewriteDatesState {
+	state.Version = rewriteDatesStateVersion
 	sort.Slice(state.Branches, func(i, j int) bool {
 		if state.Branches[i].Name == state.Branches[j].Name {
 			return state.Branches[i].RunID < state.Branches[j].RunID
@@ -1812,12 +1825,17 @@ func replayRewriteDateRollbackBranch(a *app, dir string, state rewriteDatesState
 	}
 	parentMap := rewriteDateRollbackParentMap(state)
 	parentMap[branch.RewrittenHead] = branch.OriginalHead
+	originalDatesByCurrent := rewriteDatesOriginalDatesByCurrent(state)
 	replayed := map[string]string{}
 	newHead := branch.OriginalHead
 	for _, sha := range shas {
 		commit, err := readRewriteDateReplayCommit(a, dir, sha)
 		if err != nil {
 			return "", nil, err
+		}
+		if dates, ok := originalDatesByCurrent[commit.SHA]; ok {
+			commit.AuthorDate = dates.Author
+			commit.CommitterDate = dates.Committer
 		}
 		parentArgs := []string{}
 		for _, parent := range commit.Parents {
@@ -1854,6 +1872,20 @@ func replayRewriteDateRollbackBranch(a *app, dir string, state rewriteDatesState
 		newHead = newSHA
 	}
 	return newHead, replayed, nil
+}
+
+func rewriteDatesOriginalDatesByCurrent(state rewriteDatesState) map[string]dateCallbackDates {
+	byCurrent := map[string]dateCallbackDates{}
+	for _, commit := range state.Commits {
+		if commit.CurrentSHA == "" {
+			continue
+		}
+		byCurrent[commit.CurrentSHA] = dateCallbackDates{
+			Author:    commit.OriginalAuthorDate,
+			Committer: commit.OriginalCommitterDate,
+		}
+	}
+	return byCurrent
 }
 
 func readRewriteDateReplayCommit(a *app, dir, sha string) (rewriteDateReplayCommit, error) {
@@ -1990,11 +2022,27 @@ func updateRewriteDatesStateBranchesAfterRewrite(a *app, dir string, state rewri
 		if backupRef == "" {
 			return rewriteDatesState{}, fmt.Errorf("%s backup ref is missing", branch.Name)
 		}
+		originalHead := branch.SHA
+		originalBackupRef := backupRef
+		if existing, ok := branchesByName[branch.Name]; ok {
+			if existing.OriginalHead == "" || existing.BackupRef == "" {
+				return rewriteDatesState{}, fmt.Errorf("%s has incomplete branch rollback metadata", branch.Name)
+			}
+			originalHead = existing.OriginalHead
+			originalBackupRef = existing.BackupRef
+		}
+		currentRewrittenHead, ok := rewriteDatesCurrentSHAForOriginal(state, originalHead)
+		if !ok || currentRewrittenHead == "" {
+			if originalHead != branch.SHA {
+				return rewriteDatesState{}, fmt.Errorf("%s original head %s is missing from rewrite state", branch.Name, prefix(originalHead, 8))
+			}
+			currentRewrittenHead = rewrittenHead
+		}
 		branchesByName[branch.Name] = rewriteDatesStateBranch{
 			Name:          branch.Name,
-			OriginalHead:  branch.SHA,
-			RewrittenHead: rewrittenHead,
-			BackupRef:     backupRef,
+			OriginalHead:  originalHead,
+			RewrittenHead: currentRewrittenHead,
+			BackupRef:     originalBackupRef,
 			RunID:         runID,
 		}
 	}
@@ -2003,6 +2051,15 @@ func updateRewriteDatesStateBranchesAfterRewrite(a *app, dir string, state rewri
 		state.Branches = append(state.Branches, branch)
 	}
 	return normalizeRewriteDatesState(state), nil
+}
+
+func rewriteDatesCurrentSHAForOriginal(state rewriteDatesState, originalSHA string) (string, bool) {
+	for _, commit := range state.Commits {
+		if commit.OriginalSHA == originalSHA {
+			return commit.CurrentSHA, true
+		}
+	}
+	return "", false
 }
 
 func rewriteDatesGitMetadataDir(gitDir string) string {
@@ -2047,9 +2104,15 @@ func updateRewriteDatesStateAfterExactRollback(state rewriteDatesState, replayed
 		if state.Commits[i].OriginalSHA == "" {
 			continue
 		}
+		previousCurrent := state.Commits[i].CurrentSHA
 		state.Commits[i].CurrentSHA = state.Commits[i].OriginalSHA
-		if next, ok := replayed[state.Commits[i].OriginalSHA]; ok && next != "" {
+		if next, ok := replayed[previousCurrent]; ok && next != "" {
 			state.Commits[i].CurrentSHA = next
+		}
+	}
+	for i := range state.Branches {
+		if state.Branches[i].OriginalHead != "" {
+			state.Branches[i].RewrittenHead = state.Branches[i].OriginalHead
 		}
 	}
 	return normalizeRewriteDatesState(state)
