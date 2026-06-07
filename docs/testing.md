@@ -8,7 +8,7 @@ Use unit tests for pure helpers:
 
 - `internal/repos` exact resolution and discovery.
 - CLI targeting helpers.
-- Confirmation helper behavior.
+- Injected TTY eligibility plus required, guided, secret, summary, and confirmation helper behavior.
 - JSON writer and JSON-mode suppression.
 - Worker-count helpers and ordered result collection.
 
@@ -17,8 +17,11 @@ Use fake-runner command tests for subprocess orchestration:
 - Exact `--repo` targeting per command family.
 - Automatic `git fetch --prune origin` orchestration for remote-aware commands.
 - Decline-as-skip confirmations.
+- Non-TTY confirmations failing with guidance to pass `--yes`.
 - No multi-repository command asks one confirmation per repository.
-- `--yes` skipping prompts without filling required values.
+- `--yes` and `-y` skipping confirmations without filling required values.
+- Exact command exposure for `--guided` and `-y`.
+- Representative guided setup flows and `--guided --json` rejection.
 - stdout/stderr separation.
 - Ordered output under concurrency.
 - durable output printed only after progress closes.
@@ -98,8 +101,10 @@ When changing a command, check:
 
 - Does `--repo` use exact targeting if the command supports it?
 - Does a declined confirmation skip successfully before mutation?
+- Does a non-TTY confirmation fail with guidance to pass `--yes`?
 - Does a multi-repository command ask at most one confirmation for the whole candidate set?
-- Does `--yes` skip only confirmations?
+- Do `--yes` and `-y` skip only confirmations?
+- If the command supports `--guided`, does it prompt for every command-specific behavior option and exclude meta flags?
 - If the command relies on remote-tracking refs, does it refresh `origin` by default and honor `--no-fetch`?
 - For history rewrites, does fetch failure stop before scan, AI requests, prompts, and mutation?
 - Are stdout and stderr still separated by purpose?

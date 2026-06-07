@@ -172,7 +172,11 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		)
 		return status
 	}
-	if !confirmOrSkip(a, yesFlag(cmd), fmt.Sprintf("Raw force push %d repositories with --force?", len(repos))) {
+	confirmation := confirmOrSkip(a, yesFlag(cmd), fmt.Sprintf("Raw force push %d repositories with --force?", len(repos)))
+	if confirmation == confirmationUnavailable {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
 		skipped = len(repos)
 		renderStatusLine(a, a.stdout, statusSkip, "unsafe force push declined", "")
 		renderSummary(a,

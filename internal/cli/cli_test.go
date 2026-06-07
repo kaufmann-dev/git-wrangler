@@ -229,7 +229,8 @@ func TestCommitFlagValidation(t *testing.T) {
 func TestConfirmUsesInjectedStreams(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), fakeRunner{}, strings.NewReader("y\n"), &stdout, &stderr)
-	if !confirm(a, "Proceed?") {
+	makeInteractive(a)
+	if confirm(a, "Proceed?") != confirmationAccepted {
 		t.Fatal("expected yes confirmation")
 	}
 	if stdout.String() != "" {
