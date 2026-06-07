@@ -46,10 +46,13 @@ type rewriteDatesOptions struct {
 }
 
 type rewriteDateIntensity struct {
-	name        string
-	activeRatio float64
-	pauseChance float64
-	maxBurst    int
+	name          string
+	description   string
+	activeRatio   float64
+	commitSpread  float64
+	maxBurst      int
+	weekendWeight float64
+	eveningChance float64
 }
 
 type dateBranchRef struct {
@@ -76,6 +79,7 @@ type rewriteDateCommit struct {
 	originalCommitterTZ    string
 	originalCommitterDate  string
 	selected               bool
+	rawPlannedEpoch        int64
 	plannedEpoch           int64
 }
 
@@ -124,16 +128,17 @@ type dateRewriteScan struct {
 }
 
 type dateCandidate struct {
-	repo             repo
-	stateFound       bool
-	state            rewriteDatesState
-	branches         []dateBranchRef
-	commits          []rewriteDateCommit
-	selected         []int
-	tzOffset         string
-	hasTags          bool
-	hasSignedObjects bool
-	rollbackPlan     dateRollbackPlan
+	repo               repo
+	stateFound         bool
+	state              rewriteDatesState
+	branches           []dateBranchRef
+	commits            []rewriteDateCommit
+	selected           []int
+	tzOffset           string
+	hasTags            bool
+	hasSignedObjects   bool
+	topologyCompressed bool
+	rollbackPlan       dateRollbackPlan
 }
 
 type dateRollbackAction string
@@ -176,8 +181,31 @@ type rewriteDatePlan struct {
 	targetEnd     int64
 	totalSelected int
 	intensity     rewriteDateIntensity
+	tzOffset      string
 	startFixed    bool
 	endFixed      bool
+}
+
+type rewriteDateRestPolicy struct {
+	sparseInactiveDays  bool
+	softRestBlocks      int
+	seasonalYearEnd     bool
+	generatedRestBlocks int
+	summerVacations     bool
+}
+
+type rewriteDateRestBlock struct {
+	startDay int64
+	endDay   int64
+}
+
+type rewriteDateTopologyCompression struct {
+	compressed          bool
+	maxOneSecondRun     int
+	oneSecondEdges      int
+	adjustedCommits     int
+	selectedEdges       int
+	candidateCompressed map[int]bool
 }
 
 type dateCallbackDates struct {
@@ -1068,47 +1096,36 @@ func planRewriteDateCandidates(candidates []dateCandidate, opts rewriteDatesOpti
 	intensity, _ := rewriteDateIntensityProfile(opts.intensity)
 	seed, seedSource := rewriteDateSeed(opts, candidates)
 	selected := selectedDateCommits(candidates)
-	targetStart, targetEnd, startFixed, endFixed, err := rewriteDateTargetRange(candidates, selected, opts)
+	sortSelectedDateCommits(candidates, selected)
+	tzOffset := dominantPlanningTimezoneOffset(candidates, selected)
+	targetStart, targetEnd, startFixed, endFixed, err := rewriteDateTargetRange(candidates, selected, opts, tzOffset)
 	if err != nil {
 		return rewriteDatePlan{}, err
 	}
-	targetStart, targetEnd, err = extendRewriteDateTargetForConstraints(candidates, selected, targetStart, targetEnd, startFixed, endFixed)
+	targetStart, targetEnd, err = extendRewriteDateTargetForConstraints(candidates, selected, targetStart, targetEnd, startFixed, endFixed, tzOffset)
 	if err != nil {
 		return rewriteDatePlan{}, err
 	}
-	targetStart, targetEnd, err = extendRewriteDateTargetForChains(candidates, targetStart, targetEnd, startFixed, endFixed)
+	targetStart, targetEnd, err = extendRewriteDateTargetForChains(candidates, targetStart, targetEnd, startFixed, endFixed, tzOffset)
 	if err != nil {
 		return rewriteDatePlan{}, err
 	}
-	timestamps := generatePlannedEpochs(len(selected), targetStart, targetEnd, seed, intensity)
-	sort.Slice(selected, func(i, j int) bool {
-		left := candidates[selected[i].candidate].commits[selected[i].commit]
-		right := candidates[selected[j].candidate].commits[selected[j].commit]
-		if left.originalAuthorEpoch == right.originalAuthorEpoch {
-			if candidates[selected[i].candidate].repo.display == candidates[selected[j].candidate].repo.display {
-				return left.hash < right.hash
-			}
-			return candidates[selected[i].candidate].repo.display < candidates[selected[j].candidate].repo.display
-		}
-		return left.originalAuthorEpoch < right.originalAuthorEpoch
-	})
-	for i, ref := range selected {
-		candidates[ref.candidate].commits[ref.commit].plannedEpoch = timestamps[i]
-	}
-	if err := enforceRewriteDateTopology(candidates, targetStart, targetEnd); err != nil {
+	plannedCandidates, _, err := planRewriteDateCandidateTimestamps(candidates, selected, targetStart, targetEnd, seed, intensity, tzOffset)
+	if err != nil {
 		return rewriteDatePlan{}, err
 	}
-	for i := range candidates {
-		candidates[i].state.Seed = seed
+	for i := range plannedCandidates {
+		plannedCandidates[i].state.Seed = seed
 	}
 	return rewriteDatePlan{
-		candidates:    candidates,
+		candidates:    plannedCandidates,
 		seed:          seed,
 		seedSource:    seedSource,
 		targetStart:   targetStart,
 		targetEnd:     targetEnd,
 		totalSelected: len(selected),
 		intensity:     intensity,
+		tzOffset:      tzOffset,
 		startFixed:    startFixed,
 		endFixed:      endFixed,
 	}, nil
@@ -1117,11 +1134,11 @@ func planRewriteDateCandidates(candidates []dateCandidate, opts rewriteDatesOpti
 func rewriteDateIntensityProfile(name string) (rewriteDateIntensity, bool) {
 	switch name {
 	case "", "medium":
-		return rewriteDateIntensity{name: "medium", activeRatio: 0.65, pauseChance: 0.20, maxBurst: 4}, true
+		return rewriteDateIntensity{name: "medium", description: "balanced weekday-heavy activity", activeRatio: 0.55, commitSpread: 0.72, maxBurst: 4, weekendWeight: 0.14, eveningChance: 0.12}, true
 	case "low":
-		return rewriteDateIntensity{name: "low", activeRatio: 0.45, pauseChance: 0.35, maxBurst: 2}, true
+		return rewriteDateIntensity{name: "low", description: "sparser activity with longer pauses", activeRatio: 0.38, commitSpread: 0.55, maxBurst: 2, weekendWeight: 0.06, eveningChance: 0.06}, true
 	case "high":
-		return rewriteDateIntensity{name: "high", activeRatio: 0.85, pauseChance: 0.08, maxBurst: 8}, true
+		return rewriteDateIntensity{name: "high", description: "denser activity with shorter pauses", activeRatio: 0.72, commitSpread: 0.88, maxBurst: 8, weekendWeight: 0.26, eveningChance: 0.24}, true
 	default:
 		return rewriteDateIntensity{}, false
 	}
@@ -1150,7 +1167,115 @@ func selectedDateCommits(candidates []dateCandidate) []selectedDateCommit {
 	return selected
 }
 
-func rewriteDateTargetRange(candidates []dateCandidate, selected []selectedDateCommit, opts rewriteDatesOptions) (int64, int64, bool, bool, error) {
+func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []selectedDateCommit, targetStart, targetEnd int64, seed string, intensity rewriteDateIntensity, tzOffset string) ([]dateCandidate, rewriteDateTopologyCompression, error) {
+	var bestCandidates []dateCandidate
+	var bestStats rewriteDateTopologyCompression
+	hasBest := false
+	for attempt := 0; attempt < 8; attempt++ {
+		attemptCandidates := cloneDateCandidates(candidates)
+		for i := range attemptCandidates {
+			attemptCandidates[i].tzOffset = tzOffset
+			attemptCandidates[i].topologyCompressed = false
+		}
+		timestamps := generatePlannedEpochs(len(selected), targetStart, targetEnd, rewriteDatePlanningSeed(seed, attempt), intensity, tzOffset)
+		assignPlannedEpochs(attemptCandidates, selected, timestamps)
+		if err := enforceRewriteDateTopologyWithSelected(attemptCandidates, selected, targetStart, targetEnd); err != nil {
+			return nil, rewriteDateTopologyCompression{}, err
+		}
+		stats := rewriteDateTopologyCompressionStats(attemptCandidates, targetStart, targetEnd, len(selected))
+		if !stats.compressed {
+			return attemptCandidates, stats, nil
+		}
+		if !hasBest || rewriteDateCompressionLess(stats, bestStats) {
+			bestCandidates = attemptCandidates
+			bestStats = stats
+			hasBest = true
+		}
+	}
+	if hasBest {
+		markTopologyCompressedCandidates(bestCandidates, bestStats)
+		return bestCandidates, bestStats, nil
+	}
+	return cloneDateCandidates(candidates), rewriteDateTopologyCompression{}, nil
+}
+
+func rewriteDatePlanningSeed(seed string, attempt int) string {
+	if attempt == 0 {
+		return seed
+	}
+	return seed + "\x00rewrite-dates-topology\x00" + strconv.Itoa(attempt)
+}
+
+func cloneDateCandidates(candidates []dateCandidate) []dateCandidate {
+	cloned := make([]dateCandidate, len(candidates))
+	copy(cloned, candidates)
+	for i := range cloned {
+		cloned[i].branches = append([]dateBranchRef(nil), candidates[i].branches...)
+		cloned[i].commits = append([]rewriteDateCommit(nil), candidates[i].commits...)
+		cloned[i].selected = append([]int(nil), candidates[i].selected...)
+		cloned[i].state.Branches = append([]rewriteDatesStateBranch(nil), candidates[i].state.Branches...)
+		cloned[i].state.Commits = append([]rewriteDatesStateCommit(nil), candidates[i].state.Commits...)
+		cloned[i].rollbackPlan.branches = append([]dateRollbackBranchPlan(nil), candidates[i].rollbackPlan.branches...)
+	}
+	return cloned
+}
+
+func assignPlannedEpochs(candidates []dateCandidate, selected []selectedDateCommit, timestamps []int64) {
+	for i, ref := range selected {
+		if i >= len(timestamps) {
+			break
+		}
+		commit := &candidates[ref.candidate].commits[ref.commit]
+		commit.rawPlannedEpoch = timestamps[i]
+		commit.plannedEpoch = timestamps[i]
+	}
+}
+
+func rewriteDateCompressionLess(left, right rewriteDateTopologyCompression) bool {
+	if left.maxOneSecondRun != right.maxOneSecondRun {
+		return left.maxOneSecondRun < right.maxOneSecondRun
+	}
+	if left.oneSecondEdges != right.oneSecondEdges {
+		return left.oneSecondEdges < right.oneSecondEdges
+	}
+	return left.adjustedCommits < right.adjustedCommits
+}
+
+func markTopologyCompressedCandidates(candidates []dateCandidate, stats rewriteDateTopologyCompression) {
+	for candidateIndex := range stats.candidateCompressed {
+		if candidateIndex >= 0 && candidateIndex < len(candidates) {
+			candidates[candidateIndex].topologyCompressed = true
+		}
+	}
+}
+
+func sortSelectedDateCommits(candidates []dateCandidate, selected []selectedDateCommit) {
+	sort.Slice(selected, func(i, j int) bool {
+		left := candidates[selected[i].candidate].commits[selected[i].commit]
+		right := candidates[selected[j].candidate].commits[selected[j].commit]
+		if left.originalAuthorEpoch == right.originalAuthorEpoch {
+			if candidates[selected[i].candidate].repo.display == candidates[selected[j].candidate].repo.display {
+				return left.hash < right.hash
+			}
+			return candidates[selected[i].candidate].repo.display < candidates[selected[j].candidate].repo.display
+		}
+		return left.originalAuthorEpoch < right.originalAuthorEpoch
+	})
+}
+
+func dominantPlanningTimezoneOffset(candidates []dateCandidate, selected []selectedDateCommit) string {
+	counts := map[string]int{}
+	for _, ref := range selected {
+		offset := candidates[ref.candidate].commits[ref.commit].originalAuthorTZ
+		if timezoneOffsetRe.MatchString(offset) {
+			counts[offset]++
+		}
+	}
+	offset, _ := dominantTimezoneOffsetFromCounts(counts)
+	return offset
+}
+
+func rewriteDateTargetRange(candidates []dateCandidate, selected []selectedDateCommit, opts rewriteDatesOptions, tzOffset string) (int64, int64, bool, bool, error) {
 	if len(selected) == 0 {
 		return 0, 0, false, false, fmt.Errorf("no commits selected")
 	}
@@ -1159,10 +1284,10 @@ func rewriteDateTargetRange(candidates []dateCandidate, selected []selectedDateC
 	if opts.days > 0 {
 		until := opts.untilDate
 		if until == "" {
-			until = time.Now().In(time.Local).Format("2006-01-02")
+			until = time.Now().In(locationForTimezoneOffset(tzOffset)).Format("2006-01-02")
 		}
-		end := parseDateEnd(until)
-		start := parseDateStart(time.Unix(end, 0).In(time.Local).AddDate(0, 0, -(opts.days - 1)).Format("2006-01-02"))
+		end := parseDateEndInOffset(until, tzOffset)
+		start := parseDateStartInOffset(time.Unix(end, 0).In(locationForTimezoneOffset(tzOffset)).AddDate(0, 0, -(opts.days-1)).Format("2006-01-02"), tzOffset)
 		return start, end, true, true, nil
 	}
 	minOriginal := int64(0)
@@ -1179,10 +1304,10 @@ func rewriteDateTargetRange(candidates []dateCandidate, selected []selectedDateC
 	start := minOriginal
 	end := maxOriginal
 	if opts.startDate != "" {
-		start = parseDateStart(opts.startDate)
+		start = parseDateStartInOffset(opts.startDate, tzOffset)
 	}
 	if opts.endDate != "" {
-		end = parseDateEnd(opts.endDate)
+		end = parseDateEndInOffset(opts.endDate, tzOffset)
 	}
 	if start > end {
 		return 0, 0, startFixed, endFixed, fmt.Errorf("target start date must be on or before target end date")
@@ -1190,7 +1315,7 @@ func rewriteDateTargetRange(candidates []dateCandidate, selected []selectedDateC
 	return start, end, startFixed, endFixed, nil
 }
 
-func extendRewriteDateTargetForConstraints(candidates []dateCandidate, selected []selectedDateCommit, targetStart, targetEnd int64, startFixed, endFixed bool) (int64, int64, error) {
+func extendRewriteDateTargetForConstraints(candidates []dateCandidate, selected []selectedDateCommit, targetStart, targetEnd int64, startFixed, endFixed bool, tzOffset string) (int64, int64, error) {
 	for {
 		changed := false
 		for _, ref := range selected {
@@ -1202,14 +1327,14 @@ func extendRewriteDateTargetForConstraints(candidates []dateCandidate, selected 
 			}
 			if minFixed > targetEnd {
 				if endFixed {
-					return 0, 0, fmt.Errorf("%s %s needs a target date after fixed parent %s", candidate.repo.display, prefix(commit.hash, 8), formatEpochLocal(minFixed-1))
+					return 0, 0, fmt.Errorf("%s %s needs a target date after fixed parent %s", candidate.repo.display, prefix(commit.hash, 8), formatEpoch(minFixed-1, tzOffset))
 				}
 				targetEnd = minFixed
 				changed = true
 			}
 			if maxFixed < targetStart {
 				if startFixed {
-					return 0, 0, fmt.Errorf("%s %s needs a target date before fixed child %s", candidate.repo.display, prefix(commit.hash, 8), formatEpochLocal(maxFixed+1))
+					return 0, 0, fmt.Errorf("%s %s needs a target date before fixed child %s", candidate.repo.display, prefix(commit.hash, 8), formatEpoch(maxFixed+1, tzOffset))
 				}
 				targetStart = maxFixed
 				changed = true
@@ -1225,7 +1350,7 @@ func extendRewriteDateTargetForConstraints(candidates []dateCandidate, selected 
 	return targetStart, targetEnd, nil
 }
 
-func extendRewriteDateTargetForChains(candidates []dateCandidate, targetStart, targetEnd int64, startFixed, endFixed bool) (int64, int64, error) {
+func extendRewriteDateTargetForChains(candidates []dateCandidate, targetStart, targetEnd int64, startFixed, endFixed bool, tzOffset string) (int64, int64, error) {
 	needed := int64(maxSelectedChainLength(candidates) - 1)
 	if needed < 0 {
 		needed = 0
@@ -1239,7 +1364,7 @@ func extendRewriteDateTargetForChains(candidates []dateCandidate, targetStart, t
 	if !startFixed {
 		return targetEnd - needed, targetEnd, nil
 	}
-	return 0, 0, fmt.Errorf("target range %s -> %s is too narrow for selected parent/child ordering", formatEpochLocal(targetStart), formatEpochLocal(targetEnd))
+	return 0, 0, fmt.Errorf("target range %s -> %s is too narrow for selected parent/child ordering", formatEpoch(targetStart, tzOffset), formatEpoch(targetEnd, tzOffset))
 }
 
 func fixedDateConstraints(candidate dateCandidate, commitIndex int) (int64, int64) {
@@ -1265,6 +1390,36 @@ func fixedDateConstraints(candidate dateCandidate, commitIndex int) (int64, int6
 }
 
 func enforceRewriteDateTopology(candidates []dateCandidate, targetStart, targetEnd int64) error {
+	selected := selectedDateCommits(candidates)
+	sortSelectedDateCommits(candidates, selected)
+	return enforceRewriteDateTopologyWithSelected(candidates, selected, targetStart, targetEnd)
+}
+
+func enforceRewriteDateTopologyWithSelected(candidates []dateCandidate, selectedRefs []selectedDateCommit, targetStart, targetEnd int64) error {
+	limit := totalRewriteDateCommits(candidates) + len(selectedRefs) + 2
+	for pass := 0; pass < limit; pass++ {
+		before := selectedPlannedEpochs(candidates, selectedRefs)
+		if err := enforceRewriteDateRepositoryTopology(candidates, targetStart, targetEnd); err != nil {
+			return err
+		}
+		if err := enforceGlobalSelectedDateOrder(candidates, selectedRefs, targetStart, targetEnd); err != nil {
+			return err
+		}
+		after := selectedPlannedEpochs(candidates, selectedRefs)
+		if int64SlicesEqual(before, after) {
+			if err := verifyGlobalSelectedDateOrder(candidates, selectedRefs); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+	if err := verifyGlobalSelectedDateOrder(candidates, selectedRefs); err != nil {
+		return err
+	}
+	return fmt.Errorf("could not satisfy date topology constraints")
+}
+
+func enforceRewriteDateRepositoryTopology(candidates []dateCandidate, targetStart, targetEnd int64) error {
 	for candidateIndex := range candidates {
 		candidate := &candidates[candidateIndex]
 		selected := selectedIndexSet(candidate.selected)
@@ -1289,24 +1444,6 @@ func enforceRewriteDateTopology(candidates []dateCandidate, targetStart, targetE
 		limit := len(candidate.commits) + 1
 		for pass := 0; pass < limit; pass++ {
 			changed := false
-			for i := range candidate.commits {
-				if !selected[i] {
-					continue
-				}
-				minAllowed := mins[i]
-				for _, parent := range candidate.commits[i].parents {
-					if parentIndex, ok := byHash[parent]; ok && selected[parentIndex] {
-						minAllowed = maxInt64(minAllowed, candidate.commits[parentIndex].plannedEpoch+1)
-					}
-				}
-				if candidate.commits[i].plannedEpoch < minAllowed {
-					candidate.commits[i].plannedEpoch = minAllowed
-					changed = true
-				}
-				if candidate.commits[i].plannedEpoch > maxes[i] {
-					return fmt.Errorf("%s %s needs to be after its selected parent but outside the target range", candidate.repo.display, prefix(candidate.commits[i].hash, 8))
-				}
-			}
 			for i := len(candidate.commits) - 1; i >= 0; i-- {
 				if !selected[i] {
 					continue
@@ -1321,12 +1458,32 @@ func enforceRewriteDateTopology(candidates []dateCandidate, targetStart, targetE
 					candidate.commits[i].plannedEpoch = maxAllowed
 					changed = true
 				}
-				if candidate.commits[i].plannedEpoch < mins[i] {
-					return fmt.Errorf("%s %s needs to be before its selected child but outside the target range", candidate.repo.display, prefix(candidate.commits[i].hash, 8))
+			}
+			for i := range candidate.commits {
+				if !selected[i] {
+					continue
+				}
+				minAllowed := mins[i]
+				for _, parent := range candidate.commits[i].parents {
+					if parentIndex, ok := byHash[parent]; ok && selected[parentIndex] {
+						minAllowed = maxInt64(minAllowed, candidate.commits[parentIndex].plannedEpoch+1)
+					}
+				}
+				if candidate.commits[i].plannedEpoch < minAllowed {
+					candidate.commits[i].plannedEpoch = minAllowed
+					changed = true
 				}
 			}
 			if !changed {
 				break
+			}
+		}
+		for _, idx := range candidate.selected {
+			if candidate.commits[idx].plannedEpoch < mins[idx] {
+				return fmt.Errorf("%s %s needs to be before its selected child but outside the target range", candidate.repo.display, prefix(candidate.commits[idx].hash, 8))
+			}
+			if candidate.commits[idx].plannedEpoch > maxes[idx] {
+				return fmt.Errorf("%s %s needs to be after its selected parent but outside the target range", candidate.repo.display, prefix(candidate.commits[idx].hash, 8))
 			}
 		}
 		if err := verifySelectedTopology(*candidate); err != nil {
@@ -1334,6 +1491,70 @@ func enforceRewriteDateTopology(candidates []dateCandidate, targetStart, targetE
 		}
 	}
 	return nil
+}
+
+func enforceGlobalSelectedDateOrder(candidates []dateCandidate, selectedRefs []selectedDateCommit, targetStart, targetEnd int64) error {
+	previous := int64(math.MinInt64 / 2)
+	for _, ref := range selectedRefs {
+		candidate := &candidates[ref.candidate]
+		commit := &candidate.commits[ref.commit]
+		minFixed, maxFixed := fixedDateConstraints(*candidate, ref.commit)
+		minAllowed := maxInt64(targetStart, minFixed)
+		maxAllowed := minInt64(targetEnd, maxFixed)
+		if minAllowed > maxAllowed {
+			return fmt.Errorf("%s %s cannot fit between fixed neighboring commits", candidate.repo.display, prefix(commit.hash, 8))
+		}
+		if commit.plannedEpoch < minAllowed {
+			commit.plannedEpoch = minAllowed
+		}
+		if commit.plannedEpoch < previous {
+			commit.plannedEpoch = previous
+		}
+		if commit.plannedEpoch > maxAllowed {
+			return fmt.Errorf("%s %s needs to preserve global commit order but is outside the target range", candidate.repo.display, prefix(commit.hash, 8))
+		}
+		previous = commit.plannedEpoch
+	}
+	return nil
+}
+
+func verifyGlobalSelectedDateOrder(candidates []dateCandidate, selectedRefs []selectedDateCommit) error {
+	for i := 1; i < len(selectedRefs); i++ {
+		left := candidates[selectedRefs[i-1].candidate].commits[selectedRefs[i-1].commit]
+		right := candidates[selectedRefs[i].candidate].commits[selectedRefs[i].commit]
+		if right.plannedEpoch < left.plannedEpoch {
+			return fmt.Errorf("%s is planned before globally earlier commit %s", prefix(right.hash, 8), prefix(left.hash, 8))
+		}
+	}
+	return nil
+}
+
+func selectedPlannedEpochs(candidates []dateCandidate, selectedRefs []selectedDateCommit) []int64 {
+	epochs := make([]int64, len(selectedRefs))
+	for i, ref := range selectedRefs {
+		epochs[i] = candidates[ref.candidate].commits[ref.commit].plannedEpoch
+	}
+	return epochs
+}
+
+func int64SlicesEqual(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func totalRewriteDateCommits(candidates []dateCandidate) int {
+	total := 0
+	for _, candidate := range candidates {
+		total += len(candidate.commits)
+	}
+	return total
 }
 
 func verifySelectedTopology(candidate dateCandidate) error {
@@ -1354,6 +1575,84 @@ func verifySelectedTopology(candidate dateCandidate) error {
 		}
 	}
 	return nil
+}
+
+func rewriteDateTopologyCompressionStats(candidates []dateCandidate, targetStart, targetEnd int64, totalSelected int) rewriteDateTopologyCompression {
+	stats := rewriteDateTopologyCompression{candidateCompressed: map[int]bool{}}
+	exactRun := 0
+	edges := rewriteDateSelectedParentChildEdges(candidates)
+	for _, edge := range edges {
+		stats.selectedEdges++
+		if edge.gap == 1 {
+			stats.oneSecondEdges++
+			exactRun++
+			if exactRun > stats.maxOneSecondRun {
+				stats.maxOneSecondRun = exactRun
+			}
+			stats.candidateCompressed[edge.candidate] = true
+			continue
+		}
+		exactRun = 0
+	}
+	for _, candidate := range candidates {
+		selected := selectedIndexSet(candidate.selected)
+		for i, commit := range candidate.commits {
+			if selected[i] && commit.rawPlannedEpoch != commit.plannedEpoch {
+				stats.adjustedCommits++
+			}
+		}
+	}
+	rangeAtLeastOneDay := targetEnd-targetStart >= 86400
+	edgeRatioCompressed := stats.selectedEdges > 0 && float64(stats.oneSecondEdges)/float64(stats.selectedEdges) > 0.25
+	stats.compressed = rangeAtLeastOneDay && totalSelected >= 8 && (stats.maxOneSecondRun >= 4 || edgeRatioCompressed)
+	if !stats.compressed {
+		stats.candidateCompressed = map[int]bool{}
+	}
+	return stats
+}
+
+type rewriteDateSelectedEdge struct {
+	candidate int
+	parent    int64
+	child     int64
+	gap       int64
+}
+
+func rewriteDateSelectedParentChildEdges(candidates []dateCandidate) []rewriteDateSelectedEdge {
+	edges := []rewriteDateSelectedEdge{}
+	for candidateIndex, candidate := range candidates {
+		selected := selectedIndexSet(candidate.selected)
+		byHash := commitIndexByHash(candidate.commits)
+		for childIndex, commit := range candidate.commits {
+			if !selected[childIndex] {
+				continue
+			}
+			for _, parent := range commit.parents {
+				parentIndex, ok := byHash[parent]
+				if !ok || !selected[parentIndex] {
+					continue
+				}
+				parentEpoch := candidate.commits[parentIndex].plannedEpoch
+				childEpoch := commit.plannedEpoch
+				edges = append(edges, rewriteDateSelectedEdge{
+					candidate: candidateIndex,
+					parent:    parentEpoch,
+					child:     childEpoch,
+					gap:       childEpoch - parentEpoch,
+				})
+			}
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].child == edges[j].child {
+			if edges[i].parent == edges[j].parent {
+				return edges[i].candidate < edges[j].candidate
+			}
+			return edges[i].parent < edges[j].parent
+		}
+		return edges[i].child < edges[j].child
+	})
+	return edges
 }
 
 func selectedIndexSet(indexes []int) map[int]bool {
@@ -1408,7 +1707,7 @@ func maxSelectedChainLength(candidates []dateCandidate) int {
 	return maxChain
 }
 
-func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, intensity rewriteDateIntensity) []int64 {
+func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, intensity rewriteDateIntensity, tzOffset string) []int64 {
 	if n <= 0 {
 		return nil
 	}
@@ -1416,105 +1715,468 @@ func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, inten
 		startEpoch, endEpoch = endEpoch, startEpoch
 	}
 	rng := rand.New(rand.NewSource(seedInt64(seed)))
-	days := daysInRange(startEpoch, endEpoch)
-	activeDays := activePlanningDays(days, intensity, rng)
-	if len(activeDays) == 0 {
-		activeDays = days
+	days := daysInRangeInOffset(startEpoch, endEpoch, tzOffset)
+	if len(days) == 0 {
+		days = []int64{floorDayInOffset(startEpoch, tzOffset)}
 	}
-	bursts := []int{}
-	remaining := n
-	for remaining > 0 {
-		burst := 1
-		if intensity.maxBurst > 1 {
-			burst += rng.Intn(intensity.maxBurst)
-		}
-		if burst > remaining {
-			burst = remaining
-		}
-		if len(bursts) == 0 && remaining > 1 && len(activeDays) > 1 && burst == remaining {
-			burst--
-		}
-		bursts = append(bursts, burst)
-		remaining -= burst
+	if n == 1 {
+		return []int64{singlePlannedEpoch(startEpoch, endEpoch, days, rng, intensity, tzOffset)}
 	}
-	dayIndexes := make([]int, len(bursts))
-	totalWeight := 0
-	gapWeights := make([]int, len(bursts)-1)
-	for i := range gapWeights {
-		weight := 1
-		if rng.Float64() < intensity.pauseChance {
-			weight += 1 + rng.Intn(2)
-		}
-		gapWeights[i] = weight
-		totalWeight += weight
+	activeCount := plannedActiveDayCount(n, len(days), intensity)
+	restBlocks := syntheticRestBlocks(days, n, intensity, rng, tzOffset)
+	planningDays := days
+	if activeCount <= 3 && len(days) > activeCount+2 {
+		planningDays = days[1 : len(days)-1]
 	}
-	cumulativeWeight := 0
-	for i := 1; i < len(dayIndexes); i++ {
-		cumulativeWeight += gapWeights[i-1]
-		dayIndex := int(math.Round(float64(cumulativeWeight) * float64(len(activeDays)-1) / float64(totalWeight)))
-		if len(dayIndexes) <= len(activeDays) {
-			dayIndex = maxInt(dayIndex, dayIndexes[i-1]+1)
-			maxIndex := len(activeDays) - (len(dayIndexes) - i)
-			if dayIndex > maxIndex {
-				dayIndex = maxIndex
-			}
-		}
-		dayIndexes[i] = dayIndex
-	}
-	daySlots := make([]int64, 0, n)
-	for i, burst := range bursts {
-		for range burst {
-			daySlots = append(daySlots, activeDays[dayIndexes[i]])
-		}
-	}
-	byDay := map[int64][]int{}
-	for i, day := range daySlots {
-		byDay[day] = append(byDay[day], i)
-	}
+	activeDays := selectPlanningDays(planningDays, activeCount, restBlocks, intensity, rng, tzOffset)
+	allocations := allocateCommitsToPlanningDays(n, activeDays, intensity, rng)
 	timestamps := make([]int64, n)
-	plannedDays := make([]int64, 0, len(byDay))
-	for day := range byDay {
+	byDay := map[int64]int{}
+	for i, day := range activeDays {
+		byDay[day] = allocations[i]
+	}
+	plannedDays := make([]int64, 0, len(activeDays))
+	for _, day := range activeDays {
 		plannedDays = append(plannedDays, day)
 	}
 	sort.Slice(plannedDays, func(i, j int) bool { return plannedDays[i] < plannedDays[j] })
+	slotIndex := 0
 	for _, day := range plannedDays {
-		indexes := byDay[day]
-		sort.Ints(indexes)
-		startOfWorkday := day + 8*3600 + int64(rng.Intn(60))*60
-		endOfWorkday := day + 18*3600
-		if startOfWorkday < startEpoch {
-			startOfWorkday = startEpoch
+		count := byDay[day]
+		if count <= 0 {
+			continue
 		}
-		if endOfWorkday > endEpoch {
-			endOfWorkday = endEpoch
-		}
-		if endOfWorkday < startOfWorkday {
-			endOfWorkday = startOfWorkday
-		}
-		spacing := int64(1)
-		if len(indexes) > 1 {
-			available := endOfWorkday - startOfWorkday
-			if available > int64(len(indexes)-1) {
-				spacing = available / int64(len(indexes)-1)
-			}
-		}
-		for i, slotIndex := range indexes {
-			jitter := int64(0)
-			if spacing > 120 {
-				jitter = int64(rng.Intn(int(minInt64(spacing/3, 900))))
-			}
-			ts := startOfWorkday + int64(i)*spacing + jitter
-			if ts > endEpoch {
-				ts = endEpoch
-			}
-			if ts < startEpoch {
-				ts = startEpoch
+		dayTimes := plannedEpochsForDay(day, count, startEpoch, endEpoch, rng, intensity, tzOffset)
+		for _, ts := range dayTimes {
+			if slotIndex >= len(timestamps) {
+				break
 			}
 			timestamps[slotIndex] = ts
+			slotIndex++
 		}
+	}
+	for slotIndex < len(timestamps) {
+		timestamps[slotIndex] = clampInt64(endEpoch-int64(len(timestamps)-slotIndex-1), startEpoch, endEpoch)
+		slotIndex++
 	}
 	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
 	return timestamps
+}
+
+func singlePlannedEpoch(startEpoch, endEpoch int64, days []int64, rng *rand.Rand, intensity rewriteDateIntensity, tzOffset string) int64 {
+	if startEpoch >= endEpoch {
+		return startEpoch
+	}
+	candidateDays := days
+	if len(days) > 2 {
+		candidateDays = days[1 : len(days)-1]
+	}
+	day := weightedPlanningDay(candidateDays, nil, intensity, rng, tzOffset)
+	times := plannedEpochsForDay(day, 1, startEpoch, endEpoch, rng, intensity, tzOffset)
+	if len(times) == 0 {
+		return startEpoch + (endEpoch-startEpoch)/2
+	}
+	return times[0]
+}
+
+func plannedActiveDayCount(commitCount, dayCount int, intensity rewriteDateIntensity) int {
+	if commitCount <= 0 || dayCount <= 0 {
+		return 0
+	}
+	if dayCount == 1 {
+		return 1
+	}
+	densityTarget := int(math.Ceil(float64(dayCount) * intensity.activeRatio))
+	commitSpreadTarget := int(math.Ceil(float64(commitCount) * intensity.commitSpread))
+	minByBurst := int(math.Ceil(float64(commitCount) / float64(maxInt(1, intensity.maxBurst))))
+	active := minInt(commitCount, minInt(dayCount, minInt(densityTarget, commitSpreadTarget)))
+	if active < minByBurst {
+		active = minInt(dayCount, minByBurst)
+	}
+	if active < 1 {
+		active = 1
+	}
+	return active
+}
+
+func selectPlanningDays(days []int64, activeCount int, restBlocks []rewriteDateRestBlock, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) []int64 {
+	if activeCount <= 0 || len(days) == 0 {
+		return nil
+	}
+	if activeCount >= len(days) {
+		return append([]int64(nil), days...)
+	}
+	restDays := restDaySet(restBlocks)
+	selected := map[int64]bool{}
+	step := float64(len(days)) / float64(activeCount)
+	for i := 0; i < activeCount; i++ {
+		start := int(math.Floor(float64(i) * step))
+		end := int(math.Floor(float64(i+1) * step))
+		if end <= start {
+			end = start + 1
+		}
+		if end > len(days) {
+			end = len(days)
+		}
+		window := days[start:end]
+		day := weightedPlanningDay(window, restDays, intensity, rng, tzOffset)
+		if selected[day] {
+			day = nearestUnselectedPlanningDay(days, start, end, selected, restDays, intensity, rng, tzOffset)
+		}
+		selected[day] = true
+	}
+	if len(selected) < activeCount {
+		for len(selected) < activeCount {
+			day := weightedPlanningDay(days, restDays, intensity, rng, tzOffset)
+			if selected[day] {
+				day = nearestUnselectedPlanningDay(days, 0, len(days), selected, restDays, intensity, rng, tzOffset)
+			}
+			selected[day] = true
+		}
+	}
+	active := make([]int64, 0, len(selected))
+	for day := range selected {
+		active = append(active, day)
+	}
+	sort.Slice(active, func(i, j int) bool { return active[i] < active[j] })
+	return active
+}
+
+func weightedPlanningDay(days []int64, restDays map[int64]bool, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) int64 {
+	if len(days) == 0 {
+		return 0
+	}
+	total := 0.0
+	weights := make([]float64, len(days))
+	for i, day := range days {
+		weight := planningDayWeight(day, restDays, intensity, rng, tzOffset)
+		weights[i] = weight
+		total += weight
+	}
+	if total <= 0 {
+		return days[rng.Intn(len(days))]
+	}
+	pick := rng.Float64() * total
+	for i, weight := range weights {
+		pick -= weight
+		if pick <= 0 {
+			return days[i]
+		}
+	}
+	return days[len(days)-1]
+}
+
+func planningDayWeight(day int64, restDays map[int64]bool, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) float64 {
+	weight := 1.0
+	if isWeekendInOffset(day, tzOffset) {
+		weight = intensity.weekendWeight
+	}
+	if restDays != nil && restDays[day] {
+		weight *= 0.015
+	}
+	return weight * (0.75 + rng.Float64()*0.5)
+}
+
+func nearestUnselectedPlanningDay(days []int64, start, end int, selected map[int64]bool, restDays map[int64]bool, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) int64 {
+	candidates := []int64{}
+	for _, day := range days[start:end] {
+		if !selected[day] && (restDays == nil || !restDays[day]) {
+			candidates = append(candidates, day)
+		}
+	}
+	if len(candidates) == 0 {
+		for _, day := range days {
+			if !selected[day] && (restDays == nil || !restDays[day]) {
+				candidates = append(candidates, day)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		for _, day := range days {
+			if !selected[day] {
+				candidates = append(candidates, day)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return days[rng.Intn(len(days))]
+	}
+	return weightedPlanningDay(candidates, nil, intensity, rng, tzOffset)
+}
+
+func allocateCommitsToPlanningDays(commitCount int, activeDays []int64, intensity rewriteDateIntensity, rng *rand.Rand) []int {
+	allocations := make([]int, len(activeDays))
+	if commitCount <= 0 || len(activeDays) == 0 {
+		return allocations
+	}
+	for i := range allocations {
+		if i >= commitCount {
+			return allocations
+		}
+		allocations[i] = 1
+	}
+	remaining := commitCount - len(activeDays)
+	maxBurst := maxInt(1, intensity.maxBurst)
+	for remaining > 0 {
+		candidates := []int{}
+		for i, count := range allocations {
+			if count < maxBurst {
+				candidates = append(candidates, i)
+			}
+		}
+		if len(candidates) == 0 {
+			for i := range allocations {
+				candidates = append(candidates, i)
+			}
+		}
+		idx := candidates[rng.Intn(len(candidates))]
+		extra := 1
+		if remaining > 1 && rng.Float64() < 0.35 {
+			extra += rng.Intn(minInt(remaining, maxInt(1, maxBurst/2)))
+		}
+		if allocations[idx]+extra > maxBurst && len(candidates) < len(allocations) {
+			extra = maxBurst - allocations[idx]
+		}
+		if extra < 1 {
+			extra = 1
+		}
+		if extra > remaining {
+			extra = remaining
+		}
+		allocations[idx] += extra
+		remaining -= extra
+	}
+	return allocations
+}
+
+func plannedEpochsForDay(day int64, count int, startEpoch, endEpoch int64, rng *rand.Rand, intensity rewriteDateIntensity, tzOffset string) []int64 {
+	if count <= 0 {
+		return nil
+	}
+	dayStart := maxInt64(day, startEpoch)
+	dayEnd := minInt64(day+86399, endEpoch)
+	if dayEnd < dayStart {
+		dayStart = maxInt64(minInt64(day, endEpoch), startEpoch)
+		dayEnd = dayStart
+	}
+	weekend := isWeekendInOffset(day, tzOffset)
+	startHour := int64(8 + rng.Intn(3))
+	endHour := int64(17 + rng.Intn(2))
+	if weekend {
+		startHour = int64(10 + rng.Intn(3))
+		endHour = int64(14 + rng.Intn(4))
+	}
+	if rng.Float64() < intensity.eveningChance {
+		endHour = int64(20 + rng.Intn(4))
+	}
+	workStart := day + startHour*3600 + int64(rng.Intn(45))*60
+	workEnd := day + endHour*3600 + int64(rng.Intn(45))*60
+	if workEnd < workStart {
+		workEnd = workStart
+	}
+	if workStart < dayStart {
+		workStart = dayStart
+	}
+	if workEnd > dayEnd {
+		workEnd = dayEnd
+	}
+	if workEnd < workStart {
+		workStart = dayStart
+		workEnd = dayEnd
+	}
+	timestamps := make([]int64, count)
+	if count == 1 {
+		timestamps[0] = clampInt64(workStart+(workEnd-workStart)/2+int64(rng.Intn(3600))-1800, dayStart, dayEnd)
+		return timestamps
+	}
+	spacing := int64(1)
+	available := workEnd - workStart
+	if available > int64(count-1) {
+		spacing = available / int64(count-1)
+	}
+	for i := 0; i < count; i++ {
+		jitter := int64(0)
+		if spacing > 180 {
+			jitter = int64(rng.Intn(int(minInt64(spacing/3, 1200))))
+		}
+		timestamps[i] = clampInt64(workStart+int64(i)*spacing+jitter, dayStart, dayEnd)
+	}
+	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
+	return timestamps
+}
+
+func syntheticRestBlocks(days []int64, selectedCount int, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) []rewriteDateRestBlock {
+	policy := rewriteDateRestPolicyForRange(len(days), selectedCount)
+	if len(days) == 0 || (!policy.sparseInactiveDays && policy.softRestBlocks == 0 && !policy.seasonalYearEnd && policy.generatedRestBlocks == 0 && !policy.summerVacations) {
+		return nil
+	}
+	blocks := []rewriteDateRestBlock{}
+	for i := 0; i < policy.softRestBlocks; i++ {
+		blocks = append(blocks, randomRestBlock(days, restDuration("soft", intensity, rng), rng))
+	}
+	if policy.seasonalYearEnd {
+		blocks = append(blocks, yearEndRestBlocks(days, intensity, tzOffset)...)
+	}
+	for i := 0; i < policy.generatedRestBlocks; i++ {
+		blocks = append(blocks, randomRestBlock(days, restDuration("generated", intensity, rng), rng))
+	}
+	if policy.summerVacations {
+		blocks = append(blocks, summerVacationRestBlocks(days, intensity, rng, tzOffset)...)
+	}
+	return clipAndSortRestBlocks(days, blocks)
+}
+
+func rewriteDateRestPolicyForRange(dayCount, selectedCount int) rewriteDateRestPolicy {
+	policy := rewriteDateRestPolicy{}
+	if dayCount < 14 {
+		return policy
+	}
+	policy.sparseInactiveDays = true
+	if dayCount >= 60 && dayCount < 180 && selectedCount >= 10 {
+		policy.softRestBlocks = 1
+	}
+	if dayCount >= 180 && selectedCount >= 20 {
+		policy.seasonalYearEnd = true
+		policy.generatedRestBlocks = 1
+	}
+	if dayCount >= 365 && selectedCount >= 30 {
+		policy.summerVacations = true
+	}
+	return policy
+}
+
+func randomRestBlock(days []int64, duration int, rng *rand.Rand) rewriteDateRestBlock {
+	if len(days) == 0 {
+		return rewriteDateRestBlock{}
+	}
+	if duration < 1 {
+		duration = 1
+	}
+	if duration > len(days) {
+		duration = len(days)
+	}
+	startIndex := 0
+	if len(days) > duration {
+		startIndex = rng.Intn(len(days) - duration + 1)
+	}
+	return rewriteDateRestBlock{startDay: days[startIndex], endDay: days[startIndex+duration-1]}
+}
+
+func restDuration(kind string, intensity rewriteDateIntensity, rng *rand.Rand) int {
+	switch intensity.name {
+	case "low":
+		if kind == "soft" {
+			return 5 + rng.Intn(4)
+		}
+		return 7 + rng.Intn(5)
+	case "high":
+		if kind == "soft" {
+			return 2 + rng.Intn(2)
+		}
+		return 3 + rng.Intn(3)
+	default:
+		if kind == "soft" {
+			return 3 + rng.Intn(3)
+		}
+		return 5 + rng.Intn(4)
+	}
+}
+
+func yearEndRestBlocks(days []int64, intensity rewriteDateIntensity, tzOffset string) []rewriteDateRestBlock {
+	if len(days) == 0 {
+		return nil
+	}
+	loc := locationForTimezoneOffset(tzOffset)
+	startYear := time.Unix(days[0], 0).In(loc).Year()
+	endYear := time.Unix(days[len(days)-1], 0).In(loc).Year()
+	blocks := []rewriteDateRestBlock{}
+	for year := startYear - 1; year <= endYear; year++ {
+		startDay := time.Date(year, time.December, 24, 0, 0, 0, 0, loc).Unix()
+		endDay := time.Date(year+1, time.January, 2, 0, 0, 0, 0, loc).Unix()
+		switch intensity.name {
+		case "low":
+			startDay = time.Date(year, time.December, 22, 0, 0, 0, 0, loc).Unix()
+			endDay = time.Date(year+1, time.January, 4, 0, 0, 0, 0, loc).Unix()
+		case "high":
+			startDay = time.Date(year, time.December, 26, 0, 0, 0, 0, loc).Unix()
+			endDay = time.Date(year+1, time.January, 1, 0, 0, 0, 0, loc).Unix()
+		}
+		blocks = append(blocks, rewriteDateRestBlock{startDay: startDay, endDay: endDay})
+	}
+	return blocks
+}
+
+func summerVacationRestBlocks(days []int64, intensity rewriteDateIntensity, rng *rand.Rand, tzOffset string) []rewriteDateRestBlock {
+	if len(days) == 0 {
+		return nil
+	}
+	loc := locationForTimezoneOffset(tzOffset)
+	startYear := time.Unix(days[0], 0).In(loc).Year()
+	endYear := time.Unix(days[len(days)-1], 0).In(loc).Year()
+	blocks := []rewriteDateRestBlock{}
+	duration := 8
+	switch intensity.name {
+	case "low":
+		duration = 12
+	case "high":
+		duration = 5
+	}
+	for year := startYear; year <= endYear; year++ {
+		june := time.Date(year, time.June, 1, 0, 0, 0, 0, loc).Unix()
+		augustEnd := time.Date(year, time.August, 31, 0, 0, 0, 0, loc).Unix()
+		if augustEnd < days[0] || june > days[len(days)-1] {
+			continue
+		}
+		windowDays := daysBetweenInOffset(june, augustEnd, tzOffset) + 1
+		yearDuration := duration
+		if windowDays < yearDuration {
+			yearDuration = windowDays
+		}
+		startOffset := 0
+		if windowDays > yearDuration {
+			startOffset = rng.Intn(windowDays - yearDuration + 1)
+		}
+		startDay := time.Unix(june, 0).In(loc).AddDate(0, 0, startOffset).Unix()
+		endDay := time.Unix(startDay, 0).In(loc).AddDate(0, 0, yearDuration-1).Unix()
+		blocks = append(blocks, rewriteDateRestBlock{startDay: startDay, endDay: endDay})
+	}
+	return blocks
+}
+
+func clipAndSortRestBlocks(days []int64, blocks []rewriteDateRestBlock) []rewriteDateRestBlock {
+	if len(days) == 0 {
+		return nil
+	}
+	first := days[0]
+	last := days[len(days)-1]
+	clipped := []rewriteDateRestBlock{}
+	for _, block := range blocks {
+		if block.endDay < first || block.startDay > last {
+			continue
+		}
+		block.startDay = maxInt64(block.startDay, first)
+		block.endDay = minInt64(block.endDay, last)
+		if block.startDay <= block.endDay {
+			clipped = append(clipped, block)
+		}
+	}
+	sort.Slice(clipped, func(i, j int) bool {
+		if clipped[i].startDay == clipped[j].startDay {
+			return clipped[i].endDay < clipped[j].endDay
+		}
+		return clipped[i].startDay < clipped[j].startDay
+	})
+	return clipped
+}
+
+func restDaySet(blocks []rewriteDateRestBlock) map[int64]bool {
+	days := map[int64]bool{}
+	for _, block := range blocks {
+		for day := block.startDay; day <= block.endDay; day += 86400 {
+			days[day] = true
+		}
+	}
+	return days
 }
 
 func daysInRange(startEpoch, endEpoch int64) []int64 {
@@ -1530,18 +2192,50 @@ func daysInRange(startEpoch, endEpoch int64) []int64 {
 	return days
 }
 
-func activePlanningDays(days []int64, intensity rewriteDateIntensity, rng *rand.Rand) []int64 {
-	active := []int64{}
-	for _, day := range days {
-		if len(days) == 1 || rng.Float64() <= intensity.activeRatio {
-			active = append(active, day)
-		}
+func daysInRangeInOffset(startEpoch, endEpoch int64, tzOffset string) []int64 {
+	loc := locationForTimezoneOffset(tzOffset)
+	start := time.Unix(startEpoch, 0).In(loc)
+	end := time.Unix(endEpoch, 0).In(loc)
+	day := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+	last := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, loc)
+	days := []int64{}
+	for !day.After(last) {
+		days = append(days, day.Unix())
+		day = day.AddDate(0, 0, 1)
 	}
-	if len(active) == 0 {
-		active = append(active, days[rng.Intn(len(days))])
+	if len(days) == 0 {
+		days = append(days, floorDayInOffset(startEpoch, tzOffset))
 	}
-	sort.Slice(active, func(i, j int) bool { return active[i] < active[j] })
-	return active
+	return days
+}
+
+func daysBetweenInOffset(startEpoch, endEpoch int64, tzOffset string) int {
+	days := daysInRangeInOffset(startEpoch, endEpoch, tzOffset)
+	if len(days) == 0 {
+		return 0
+	}
+	return len(days) - 1
+}
+
+func floorDayInOffset(epoch int64, tzOffset string) int64 {
+	loc := locationForTimezoneOffset(tzOffset)
+	t := time.Unix(epoch, 0).In(loc)
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc).Unix()
+}
+
+func isWeekendInOffset(epoch int64, tzOffset string) bool {
+	weekday := time.Unix(epoch, 0).In(locationForTimezoneOffset(tzOffset)).Weekday()
+	return weekday == time.Saturday || weekday == time.Sunday
+}
+
+func clampInt64(value, minValue, maxValue int64) int64 {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
 
 func seedInt64(seed string) int64 {
@@ -1573,9 +2267,9 @@ func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOption
 	renderKeyValuesTo(a.stdout, []keyValueRow{
 		{key: "Repositories", value: fmt.Sprintf("%d", len(plan.candidates))},
 		{key: "Selected commits", value: fmt.Sprintf("%d", plan.totalSelected)},
-		{key: "Target range", value: formatEpochLocal(plan.targetStart) + " -> " + formatEpochLocal(plan.targetEnd)},
+		{key: "Target range", value: formatEpoch(plan.targetStart, plan.tzOffset) + " -> " + formatEpoch(plan.targetEnd, plan.tzOffset)},
 		{key: "Filters", value: rewriteDateFilterDescription(opts)},
-		{key: "Intensity", value: fmt.Sprintf("%s (active days %.0f%%, max burst %d)", plan.intensity.name, plan.intensity.activeRatio*100, plan.intensity.maxBurst)},
+		{key: "Intensity", value: fmt.Sprintf("%s (%s)", plan.intensity.name, plan.intensity.description)},
 		{key: "Seed", value: fmt.Sprintf("%s (%s)", plan.seed, plan.seedSource)},
 	})
 	fmt.Fprintln(a.stdout)
@@ -1668,6 +2362,9 @@ func rewriteDateFilterDescription(opts rewriteDatesOptions) string {
 
 func rewriteDateCandidateWarnings(candidate dateCandidate) []string {
 	warnings := []string{}
+	if candidate.topologyCompressed {
+		warnings = append(warnings, "topology constraints compressed some planned timestamps")
+	}
 	if candidate.hasTags {
 		warnings = append(warnings, "tags may still point at old history")
 	}
@@ -2146,10 +2843,6 @@ func validDate(s string) bool {
 	return err == nil
 }
 
-func parseLocalDate(s string) int64 {
-	return parseDateStart(s)
-}
-
 func parseDateStart(s string) int64 {
 	t, _ := time.ParseInLocation("2006-01-02", s, time.Local)
 	return t.Unix()
@@ -2159,76 +2852,26 @@ func parseDateEnd(s string) int64 {
 	return parseDateStart(s) + 86399
 }
 
-type commitTime struct {
-	hash  string
-	epoch int64
+func parseDateStartInOffset(s string, offset string) int64 {
+	t, _ := time.ParseInLocation("2006-01-02", s, locationForTimezoneOffset(offset))
+	return t.Unix()
 }
 
-func firstCommitEpoch(a *app, dir string, flags ...string) (int64, error) {
-	args := append([]string{"log", "--all"}, flags...)
-	args = append(args, "--format=%at")
-	if !stringSliceContains(flags, "--reverse") {
-		args = append(args, "-1")
-	}
-	out, err := a.git.Stdout(a.ctx, dir, nil, args...)
-	if err != nil {
-		return 0, err
-	}
-	value := strings.TrimSpace(firstLine(out))
-	if value == "" {
-		return 0, fmt.Errorf("empty timestamp")
-	}
-	epoch, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("malformed timestamp %q", value)
-	}
-	return epoch, nil
+func parseDateEndInOffset(s string, offset string) int64 {
+	return parseDateStartInOffset(s, offset) + 86399
 }
 
-func stringSliceContains(values []string, needle string) bool {
-	for _, value := range values {
-		if value == needle {
-			return true
-		}
+func locationForTimezoneOffset(offset string) *time.Location {
+	if !timezoneOffsetRe.MatchString(offset) {
+		return time.Local
 	}
-	return false
-}
-
-func readCommitTimes(a *app, dir string) ([]commitTime, error) {
-	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--all", "--reverse", "--format=%H %at")
-	if err != nil {
-		return nil, err
+	sign := 1
+	if strings.HasPrefix(offset, "-") {
+		sign = -1
 	}
-	var commits []commitTime
-	for _, line := range splitLines(out) {
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
-			return nil, fmt.Errorf("malformed commit timestamp line %q", line)
-		}
-		epoch, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("malformed timestamp %q for %s", fields[1], fields[0])
-		}
-		commits = append(commits, commitTime{hash: fields[0], epoch: epoch})
-	}
-	return commits, nil
-}
-
-func dominantTimezoneOffset(a *app, dir string) (string, error) {
-	out, err := a.git.Stdout(a.ctx, dir, nil, "log", "--all", "--format=%ai")
-	if err != nil {
-		return "", err
-	}
-	counts := map[string]int{}
-	for _, line := range splitLines(out) {
-		if len(line) >= 5 {
-			offset := line[len(line)-5:]
-			if timezoneOffsetRe.MatchString(offset) {
-				counts[offset]++
-			}
-		}
-	}
-	return dominantTimezoneOffsetFromCounts(counts)
+	hours, _ := strconv.Atoi(offset[1:3])
+	minutes, _ := strconv.Atoi(offset[3:5])
+	return time.FixedZone(offset, sign*(hours*3600+minutes*60))
 }
 
 func dominantTimezoneOffsetFromCommits(commits []rewriteDateCommit) string {
@@ -2245,7 +2888,13 @@ func dominantTimezoneOffsetFromCommits(commits []rewriteDateCommit) string {
 func dominantTimezoneOffsetFromCounts(counts map[string]int) (string, error) {
 	best := ""
 	bestCount := 0
-	for offset, count := range counts {
+	offsets := make([]string, 0, len(counts))
+	for offset := range counts {
+		offsets = append(offsets, offset)
+	}
+	sort.Strings(offsets)
+	for _, offset := range offsets {
+		count := counts[offset]
 		if count > bestCount {
 			best = offset
 			bestCount = count
@@ -2257,117 +2906,13 @@ func dominantTimezoneOffsetFromCounts(counts map[string]int) (string, error) {
 	return time.Now().Format("-0700"), nil
 }
 
-func distributeCommitTimes(commits []commitTime, startEpoch, endEpoch int64) map[string]int64 {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	n := len(commits)
-	if n == 0 {
-		return map[string]int64{}
-	}
-	totalRange := float64(endEpoch - startEpoch)
-	if totalRange <= 0 {
-		totalRange = 86400
-	}
-	slotWidth := totalRange / float64(n)
-	timestamps := make([]int64, n)
-	for i := range commits {
-		slotStart := float64(startEpoch) + float64(i)*slotWidth
-		slotCenter := slotStart + slotWidth/2
-		jitter := (rng.Float64()*0.8 - 0.4) * slotWidth
-		raw := slotCenter + jitter
-		dayStart := int64(raw/86400) * 86400
-		hour := sampleBimodalHour(rng)
-		ts := dayStart + int64(hour)*3600 + int64(rng.Intn(60))*60 + int64(rng.Intn(60))
-		if isWeekend(ts) && rng.Float64() < 0.65 {
-			wd := weekdayFromEpoch(ts)
-			if wd == 2 {
-				ts = dayStart - 86400 + int64(18+rng.Intn(5))*3600 + int64(rng.Intn(60))*60 + int64(rng.Intn(60))
-			} else {
-				ts = dayStart + 86400 + int64(7+rng.Intn(3))*3600 + int64(rng.Intn(60))*60 + int64(rng.Intn(60))
-			}
-		}
-		timestamps[i] = ts
-	}
-	dayGroups := map[int64][]int{}
-	for i, ts := range timestamps {
-		dayGroups[ts/86400] = append(dayGroups[ts/86400], i)
-	}
-	for day, indices := range dayGroups {
-		if len(indices) < 2 {
-			continue
-		}
-		rng.Shuffle(len(indices), func(i, j int) { indices[i], indices[j] = indices[j], indices[i] })
-		spacing := int64((25 + rng.Intn(66)) * 60)
-		latestStart := 22.0 - float64(len(indices)-1)*float64(spacing)/3600.0
-		startHour := 7.0
-		if latestStart > 7.0 {
-			startHour = 7.0 + rng.Float64()*(latestStart-7.0)
-		}
-		current := int64(startHour * 3600)
-		for _, idx := range indices {
-			timestamps[idx] = day*86400 + current + int64(rng.Intn(60))
-			current += spacing
-		}
-	}
-	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
-	mapping := map[string]int64{}
-	for i, c := range commits {
-		mapping[c.hash] = timestamps[i]
-	}
-	return mapping
-}
-
-func sampleBimodalHour(rng *rand.Rand) int {
-	peak := 10.0
-	if rng.Float64() >= 0.5 {
-		peak = 15.0
-	}
-	u1 := rng.Float64()
-	if u1 == 0 {
-		u1 = 1e-10
-	}
-	u2 := rng.Float64()
-	z := math.Sqrt(-2.0*math.Log(u1)) * math.Cos(2.0*math.Pi*u2)
-	hour := peak + 2.0*z
-	if hour < 7 {
-		hour = 7
-	}
-	if hour > 22 {
-		hour = 22
-	}
-	return int(hour)
-}
-
-func weekdayFromEpoch(ts int64) int64 {
-	return (ts/86400 + 4) % 7
-}
-
-func isWeekend(ts int64) bool {
-	wd := weekdayFromEpoch(ts)
-	return wd == 0 || wd == 6
-}
-
 func formatEpoch(epoch int64, offset string) string {
-	sign := 1
-	if strings.HasPrefix(offset, "-") {
-		sign = -1
-	}
-	hours, _ := strconv.Atoi(offset[1:3])
-	minutes, _ := strconv.Atoi(offset[3:5])
-	loc := time.FixedZone(offset, sign*(hours*3600+minutes*60))
+	loc := locationForTimezoneOffset(offset)
 	return time.Unix(epoch, 0).In(loc).Format("2006-01-02 15:04:05 ") + offset
 }
 
 func formatEpochLocal(epoch int64) string {
 	return time.Unix(epoch, 0).In(time.Local).Format("2006-01-02 15:04:05 -0700")
-}
-
-func writeDateCallback(mapping map[string]int64, tzOffset string) (string, error) {
-	values := map[string]dateCallbackDates{}
-	for hash, epoch := range mapping {
-		date := fmt.Sprintf("%d %s", epoch, tzOffset)
-		values[hash] = dateCallbackDates{Author: date, Committer: date}
-	}
-	return writeDateCallbackDates(values)
 }
 
 func writeDateCallbackDates(mapping map[string]dateCallbackDates) (string, error) {
@@ -2395,6 +2940,13 @@ func writeDateCallbackDates(mapping map[string]dateCallbackDates) (string, error
 
 func maxInt(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b
