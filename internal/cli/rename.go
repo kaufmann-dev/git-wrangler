@@ -140,7 +140,10 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			fmt.Fprintln(a.stdout)
 		}
 		renderRepoHeader(a, oldName)
-		newName, _ := promptRead(a, "New name (leave blank to skip): ")
+		newName, err := promptRead(a, "New name (leave blank to skip): ")
+		if errors.Is(err, errPromptCancelled) {
+			return 1
+		}
 		newDesc := ""
 		if editDescription {
 			oldDesc, _ := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "description", "-q", ".description")
@@ -150,7 +153,10 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			} else {
 				fmt.Fprintf(a.stdout, "Current description: %s\n", oldDesc)
 			}
-			newDesc, _ = promptRead(a, "New description (leave blank to skip): ")
+			newDesc, err = promptRead(a, "New description (leave blank to skip): ")
+			if errors.Is(err, errPromptCancelled) {
+				return 1
+			}
 		}
 		if editDescription && newDesc != "" {
 			if out, err := a.gh.CaptureEnv(a.ctx, r.dir, ghEnv, "repo", "edit", "--description", newDesc); err == nil {

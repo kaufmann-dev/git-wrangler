@@ -1,14 +1,15 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/auth"
@@ -26,7 +27,6 @@ type app struct {
 	stdout       io.Writer
 	stderr       io.Writer
 	stdin        io.Reader
-	input        *bufio.Reader
 	prompts      *promptSession
 	ui           ui.Theme
 	runner       run.Runner
@@ -36,6 +36,7 @@ type app struct {
 	auth         auth.GitHubAuthenticator
 	json         bool
 	promptFailed bool
+	cancelOnce   sync.Once
 }
 
 type repo struct {
@@ -87,12 +88,12 @@ func newApp(ctx context.Context, runner run.Runner, stdin io.Reader, stdout, std
 	if runner == nil {
 		runner = run.New()
 	}
+	appCtx, cancel := context.WithCancel(ctx)
 	a := &app{
-		ctx:    ctx,
+		ctx:    appCtx,
 		stdout: stdout,
 		stderr: stderr,
 		stdin:  stdin,
-		input:  bufio.NewReader(stdin),
 		ui:     ui.New(stdout),
 		runner: runner,
 		git:    git.New(runner),
@@ -100,8 +101,7 @@ func newApp(ctx context.Context, runner run.Runner, stdin io.Reader, stdout, std
 		creds:  credentials.NewKeyringStore(),
 		auth:   auth.NewGitHubDeviceAuthenticator(),
 	}
-	a.prompts = newPromptSession(stdin, stderr)
-	a.input = a.prompts.input
+	a.prompts = newPromptSession(appCtx, cancel, stdin, stderr)
 	return a
 }
 
@@ -113,7 +113,13 @@ func execute(ctx context.Context, runner run.Runner, args []string, stdin io.Rea
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	if err := root.Execute(); err != nil {
+		if errors.Is(err, errPromptCancelled) || a.ctx.Err() != nil {
+			renderCancellation(a)
+		}
 		if _, ok := err.(exitError); !ok {
+			if errors.Is(err, errPromptCancelled) {
+				return err
+			}
 			fmt.Fprintf(stderr, "Error: %s\n", err)
 		}
 		return err
@@ -325,13 +331,16 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 			a.json = jsonFlagValue(cmd)
 			a.promptFailed = false
 			if err := runGuidedSetup(a, cmd); err != nil {
+				if errors.Is(err, errPromptCancelled) {
+					return commandExitError(a, 1)
+				}
 				return err
 			}
 			if code := runFn(a, cmd, args); code != 0 {
-				return exitError{code: code}
+				return commandExitError(a, code)
 			}
 			if a.promptFailed {
-				return exitError{code: 1}
+				return commandExitError(a, 1)
 			}
 			return nil
 		},
@@ -356,6 +365,13 @@ func command(a *app, use, short, group string, runFn func(*app, *cobra.Command, 
 		cmd.Flags().Bool("guided", false, "Interactively configure command options.")
 	}
 	return cmd
+}
+
+func commandExitError(a *app, code int) error {
+	if a != nil && a.ctx.Err() != nil {
+		renderCancellation(a)
+	}
+	return exitError{code: code}
 }
 
 func versionCommand(a *app) *cobra.Command {

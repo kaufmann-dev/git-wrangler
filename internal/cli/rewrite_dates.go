@@ -418,7 +418,7 @@ func runRewriteDatesRewrite(a *app, repos []repo, filterCmd []string, opts rewri
 	)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote. Tags may still point at old history, and commit or tag signatures may become invalid.", len(plan.candidates)))
 	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates)))
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {
@@ -553,7 +553,7 @@ func runRewriteDatesRollback(a *app, repos []repo, opts rewriteDatesOptions) int
 	)
 	renderWarning(a, fmt.Sprintf("This rollback rewrites Git history in %d repositories. Exact rollback restores original commit objects and preserves signatures for known history; replayed new commits may get new hashes or lose signatures. A force push will be required to update any remote.", len(candidates)))
 	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rollback for %d repositories?", len(candidates)))
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {

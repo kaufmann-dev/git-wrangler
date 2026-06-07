@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/config"
@@ -16,7 +18,7 @@ func initCommand(a *app) *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if code := runInit(a); code != 0 {
-				return exitError{code: code}
+				return commandExitError(a, code)
 			}
 			return nil
 		},
@@ -39,6 +41,9 @@ func runInit(a *app) int {
 
 	host, err := promptDefault(a, "GitHub host", cfg.GitHub.Host)
 	if err != nil {
+		if errors.Is(err, errPromptCancelled) {
+			return 1
+		}
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
@@ -48,14 +53,17 @@ func runInit(a *app) int {
 	}
 	if keyringAvailable {
 		confirmation := confirm(a, "Authenticate GitHub now?")
-		if confirmation == confirmationUnavailable {
+		if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 			return 1
 		}
 		if confirmation == confirmationAccepted {
 			wait := newAuthorizationWait(a)
-			result, err := a.auth.AuthenticateGitHub(a.ctx, cfg.GitHub.Host, a.input, a.stderr, wait.update)
+			result, err := a.auth.AuthenticateGitHub(a.ctx, cfg.GitHub.Host, a.prompts.read, a.stderr, wait.update)
 			wait.done()
 			if err != nil {
+				if errors.Is(err, errPromptCancelled) || errors.Is(err, context.Canceled) {
+					return 1
+				}
 				a.plainErrorf("%s", err.Error())
 				return 1
 			}
@@ -75,29 +83,41 @@ func runInit(a *app) int {
 	fmt.Fprintln(a.stdout, "AI")
 	provider, err := promptDefault(a, "AI provider", cfg.AI.Provider)
 	if err != nil {
+		if errors.Is(err, errPromptCancelled) {
+			return 1
+		}
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
 	cfg.AI.Provider = config.NormalizeName(provider)
 	baseURL, err := promptDefault(a, "AI base URL", cfg.AI.BaseURL)
 	if err != nil {
+		if errors.Is(err, errPromptCancelled) {
+			return 1
+		}
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
 	cfg.AI.BaseURL = baseURL
 	model, err := promptDefault(a, "AI model", cfg.AI.Model)
 	if err != nil {
+		if errors.Is(err, errPromptCancelled) {
+			return 1
+		}
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
 	cfg.AI.Model = model
 	if keyringAvailable {
 		confirmation := confirm(a, "Store an AI API key now?")
-		if confirmation == confirmationUnavailable {
+		if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 			return 1
 		}
 		if confirmation == confirmationAccepted {
 			token, err := promptSecret(a, "AI API key: ")
+			if errors.Is(err, errPromptCancelled) {
+				return 1
+			}
 			if err != nil || token == "" {
 				a.plainErrorf("secret input is required.")
 				return 1

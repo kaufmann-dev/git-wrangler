@@ -120,6 +120,8 @@ git-wrangler rewrite-dates --guided
 Guided setup requires both stdin and stderr to be terminals, prints the selected
 configuration to stderr, and cannot be combined with `--json`. Missing required
 values are prompted for in a terminal and fail in noninteractive runs.
+Pressing `Ctrl+C` or sending EOF with `Ctrl+D` cancels any active prompt
+immediately, stops the command before further work, and exits nonzero.
 
 On browserless machines, `init` prints the GitHub device code and verification
 URL so authorization can be completed in a browser on another device. On

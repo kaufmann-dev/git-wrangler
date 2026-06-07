@@ -78,6 +78,8 @@ Destructive warnings use one style through `renderWarning`. They go to stderr an
 
 Setup prompts, guided prompts, secret prompts, and final confirmations use the shared prompt session. Prompting is available only when both stdin and stderr are TTYs. Tests inject prompt eligibility and streams through that session.
 
+`Ctrl+C` and interactive EOF/`Ctrl+D` cancel the active prompt immediately without waiting for Enter. Cancellation stops later prompts and command work, restores terminal state after secret input, prints `SKIP stopped: operation cancelled` exactly once, and exits nonzero. It is distinct from an empty required value, declined confirmation, invalid guided answer, or missing secret.
+
 Missing required values prompt by default when prompting is available and fail otherwise. `--yes` and `-y` skip confirmations only; they must not fill required values such as names, branches, config values, API keys, or secrets.
 
 Guided commands use command-local `--guided` to prompt for every command-specific behavior option, including targeting and fetch behavior. They never prompt for or summarize meta flags such as `--help`, `--version`, `--guided`, `--yes`, or `--json`. Guided answers are applied through Cobra flag setters, and the selected configuration is summarized on stderr before normal validation and execution. `--guided` requires prompting availability and cannot be combined with `--json`.

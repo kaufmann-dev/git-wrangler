@@ -22,6 +22,12 @@ including when `--yes` is present. A command that reaches a final confirmation
 without prompting availability fails nonzero and tells the user to pass
 `--yes`. `--yes` and `-y` skip confirmations only.
 
+At any active prompt, `Ctrl+C` or interactive EOF/`Ctrl+D` immediately cancels
+the command without requiring Enter. Cancellation stops later prompts and work,
+prints `SKIP stopped: operation cancelled` exactly once, and exits nonzero. It
+is not treated as a declined confirmation or an empty, invalid, or missing
+prompt value.
+
 Command-local `--guided` is available on `activity`, `clone`, `pull`, `fetch`,
 `push`, `commit`, `fix-gitignore`, `license`, `rename-branch`, `reset`, `review`,
 `untrack`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`,
@@ -213,7 +219,7 @@ The planner seed comes from `--seed`, then existing per-repository rewrite state
 
 ### `init`
 
-`init` owns GitHub device authentication. It prints the one-time code and verification URL before an explicit Enter prompt, attempts to open the URL with the platform browser launcher, and continues waiting when no browser is available. The server-provided device-code expiration is the authentication timeout, and command cancellation stops the wait.
+`init` owns GitHub device authentication. It prints the one-time code and verification URL before an explicit Enter prompt through the shared prompt session, attempts to open the URL with the platform browser launcher, and continues waiting when no browser is available. The server-provided device-code expiration is the authentication timeout, and command cancellation stops the prompt or wait immediately.
 
 GitHub credentials resolve only from `GIT_WRANGLER_GITHUB_TOKEN` or Git Wrangler's keyring account. `GH_TOKEN` is used only as an outbound transport variable when Git Wrangler invokes `gh`; inbound `GH_TOKEN` is ignored.
 

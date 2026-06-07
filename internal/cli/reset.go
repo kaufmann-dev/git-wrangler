@@ -123,7 +123,7 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 	fmt.Fprintln(a.stdout)
 	renderWarning(a, fmt.Sprintf("This will hard reset %d repositories and discard local commits or working tree changes.", len(applies)))
 	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Proceed with reset for %d repositories?", len(applies)))
-	if confirmation == confirmationUnavailable {
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
 	if confirmation == confirmationDeclined {
