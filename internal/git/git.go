@@ -2,14 +2,28 @@ package git
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
+const RemoteTimeout = 30 * time.Second
+
 type Client struct {
 	runner run.Runner
+}
+
+type RemoteTimeoutError struct {
+	Operation string
+	Timeout   time.Duration
+}
+
+func (e RemoteTimeoutError) Error() string {
+	return fmt.Sprintf("git %s timed out after %s", e.Operation, e.Timeout)
 }
 
 func New(runner run.Runner) Client {
@@ -25,6 +39,19 @@ func (c Client) IsZero() bool {
 
 func (c Client) Capture(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	return run.Capture(ctx, c.runner, dir, env, "git", args...)
+}
+
+func (c Client) CaptureRemote(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	remoteCtx, cancel := context.WithTimeout(ctx, RemoteTimeout)
+	defer cancel()
+	out, err := c.Capture(remoteCtx, dir, env, args...)
+	if err != nil && errors.Is(remoteCtx.Err(), context.DeadlineExceeded) {
+		return out, RemoteTimeoutError{Operation: remoteOperation(args), Timeout: RemoteTimeout}
+	}
+	return out, err
 }
 
 func (c Client) Stdout(ctx context.Context, dir string, env []string, args ...string) (string, error) {
@@ -102,4 +129,11 @@ func (c Client) RestoreRemote(ctx context.Context, dir, name, remoteURL string) 
 	}
 	_, err := c.Capture(ctx, dir, nil, "remote", "add", name, remoteURL)
 	return err
+}
+
+func remoteOperation(args []string) string {
+	if len(args) == 0 || args[0] == "" {
+		return "remote command"
+	}
+	return args[0]
 }
