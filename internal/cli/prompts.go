@@ -434,7 +434,8 @@ func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
 			guidedPositiveInt("days", "Target last N days"),
 			guidedString("until", "Last-N-days end date"),
 			guidedString("seed", "Seed"),
-			guidedEnum("intensity", "Intensity", "low", "medium", "high"),
+			guidedEnum("frequency", "Frequency", "low", "medium", "high"),
+			guidedEnum("spread", "Spread", "low", "medium", "high"),
 		)
 	}
 	return result
@@ -568,7 +569,11 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 			return err
 		}
 	}
-	for _, prompt := range []guidedPrompt{guidedString("seed", "Seed"), guidedEnum("intensity", "Intensity", "low", "medium", "high")} {
+	for _, prompt := range []guidedPrompt{
+		guidedString("seed", "Seed"),
+		guidedEnum("frequency", "Frequency", "low", "medium", "high"),
+		guidedEnum("spread", "Spread", "low", "medium", "high"),
+	} {
 		if err := applyGuidedPrompt(a, cmd, prompt); err != nil {
 			return err
 		}
@@ -577,7 +582,7 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 }
 
 func rewriteDatesPlanningFlagsChanged(cmd *cobra.Command) bool {
-	for _, name := range []string{"start-date", "end-date", "rewrite-before", "rewrite-after", "days", "until", "seed", "intensity"} {
+	for _, name := range []string{"start-date", "end-date", "rewrite-before", "rewrite-after", "days", "until", "seed", "frequency", "spread"} {
 		if cmd.Flags().Changed(name) {
 			return true
 		}
