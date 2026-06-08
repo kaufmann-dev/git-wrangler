@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/git"
 )
 
 func TestPullSummaryCountsOutcomes(t *testing.T) {
@@ -78,6 +80,109 @@ func TestPullRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 	}
 }
 
+func TestRemoteCommandsUseShortGitTimeout(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		gitArgs  string
+		expected string
+	}{
+		{name: "pull", args: []string{"pull", "--force"}, gitArgs: "pull --force", expected: "Summary: 1 updated, 0 skipped, 0 failed"},
+		{name: "fetch", args: []string{"fetch", "--prune"}, gitArgs: "fetch --prune origin", expected: "Summary: 1 fetched, 0 failed"},
+		{name: "push", args: []string{"push", "--force"}, gitArgs: "push --force-with-lease origin HEAD", expected: "Summary: 1 pushed, 0 skipped, 0 failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tempGitRepos(t, "repo")
+			t.Chdir(root)
+			calls := 0
+			runner := fakeRunner{
+				lookPath: fakeGitLookPath,
+				run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+					if name != "git" || strings.Join(args, " ") != tc.gitArgs {
+						return "", "", errors.New("unexpected command")
+					}
+					assertRemoteGitDeadline(t, ctx)
+					calls++
+					return "ok\n", "", nil
+				},
+			}
+
+			var stdout, stderr bytes.Buffer
+			if err := ExecuteWithRunner(context.Background(), runner, tc.args, strings.NewReader(""), &stdout, &stderr); err != nil {
+				t.Fatalf("%s returned error: %v\nstdout: %s\nstderr: %s", tc.name, err, stdout.String(), stderr.String())
+			}
+			if calls != 1 {
+				t.Fatalf("remote git calls = %d, want 1", calls)
+			}
+			if !strings.Contains(stdout.String(), tc.expected) {
+				t.Fatalf("missing summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestPullTimeoutCountsFailureAndPrintsSummary(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "golden-blog", "updated")
+	t.Chdir(root)
+
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "git" || strings.Join(args, " ") != "pull" {
+				return "", "", errors.New("unexpected command")
+			}
+			switch filepath.Base(dir) {
+			case "golden-blog":
+				return "", "", git.RemoteTimeoutError{Operation: "pull", Timeout: git.RemoteTimeout}
+			case "updated":
+				return "updated\n", "", nil
+			default:
+				return "", "", errors.New("unexpected repo")
+			}
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), runner, []string{"pull"}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if !strings.Contains(stderr.String(), "ERROR golden-blog: git pull timed out after 30s") {
+		t.Fatalf("missing timeout error:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Summary: 1 updated, 0 skipped, 1 failed") {
+		t.Fatalf("missing pull summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+}
+
+func TestPullCancellationPrintsNoSummary(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "repo")
+	t.Chdir(root)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "git" || strings.Join(args, " ") != "pull" {
+				return "", "", errors.New("unexpected command")
+			}
+			cancel()
+			return "", "", context.Canceled
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(ctx, runner, []string{"pull"}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if got := strings.Count(stdout.String(), "SKIP stopped: operation cancelled"); got != 1 {
+		t.Fatalf("cancellation status count = %d\nstdout:\n%s\nstderr:\n%s", got, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Summary:") || strings.Contains(stderr.String(), "Summary:") {
+		t.Fatalf("summary printed after cancellation:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+}
+
 func TestFetchRunsOriginFetchAndCountsFailures(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := tempGitRepos(t, "failed", "fetched")
@@ -105,6 +210,18 @@ func TestFetchRunsOriginFetchAndCountsFailures(t *testing.T) {
 	assertExitCode(t, err, 1)
 	if !strings.Contains(stdout.String(), "Summary: 1 fetched, 1 failed") {
 		t.Fatalf("missing fetch summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+}
+
+func assertRemoteGitDeadline(t *testing.T, ctx context.Context) {
+	t.Helper()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("remote git command ran without a deadline")
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 25*time.Second || remaining > git.RemoteTimeout {
+		t.Fatalf("remote git deadline remaining = %s, want close to %s", remaining, git.RemoteTimeout)
 	}
 }
 
