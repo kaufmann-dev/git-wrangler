@@ -39,7 +39,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		if force {
 			pullArgs = append(pullArgs, "--force")
 		}
-		out, err := a.git.Capture(a.ctx, r.dir, nil, pullArgs...)
+		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pullArgs...)
 		return pullResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Already up to date")}
 	})
 	if interrupted(a) {
@@ -47,7 +47,7 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	}
 	for _, result := range results {
 		if result.err != nil {
-			renderErrorBlock(a, result.repo.display+": git pull failed", outputOrError(result.out, result.err))
+			renderRemoteGitFailure(a, result.repo, "pull", result.out, result.err)
 			status = 1
 			failed++
 		} else if result.skipped {
@@ -91,7 +91,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 		if prune {
 			fetchArgs = []string{"fetch", "--prune", "origin"}
 		}
-		out, err := a.git.Capture(a.ctx, r.dir, nil, fetchArgs...)
+		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, fetchArgs...)
 		return fetchResult{repo: r, out: out, err: err}
 	})
 	if interrupted(a) {
@@ -99,7 +99,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 	}
 	for _, result := range results {
 		if result.err != nil {
-			renderErrorBlock(a, result.repo.display+": git fetch failed", outputOrError(result.out, result.err))
+			renderRemoteGitFailure(a, result.repo, "fetch", result.out, result.err)
 			status = 1
 			failed++
 			continue
@@ -147,7 +147,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 			if force {
 				pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}
 			}
-			out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
+			out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pushArgs...)
 			return pushResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Everything up-to-date")}
 		})
 		if interrupted(a) {
@@ -155,7 +155,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		}
 		for _, result := range results {
 			if result.err != nil {
-				renderErrorBlock(a, result.repo.display+": git push failed", outputOrError(result.out, result.err))
+				renderRemoteGitFailure(a, result.repo, "push", result.out, result.err)
 				status = 1
 				failed++
 			} else if result.skipped {
@@ -192,7 +192,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		progress.start(r.display)
 		pushArgs := []string{"push", "origin", "HEAD"}
 		pushArgs = []string{"push", "--force", "origin", "HEAD"}
-		out, err := a.git.Capture(a.ctx, r.dir, nil, pushArgs...)
+		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pushArgs...)
 		progress.advance(r.display)
 		results = append(results, pushResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Everything up-to-date")})
 	}
@@ -209,7 +209,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 				pushed++
 			}
 		} else {
-			renderErrorBlock(a, r.display+": git push failed", outputOrError(out, err))
+			renderRemoteGitFailure(a, r, "push", out, err)
 			status = 1
 			failed++
 		}
