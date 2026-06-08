@@ -56,6 +56,32 @@ func TestRemoteAwareCommandsFetchOriginBeforeInspection(t *testing.T) {
 	}
 }
 
+func TestAutomaticOriginRefreshUsesShortGitTimeout(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "repo")
+	t.Chdir(root)
+	fetches := 0
+	runner := fakeRunner{
+		lookPath: fakeGitLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			joined := strings.Join(args, " ")
+			if joined == "fetch --prune origin" {
+				assertRemoteGitDeadline(t, ctx)
+				fetches++
+			}
+			return remoteAwareCommandOutput(joined)
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), runner, []string{"status"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("status returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if fetches != 1 {
+		t.Fatalf("auto-fetch calls = %d, want 1", fetches)
+	}
+}
+
 func TestRemoteAwareNoFetchSkipsOriginRefresh(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, tc := range []struct {
