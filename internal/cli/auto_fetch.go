@@ -1,10 +1,6 @@
 package cli
 
-import (
-	"fmt"
-
-	"github.com/spf13/cobra"
-)
+import "github.com/spf13/cobra"
 
 type originRefreshResult struct {
 	repo repo
@@ -22,7 +18,7 @@ func noFetchFlagValue(cmd *cobra.Command) bool {
 
 func refreshOrigin(a *app, repos []repo) []originRefreshResult {
 	return parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Fetching repositories", len(repos)), func(r repo) originRefreshResult {
-		out, err := a.git.Capture(a.ctx, r.dir, nil, "fetch", "--prune", "origin")
+		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, "fetch", "--prune", "origin")
 		return originRefreshResult{repo: r, out: out, err: err}
 	})
 }
@@ -38,7 +34,7 @@ func refreshFailuresByDir(results []originRefreshResult) map[string]originRefres
 }
 
 func fetchFailureMessage(result originRefreshResult) string {
-	return "git fetch failed: " + outputOrError(result.out, result.err)
+	return remoteGitFailureMessage("fetch", result.out, result.err)
 }
 
 func refreshOriginForRewrite(a *app, cmd *cobra.Command, repos []repo) bool {
@@ -55,7 +51,7 @@ func refreshOriginForRewrite(a *app, cmd *cobra.Command, repos []repo) bool {
 		if result.err == nil {
 			continue
 		}
-		renderErrorBlock(a, fmt.Sprintf("%s: git fetch failed", result.repo.display), outputOrError(result.out, result.err))
+		renderRemoteGitFailure(a, result.repo, "fetch", result.out, result.err)
 		failed++
 	}
 	if failed == 0 {
