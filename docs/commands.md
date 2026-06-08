@@ -147,9 +147,11 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `fetch`
 
+`pull`, `fetch`, `push`, and automatic `git fetch --prune origin` refreshes use a 30-second timeout per repository. Timeouts are per-repository failures and include the repository plus operation, such as `golden-blog: git pull timed out after 30s`. Local Git operations and history rewrite subprocesses keep the default longer subprocess timeout.
+
 `fetch` runs `git fetch origin` for every target repository. `fetch --prune` runs `git fetch --prune origin`. Missing or invalid `origin` remotes are per-repository failures and count in the summary. Routine success lines are suppressed.
 
-The built-in auto-refresh used by reporting and history rewrite commands is separate from the explicit `fetch` command. It always uses `git fetch --prune origin` and has no remote selector or timeout flag.
+The built-in auto-refresh used by reporting and history rewrite commands is separate from the explicit `fetch` command. It always uses `git fetch --prune origin` and has no remote selector or public timeout flag.
 
 ### `status`
 
