@@ -30,9 +30,12 @@ func TestRewriteDatesFlagValidation(t *testing.T) {
 		{[]string{"rewrite-dates", "--days", "0"}, "--days must be a positive integer"},
 		{[]string{"rewrite-dates", "--days", "7", "--start-date", "2024-01-01"}, "--days cannot be combined"},
 		{[]string{"rewrite-dates", "--until", "2024-01-31"}, "--until requires --days"},
-		{[]string{"rewrite-dates", "--intensity", "extreme"}, "--intensity must be low, medium, or high"},
+		{[]string{"rewrite-dates", "--frequency", "extreme"}, "--frequency must be low, medium, or high"},
+		{[]string{"rewrite-dates", "--spread", "extreme"}, "--spread must be low, medium, or high"},
 		{[]string{"rewrite-dates", "--rewrite-after", "2024-02-01", "--rewrite-before", "2024-02-01"}, "--rewrite-after must be before --rewrite-before"},
 		{[]string{"rewrite-dates", "--rollback", "--seed", "x"}, "--rollback cannot be combined"},
+		{[]string{"rewrite-dates", "--rollback", "--frequency", "medium"}, "--rollback cannot be combined"},
+		{[]string{"rewrite-dates", "--rollback", "--spread", "medium"}, "--rollback cannot be combined"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
@@ -40,6 +43,67 @@ func TestRewriteDatesFlagValidation(t *testing.T) {
 		if !strings.Contains(stderr.String(), tc.want) {
 			t.Fatalf("%v stderr:\n%s", tc.args, stderr.String())
 		}
+	}
+}
+
+func TestRewriteDateProfileDefaultsAndMappings(t *testing.T) {
+	defaultProfile, ok := buildRewriteDateProfile("", "")
+	if !ok {
+		t.Fatal("empty profile values were not normalized")
+	}
+	if defaultProfile.frequencyName != "medium" || defaultProfile.spreadName != "medium" {
+		t.Fatalf("default profile = %s/%s", defaultProfile.frequencyName, defaultProfile.spreadName)
+	}
+
+	for _, tc := range []struct {
+		name                      string
+		activeRatio               float64
+		commitSpread              float64
+		demandScale               float64
+		weekendActivityMultiplier float64
+		eveningChance             float64
+		sessionMinDays            int
+		sessionMaxDays            int
+		gapMinDays                int
+		gapMaxDays                int
+	}{
+		{name: "low", activeRatio: 0.18, commitSpread: 0.25, demandScale: 12, weekendActivityMultiplier: 0.65, eveningChance: 0.05, sessionMinDays: 1, sessionMaxDays: 3, gapMinDays: 5, gapMaxDays: 14},
+		{name: "medium", activeRatio: 0.32, commitSpread: 0.50, demandScale: 8, weekendActivityMultiplier: 0.80, eveningChance: 0.12, sessionMinDays: 2, sessionMaxDays: 5, gapMinDays: 2, gapMaxDays: 7},
+		{name: "high", activeRatio: 0.55, commitSpread: 0.72, demandScale: 5, weekendActivityMultiplier: 0.95, eveningChance: 0.24, sessionMinDays: 3, sessionMaxDays: 8, gapMinDays: 1, gapMaxDays: 4},
+	} {
+		profile, ok := buildRewriteDateProfile(tc.name, "medium")
+		if !ok {
+			t.Fatalf("frequency %q rejected", tc.name)
+		}
+		if profile.frequencyName != tc.name || profile.activeRatio != tc.activeRatio || profile.commitSpread != tc.commitSpread || profile.demandScale != tc.demandScale || profile.weekendActivityMultiplier != tc.weekendActivityMultiplier || profile.eveningChance != tc.eveningChance || profile.sessionMinDays != tc.sessionMinDays || profile.sessionMaxDays != tc.sessionMaxDays || profile.gapMinDays != tc.gapMinDays || profile.gapMaxDays != tc.gapMaxDays {
+			t.Fatalf("frequency profile %q = %+v", tc.name, profile)
+		}
+	}
+
+	for _, tc := range []struct {
+		name         string
+		daySigma     float64
+		sessionSigma float64
+		persistence  float64
+	}{
+		{name: "low", daySigma: 0.35, sessionSigma: 0.20, persistence: 0.35},
+		{name: "medium", daySigma: 0.75, sessionSigma: 0.35, persistence: 0.55},
+		{name: "high", daySigma: 1.00, sessionSigma: 0.50, persistence: 0.70},
+	} {
+		profile, ok := buildRewriteDateProfile("medium", tc.name)
+		if !ok {
+			t.Fatalf("spread %q rejected", tc.name)
+		}
+		if profile.spreadName != tc.name || profile.daySigma != tc.daySigma || profile.sessionSigma != tc.sessionSigma || profile.persistence != tc.persistence {
+			t.Fatalf("spread profile %q = %+v", tc.name, profile)
+		}
+	}
+
+	if _, ok := buildRewriteDateProfile("extreme", "medium"); ok {
+		t.Fatal("invalid frequency was accepted")
+	}
+	if _, ok := buildRewriteDateProfile("medium", "extreme"); ok {
+		t.Fatal("invalid spread was accepted")
 	}
 }
 
@@ -75,7 +139,8 @@ func TestRewriteDateTargetRangeDays(t *testing.T) {
 		days:      7,
 		untilDate: "2024-01-31",
 		seed:      "seed",
-		intensity: "medium",
+		frequency: "medium",
+		spread:    "medium",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -91,11 +156,11 @@ func TestRewriteDateTargetRangeDays(t *testing.T) {
 func TestGeneratePlannedEpochsDeterministicBySeed(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-06-30", "+0000")
-	intensity, _ := rewriteDateIntensityProfile("medium")
+	profile, _ := buildRewriteDateProfile("medium", "medium")
 
-	got := generatePlannedEpochs(80, start, end, "seed-a", intensity, "+0000")
-	again := generatePlannedEpochs(80, start, end, "seed-a", intensity, "+0000")
-	different := generatePlannedEpochs(80, start, end, "seed-b", intensity, "+0000")
+	got := generatePlannedEpochs(80, start, end, "seed-a", profile, "+0000")
+	again := generatePlannedEpochs(80, start, end, "seed-a", profile, "+0000")
+	different := generatePlannedEpochs(80, start, end, "seed-b", profile, "+0000")
 	assertEpochsEqual(t, got, again)
 	if epochsEqual(got, different) {
 		t.Fatal("different seed produced the same plan")
@@ -106,11 +171,11 @@ func TestGeneratePlannedEpochsDeterministicBySeed(t *testing.T) {
 func TestRewriteDateCalendarDeterministicBySeed(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-12-31", "+0000")
-	intensity, _ := rewriteDateIntensityProfile("medium")
+	profile, _ := buildRewriteDateProfile("medium", "medium")
 
-	got := buildRewriteDateCalendarPlan(160, start, end, "seed-a", intensity, "+0000")
-	again := buildRewriteDateCalendarPlan(160, start, end, "seed-a", intensity, "+0000")
-	different := buildRewriteDateCalendarPlan(160, start, end, "seed-b", intensity, "+0000")
+	got := buildRewriteDateCalendarPlan(160, start, end, "seed-a", profile, "+0000")
+	again := buildRewriteDateCalendarPlan(160, start, end, "seed-a", profile, "+0000")
+	different := buildRewriteDateCalendarPlan(160, start, end, "seed-b", profile, "+0000")
 	if calendarSignature(got) != calendarSignature(again) {
 		t.Fatalf("same seed produced different calendars:\n%s\n%s", calendarSignature(got), calendarSignature(again))
 	}
@@ -124,12 +189,12 @@ func TestRewriteDateCalendarSessionsCoverLongTargetRange(t *testing.T) {
 	end := parseDateEndInOffset("2026-06-30", "+0000")
 	seeds := []string{"coverage-a", "coverage-b", "coverage-c"}
 
-	for _, intensityName := range []string{"low", "medium", "high"} {
-		t.Run(intensityName, func(t *testing.T) {
-			intensity, _ := rewriteDateIntensityProfile(intensityName)
+	for _, frequencyName := range []string{"low", "medium", "high"} {
+		t.Run(frequencyName, func(t *testing.T) {
+			profile, _ := buildRewriteDateProfile(frequencyName, "medium")
 			for _, seed := range seeds {
-				calendar := buildRewriteDateCalendarPlan(71, start, end, seed, intensity, "+0000")
-				activeTarget := plannedCalendarActiveDayCount(71, len(calendar.days), calendarRestDayCount(calendar), intensity)
+				calendar := buildRewriteDateCalendarPlan(71, start, end, seed, profile, "+0000")
+				activeTarget := plannedCalendarActiveDayCount(71, len(calendar.days), calendarRestDayCount(calendar), profile)
 				if calendarActiveDayCount(calendar) != activeTarget {
 					t.Fatalf("%s active days = %d, want %d", seed, calendarActiveDayCount(calendar), activeTarget)
 				}
@@ -144,7 +209,7 @@ func TestRewriteDateCalendarSessionsCoverLongTargetRange(t *testing.T) {
 func TestRewriteDateCalendarSingleSessionUsesInteriorAnchor(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-01-31", "+0000")
-	low, _ := rewriteDateIntensityProfile("low")
+	low, _ := buildRewriteDateProfile("low", "medium")
 
 	calendar := buildRewriteDateCalendarPlan(4, start, end, "single-session", low, "+0000")
 	activeIndexes := []int{}
@@ -206,9 +271,9 @@ func TestSyntheticRestBlocksIncludeJanuaryYearEndIntersection(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-06-29", "+0000")
 	days := daysInRangeInOffset(start, end, "+0000")
-	intensity, _ := rewriteDateIntensityProfile("medium")
+	profile, _ := buildRewriteDateProfile("medium", "medium")
 
-	blocks := syntheticRestBlocks(days, 20, intensity, rand.New(rand.NewSource(seedInt64("rest"))), "+0000")
+	blocks := syntheticRestBlocks(days, 20, profile, rand.New(rand.NewSource(seedInt64("rest"))), "+0000")
 	jan1 := parseDateStartInOffset("2024-01-01", "+0000")
 	found := false
 	for _, block := range blocks {
@@ -225,9 +290,9 @@ func TestSyntheticRestBlocksIncludeJanuaryYearEndIntersection(t *testing.T) {
 func TestGeneratePlannedEpochsSmallSelectionsAvoidEdges(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-01-10", "+0000")
-	intensity, _ := rewriteDateIntensityProfile("medium")
+	profile, _ := buildRewriteDateProfile("medium", "medium")
 
-	one := generatePlannedEpochs(1, start, end, "one", intensity, "+0000")
+	one := generatePlannedEpochs(1, start, end, "one", profile, "+0000")
 	if len(one) != 1 {
 		t.Fatalf("one timestamp count = %d", len(one))
 	}
@@ -236,7 +301,7 @@ func TestGeneratePlannedEpochsSmallSelectionsAvoidEdges(t *testing.T) {
 	}
 
 	for _, n := range []int{2, 3} {
-		got := generatePlannedEpochs(n, start, end, fmt.Sprintf("small-%d", n), intensity, "+0000")
+		got := generatePlannedEpochs(n, start, end, fmt.Sprintf("small-%d", n), profile, "+0000")
 		assertSortedEpochsInRange(t, got, start, end)
 		if floorDayInOffset(got[0], "+0000") == floorDayInOffset(start, "+0000") && floorDayInOffset(got[len(got)-1], "+0000") == floorDayInOffset(end, "+0000") {
 			t.Fatalf("%d commits were forced to target endpoints: %s -> %s", n, formatEpoch(got[0], "+0000"), formatEpoch(got[len(got)-1], "+0000"))
@@ -247,9 +312,9 @@ func TestGeneratePlannedEpochsSmallSelectionsAvoidEdges(t *testing.T) {
 func TestGeneratePlannedEpochsSingleDayHighVolume(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-01-01", "+0000")
-	intensity, _ := rewriteDateIntensityProfile("high")
+	profile, _ := buildRewriteDateProfile("high", "medium")
 
-	got := generatePlannedEpochs(200, start, end, "seed", intensity, "+0000")
+	got := generatePlannedEpochs(200, start, end, "seed", profile, "+0000")
 	if len(got) != 200 {
 		t.Fatalf("timestamps = %d, want 200", len(got))
 	}
@@ -259,9 +324,9 @@ func TestGeneratePlannedEpochsSingleDayHighVolume(t *testing.T) {
 func TestGeneratePlannedEpochsActivityInvariants(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-12-31", "+0000")
-	low, _ := rewriteDateIntensityProfile("low")
-	medium, _ := rewriteDateIntensityProfile("medium")
-	high, _ := rewriteDateIntensityProfile("high")
+	low, _ := buildRewriteDateProfile("low", "medium")
+	medium, _ := buildRewriteDateProfile("medium", "medium")
+	high, _ := buildRewriteDateProfile("high", "medium")
 
 	lowPlan := generatePlannedEpochs(120, start, end, "activity", low, "+0000")
 	mediumPlan := generatePlannedEpochs(120, start, end, "activity", medium, "+0000")
@@ -274,7 +339,7 @@ func TestGeneratePlannedEpochsActivityInvariants(t *testing.T) {
 		t.Fatalf("medium plan lacks multiple multi-day inactive gaps")
 	}
 	if maxInactiveGapDays(highPlan, "+0000") > maxInactiveGapDays(mediumPlan, "+0000") {
-		t.Fatalf("high intensity has a longer max gap than medium")
+		t.Fatalf("high frequency has a longer max gap than medium")
 	}
 	if activeDayCount(lowPlan, "+0000") >= activeDayCount(mediumPlan, "+0000") {
 		t.Fatalf("low active days = %d, medium active days = %d", activeDayCount(lowPlan, "+0000"), activeDayCount(mediumPlan, "+0000"))
@@ -296,7 +361,7 @@ func TestGeneratePlannedEpochsActivityInvariants(t *testing.T) {
 func TestRewriteDateDailyQuotasScaleWithDemand(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-12-31", "+0000")
-	medium, _ := rewriteDateIntensityProfile("medium")
+	medium, _ := buildRewriteDateProfile("medium", "medium")
 
 	smallCalendar := buildRewriteDateCalendarPlan(400, start, end, "demand", medium, "+0000")
 	largeCalendar := buildRewriteDateCalendarPlan(40000, start, end, "demand", medium, "+0000")
@@ -330,8 +395,46 @@ func TestRewriteDateDailyQuotasScaleWithDemand(t *testing.T) {
 	}
 }
 
+func TestRewriteDateSpreadControlsQuotaVarianceOnly(t *testing.T) {
+	start := parseDateStartInOffset("2024-01-01", "+0000")
+	end := parseDateEndInOffset("2024-12-31", "+0000")
+	low, _ := buildRewriteDateProfile("medium", "low")
+	medium, _ := buildRewriteDateProfile("medium", "medium")
+	high, _ := buildRewriteDateProfile("medium", "high")
+
+	lowCalendar := buildRewriteDateCalendarPlan(4000, start, end, "spread", low, "+0000")
+	mediumCalendar := buildRewriteDateCalendarPlan(4000, start, end, "spread", medium, "+0000")
+	highCalendar := buildRewriteDateCalendarPlan(4000, start, end, "spread", high, "+0000")
+	if calendarPlacementSignature(lowCalendar) != calendarPlacementSignature(mediumCalendar) || calendarPlacementSignature(mediumCalendar) != calendarPlacementSignature(highCalendar) {
+		t.Fatal("spread changed calendar active/rest placement")
+	}
+	if calendarLoadRange(lowCalendar) >= calendarLoadRange(mediumCalendar) || calendarLoadRange(mediumCalendar) >= calendarLoadRange(highCalendar) {
+		t.Fatalf("quota variance did not increase with spread: low=%d medium=%d high=%d", calendarLoadRange(lowCalendar), calendarLoadRange(mediumCalendar), calendarLoadRange(highCalendar))
+	}
+}
+
+func TestRewriteDateWorkloadWeightsIgnoreWeekendActivityMultiplier(t *testing.T) {
+	lowFrequency, _ := buildRewriteDateProfile("low", "medium")
+	highFrequency, _ := buildRewriteDateProfile("high", "medium")
+	calendar := rewriteDateCalendarPlan{
+		tzOffset: "+0000",
+		days: []rewriteDateCalendarDay{
+			{epoch: parseDateStart("2024-01-01"), state: rewriteDateCalendarActive},
+			{epoch: parseDateStart("2024-01-06"), state: rewriteDateCalendarActive},
+			{epoch: parseDateStart("2024-01-08"), state: rewriteDateCalendarActive},
+		},
+	}
+	lowWeights := workloadWeights(calendar, []int{0, 1, 2}, lowFrequency, 1, rand.New(rand.NewSource(seedInt64("weights"))))
+	highWeights := workloadWeights(calendar, []int{0, 1, 2}, highFrequency, 1, rand.New(rand.NewSource(seedInt64("weights"))))
+	for i := range lowWeights {
+		if lowWeights[i] != highWeights[i] {
+			t.Fatalf("workload weight %d changed with frequency: low=%v high=%v", i, lowWeights, highWeights)
+		}
+	}
+}
+
 func TestRewriteDateAllRestFallbackUsesOneDay(t *testing.T) {
-	medium, _ := rewriteDateIntensityProfile("medium")
+	medium, _ := buildRewriteDateProfile("medium", "medium")
 	calendar := rewriteDateCalendarPlan{
 		tzOffset: "+0000",
 		days: []rewriteDateCalendarDay{
@@ -372,7 +475,7 @@ func TestRewriteDateAttemptRankingUsesQuotaDeviationBeforeAdjustments(t *testing
 func TestRewriteDateRepositoryConcentrationDampsWorkloadVariation(t *testing.T) {
 	start := parseDateStartInOffset("2024-01-01", "+0000")
 	end := parseDateEndInOffset("2024-12-31", "+0000")
-	medium, _ := rewriteDateIntensityProfile("medium")
+	medium, _ := buildRewriteDateProfile("medium", "medium")
 
 	dominant := buildRewriteDateCalendarPlanForRepos(4000, start, end, "repos", medium, "+0000", 1)
 	balanced := buildRewriteDateCalendarPlanForRepos(4000, start, end, "repos", medium, "+0000", 8)
@@ -579,7 +682,8 @@ func TestRewriteDateExplicitTargetReportsFixedBoundary(t *testing.T) {
 		startDate: "1970-01-01",
 		endDate:   "1970-01-01",
 		seed:      "seed",
-		intensity: "medium",
+		frequency: "medium",
+		spread:    "medium",
 	})
 	if err == nil {
 		t.Fatal("expected planning error")
@@ -607,7 +711,8 @@ func TestRewriteDatePlanningUsesDominantTimezone(t *testing.T) {
 		startDate: "2024-01-01",
 		endDate:   "2024-01-02",
 		seed:      "seed",
-		intensity: "medium",
+		frequency: "medium",
+		spread:    "medium",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -621,7 +726,7 @@ func TestRewriteDatePlanningUsesDominantTimezone(t *testing.T) {
 
 	var stdout bytes.Buffer
 	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, io.Discard)
-	renderRewriteDatePlan(a, plan, rewriteDatesOptions{intensity: "medium"})
+	renderRewriteDatePlan(a, plan, rewriteDatesOptions{frequency: "medium", spread: "medium"})
 	if !strings.Contains(stdout.String(), "2024-01-01 00:00:00 +0530") || !strings.Contains(stdout.String(), "Timezone: +0530") {
 		t.Fatalf("preview did not use planning timezone:\n%s", stdout.String())
 	}
@@ -669,7 +774,8 @@ func TestRewriteDateTopologyCompressionWarning(t *testing.T) {
 		startDate: "2024-01-01",
 		endDate:   "2024-01-03",
 		seed:      "seed",
-		intensity: "medium",
+		frequency: "medium",
+		spread:    "medium",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -701,7 +807,8 @@ func TestRewriteDateSharedCalendarKeepsRestDaysBlankAcrossRepositories(t *testin
 		startDate: "2024-01-01",
 		endDate:   "2024-12-31",
 		seed:      "shared-rest",
-		intensity: "medium",
+		frequency: "medium",
+		spread:    "medium",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -732,7 +839,8 @@ func TestRewriteDateRestDaysStayBlankInUTCActivityModel(t *testing.T) {
 		startDate: "2024-01-01",
 		endDate:   "2024-12-31",
 		seed:      "utc-rest",
-		intensity: "medium",
+		frequency: "medium",
+		spread:    "medium",
 	})
 	if err != nil {
 		t.Fatal(err)

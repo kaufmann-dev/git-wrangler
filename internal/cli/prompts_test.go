@@ -473,6 +473,22 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 		}
 	})
 
+	t.Run("rewrite dates rewrite", func(t *testing.T) {
+		cmd, a, stderr := guidedTestCommand(t, "rewrite-dates", "\n\n\n\n\n\n2024-01-01\n2024-01-31\nseed\n3\n1\n")
+		if err := runGuidedSetup(a, cmd); err != nil {
+			t.Fatal(err)
+		}
+		assertFlagValue(t, cmd, "rollback", "false")
+		assertFlagValue(t, cmd, "start-date", "2024-01-01")
+		assertFlagValue(t, cmd, "end-date", "2024-01-31")
+		assertFlagValue(t, cmd, "seed", "seed")
+		assertFlagValue(t, cmd, "frequency", "high")
+		assertFlagValue(t, cmd, "spread", "low")
+		if !strings.Contains(stderr.String(), "Frequency: high") || !strings.Contains(stderr.String(), "Spread: low") {
+			t.Fatalf("rewrite summary did not show frequency and spread:\n%s", stderr.String())
+		}
+	})
+
 	t.Run("rewrite dates rollback", func(t *testing.T) {
 		cmd, a, stderr := guidedTestCommand(t, "rewrite-dates", "2\n\ny\n")
 		if err := runGuidedSetup(a, cmd); err != nil {
