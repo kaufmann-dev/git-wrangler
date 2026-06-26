@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -137,7 +138,9 @@ func TestCloneHidesUnavailableCredentialStorageError(t *testing.T) {
 func TestPublicCloneContinuesWithoutCredentialStorage(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "")
+	t.Setenv("GIT_WRANGLER_GITHUB_TOKEN", "invalid-configured-token")
+	t.Setenv("GH_TOKEN", "foreign-token")
+	t.Setenv("GITHUB_TOKEN", "foreign-token")
 	into := filepath.Join(t.TempDir(), "clones")
 	var ghEnvs [][]string
 	runner := fakeRunner{
@@ -171,8 +174,11 @@ func TestPublicCloneContinuesWithoutCredentialStorage(t *testing.T) {
 		t.Fatalf("public clone returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	for _, env := range ghEnvs {
-		if strings.Contains(strings.Join(env, "\n"), "GH_TOKEN=") {
-			t.Fatalf("public clone passed auth env: %#v", env)
+		joined := strings.Join(env, "\n")
+		for _, want := range []string{"GH_TOKEN=", "GITHUB_TOKEN=", "GH_ENTERPRISE_TOKEN=", "GITHUB_ENTERPRISE_TOKEN="} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("public clone did not mask %s: %#v", want, env)
+			}
 		}
 	}
 }
@@ -191,6 +197,9 @@ func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 			return "/usr/bin/" + name, nil
 		},
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name == "gh" && strings.Join(args, " ") == "api user -q .login" {
+				return "octo\n", "", nil
+			}
 			if name == "gh" && strings.Join(args, " ") == "repo view --json name -q .name" {
 				ghEnv = append([]string{}, env...)
 				return "repo\n", "", nil
@@ -230,6 +239,9 @@ func TestRenameRepoCancellationStopsBeforeMutation(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name == "gh" && strings.Join(args, " ") == "api user -q .login" {
+				return "octo\n", "", nil
+			}
 			if name == "gh" && strings.Join(args, " ") == "repo view --json name -q .name" {
 				return "repo\n", "", nil
 			}
@@ -265,6 +277,42 @@ func TestRenameRepoCancellationStopsBeforeMutation(t *testing.T) {
 	}
 	if got := strings.Count(stdout.String(), "SKIP stopped: operation cancelled"); got != 1 {
 		t.Fatalf("cancellation status count = %d\n%s", got, stdout.String())
+	}
+}
+
+func TestRenameRepoFailsBeforeTargetDiscoveryWhenAuthenticationIsInvalid(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "repo", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			calls = append(calls, name+" "+strings.Join(args, " "))
+			return "", "invalid token", errors.New("invalid token")
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+	makeInteractive(a)
+	a.creds = &fakeCredentialStore{values: map[string]string{credentials.GitHubAccount("github.com"): "bad-token"}}
+	cmd := newRootCommand(a)
+	cmd.SetArgs([]string{"rename-repo"})
+	cmd.SetIn(a.stdin)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	t.Chdir(root)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected authentication failure")
+	}
+	if got, want := calls, []string{"gh api user -q .login"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("gh calls = %#v, want %#v", got, want)
+	}
+	if !strings.Contains(stderr.String(), "GitHub authentication failed") {
+		t.Fatalf("unexpected stderr:\n%s", stderr.String())
 	}
 }
 
