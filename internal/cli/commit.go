@@ -46,6 +46,9 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
+	if !preflightAI(a, settings, time.Duration(timeoutInt)*time.Second) {
+		return 1
+	}
 	if !requireGit(a, "commit") {
 		return 1
 	}
