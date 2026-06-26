@@ -273,12 +273,19 @@ Install the local development build without using Homebrew:
 scripts/install-dev
 ```
 
-The script installs `git-wrangler` with `go install` and defaults `GOBIN` to
-`~/.local/bin`. Put that directory before Homebrew on your `PATH`:
+The script installs `git-wrangler` with `go install`, defaults `GOBIN` to
+`~/.local/bin`, and writes bash completion to
+`${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/git-wrangler`.
+It does not edit shell startup files. Put the binary directory before Homebrew
+on your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+New bash sessions should load completion automatically when `bash-completion`
+is installed and loaded. To enable completion in the current shell immediately,
+source the file printed by `scripts/install-dev`.
 
 Run local checks before opening changes:
 
