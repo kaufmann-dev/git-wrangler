@@ -1,14 +1,22 @@
 #!/bin/bash
 
-set -u
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT" || exit 1
+cd "$ROOT"
 
 GOBIN="${GOBIN:-$HOME/.local/bin}"
 export GOBIN
-mkdir -p "$GOBIN"
+
+COMPLETION_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+COMPLETION_FILE="$COMPLETION_DIR/git-wrangler"
+
+mkdir -p "$GOBIN" "$COMPLETION_DIR"
 
 go install ./cmd/git-wrangler
+"$GOBIN/git-wrangler" completion bash > "$COMPLETION_FILE"
 
 printf "installed git-wrangler to %s\n" "$GOBIN"
+printf "installed bash completion to %s\n" "$COMPLETION_FILE"
+printf "new shells should load completion automatically when bash-completion is installed and loaded\n"
+printf "for this shell, run: source %q\n" "$COMPLETION_FILE"
