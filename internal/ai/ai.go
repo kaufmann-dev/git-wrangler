@@ -943,7 +943,51 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (m
 		"temperature": 0.2,
 		"max_tokens":  messageTokenLimit(len(batch), cfg.Body, attempt),
 	}
-	body, _ := json.Marshal(payload)
+	respBody, err := chatCompletion(ctx, cfg, payload)
+	if err != nil {
+		return nil, err
+	}
+	var envelope struct {
+		Choices []struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &envelope); err != nil {
+		return nil, err
+	}
+	if len(envelope.Choices) == 0 {
+		return nil, errors.New("response has no choices")
+	}
+	if envelope.Choices[0].FinishReason == "length" {
+		return nil, errors.New("AI response was truncated by the output token limit")
+	}
+	return ExtractMessages(envelope.Choices[0].Message.Content)
+}
+
+// Preflight verifies the configured API endpoint, model, and credentials before
+// commands perform repository work. It intentionally shares the generation path.
+func Preflight(ctx context.Context, cfg Config) error {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 90 * time.Second
+	}
+	_, err := chatCompletion(ctx, cfg, map[string]any{
+		"model": cfg.Model,
+		"messages": []map[string]string{
+			{"role": "user", "content": "Respond with OK."},
+		},
+		"max_tokens": 1,
+	})
+	return err
+}
+
+func chatCompletion(ctx context.Context, cfg Config, payload any) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ChatEndpoint(cfg.BaseURL), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -965,24 +1009,7 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (m
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateText(string(respBody), 500))
 	}
-	var envelope struct {
-		Choices []struct {
-			FinishReason string `json:"finish_reason"`
-			Message      struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(respBody, &envelope); err != nil {
-		return nil, err
-	}
-	if len(envelope.Choices) == 0 {
-		return nil, errors.New("response has no choices")
-	}
-	if envelope.Choices[0].FinishReason == "length" {
-		return nil, errors.New("AI response was truncated by the output token limit")
-	}
-	return ExtractMessages(envelope.Choices[0].Message.Content)
+	return respBody, nil
 }
 
 func messageTokenLimit(batchSize int, includeBody bool, attempt int) int {

@@ -301,6 +301,69 @@ func TestRequestBatchSendsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestPreflightUsesGenerationAuthentication(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Gateway custom-token" {
+			t.Fatalf("Authorization = %q, want custom header", got)
+		}
+		if got := r.Header.Get("X-Project-Id"); got != "corp-dev-99" {
+			t.Fatalf("X-Project-Id = %q, want corp-dev-99", got)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["model"] != "test-model" || payload["max_tokens"] != float64(1) {
+			t.Fatalf("unexpected preflight payload: %#v", payload)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	err := Preflight(context.Background(), Config{
+		BaseURL: server.URL,
+		Model:   "test-model",
+		APIKey:  "default-token",
+		Headers: map[string]string{
+			"Authorization": "Gateway custom-token",
+			"X-Project-Id":  "corp-dev-99",
+		},
+		Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPreflightReturnsAPIAndTransportErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, "invalid API key")
+	}))
+	err := Preflight(context.Background(), Config{BaseURL: server.URL, Model: "test-model", APIKey: "bad", Timeout: time.Second})
+	server.Close()
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401: invalid API key") {
+		t.Fatalf("preflight error = %v", err)
+	}
+
+	err = Preflight(context.Background(), Config{BaseURL: server.URL, Model: "test-model", APIKey: "bad", Timeout: time.Second})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+}
+
+func TestPreflightHonorsTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	err := Preflight(context.Background(), Config{BaseURL: server.URL, Model: "test-model", APIKey: "test-key", Timeout: 10 * time.Millisecond})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+}
+
 func TestGenerateFailsBeforeConfirmationWhenContextCollectionFails(t *testing.T) {
 	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 		joined := name + " " + strings.Join(args, " ")
