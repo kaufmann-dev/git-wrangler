@@ -2,7 +2,9 @@ package cli
 
 import (
 	"strings"
+	"time"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/ai"
 	"github.com/kaufmann-dev/git-wrangler/internal/config"
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
 )
@@ -82,5 +84,20 @@ func hasAuthHeader(headers map[string]string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func preflightAI(a *app, settings aiSettings, timeout time.Duration) bool {
+	err := ai.Preflight(a.ctx, ai.Config{
+		BaseURL: settings.Config.AI.BaseURL,
+		Model:   settings.Config.AI.Model,
+		APIKey:  settings.APIKey,
+		Headers: settings.Headers,
+		Timeout: timeout,
+	})
+	if err == nil {
+		return true
+	}
+	a.plainErrorf("AI API validation failed: %s", err.Error())
 	return false
 }
