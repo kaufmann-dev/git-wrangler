@@ -487,6 +487,8 @@ func TestRenameRepoRunsGitHubMutationsSerially(t *testing.T) {
 			}
 			joined := strings.Join(args, " ")
 			switch {
+			case joined == "api user -q .login":
+				return "octo\n", "", nil
 			case joined == "repo view --json name -q .name":
 				return filepath.Base(dir) + "\n", "", nil
 			case strings.HasPrefix(joined, "repo rename "):

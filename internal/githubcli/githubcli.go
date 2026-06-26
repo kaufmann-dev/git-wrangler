@@ -38,6 +38,11 @@ func (c Client) Installed() bool {
 	return err == nil
 }
 
+func (c Client) ValidateAuth(ctx context.Context, env []string) error {
+	_, err := c.StdoutEnv(ctx, "", env, "api", "user", "-q", ".login")
+	return err
+}
+
 func Env(token, host string) []string {
 	if token == "" {
 		return nil
@@ -47,6 +52,17 @@ func Env(token, host string) []string {
 		env = append(env, "GH_HOST="+host)
 	}
 	return env
+}
+
+// UnauthenticatedEnv prevents inherited token variables from turning public
+// operations into authenticated requests.
+func UnauthenticatedEnv() []string {
+	return []string{
+		"GH_TOKEN=",
+		"GITHUB_TOKEN=",
+		"GH_ENTERPRISE_TOKEN=",
+		"GITHUB_ENTERPRISE_TOKEN=",
+	}
 }
 
 func RepoListArgs(user, visibility, limit string) []string {

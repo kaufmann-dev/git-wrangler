@@ -139,11 +139,11 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `clone`
 
-`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Existing destination directories are skipped successfully. When secure credential storage is unavailable, authenticated cloning hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`; `--visibility public` continues without authentication. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
+`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Private and all visibility use that request as their early authenticated validation. Public visibility never resolves or sends Git Wrangler credentials. Existing destination directories are skipped successfully. When secure credential storage is unavailable, authenticated cloning hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`; `--visibility public` continues without authentication. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
 
 ### `commit`
 
-`commit` prepares staged context in a temporary index so scanning does not stage changes before the user approves the data-send prompt. If context collection fails for any repository, it stops before API calls and before creating commits. Declining the data-send prompt is a successful no-op. Human output includes a data-send notice before API calls, API progress, commit-creation progress, actionable skips/failures, and a committed/skipped/failed summary.
+`commit` validates the configured AI endpoint, model, and credentials before checking Git or discovering repositories. It then prepares staged context in a temporary index so scanning does not stage changes before the user approves the data-send prompt. If context collection fails for any repository, it stops before generation calls and before creating commits. Declining the data-send prompt is a successful no-op. Human output includes a data-send notice before generation calls, API progress, commit-creation progress, actionable skips/failures, and a committed/skipped/failed summary.
 
 ### `fetch`
 
@@ -175,7 +175,7 @@ Years render newest first with Sunday-first weeks. The default four-level scale 
 
 ### `rename-repo`
 
-`rename-repo` is intentionally interactive and sequential. When secure credential storage is unavailable, it hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`. It skips repositories that `gh repo view` cannot identify as GitHub repositories. There is no `--yes`; entered names are passed to `gh repo rename` with `--yes`.
+`rename-repo` is intentionally interactive and sequential. It validates GitHub credentials before discovering repositories. When secure credential storage is unavailable, it hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`. It skips repositories that `gh repo view` cannot identify as GitHub repositories. There is no `--yes`; entered names are passed to `gh repo rename` with `--yes`.
 
 ### `license`
 
@@ -195,7 +195,7 @@ Years render newest first with Sunday-first weeks. The default four-level scale 
 
 ### `rewrite-commits`
 
-`rewrite-commits` validates AI settings before refreshing `origin`, then scans repositories. Any fetch failure stops before scanning, AI requests, preview, confirmation, or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning and before the normal AI data-send confirmation path. Generation may prompt before sending data; applying generated messages is a separate all-repository confirmation. Old commit messages are not sent as model context. Declining either confirmation is a successful no-op before mutation. Final apply output is aggregate: rewritten commit messages, updated repositories, and failures.
+`rewrite-commits` validates the configured AI endpoint, model, and credentials before checking dependencies or refreshing `origin`, then scans repositories. Any fetch failure stops before scanning, AI requests, preview, confirmation, or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning and before the normal AI data-send confirmation path. Generation may prompt before sending data; applying generated messages is a separate all-repository confirmation. Old commit messages are not sent as model context. Declining either confirmation is a successful no-op before mutation. Final apply output is aggregate: rewritten commit messages, updated repositories, and failures.
 
 ### `rewrite-dates`
 

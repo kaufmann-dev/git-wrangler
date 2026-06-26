@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
-	"path/filepath"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/config"
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
@@ -202,11 +203,14 @@ func TestRewriteCommitsFetchFailureStopsBeforeAIGeneration(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configDir)
 	t.Setenv("GIT_WRANGLER_AI_API_KEY", "test-key")
-	configPath := filepath.Join(configDir, "git-wrangler", "config.json")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(configPath, []byte(`{"schema_version":1,"ai":{"base_url":"https://example.test/v1","model":"test-model"}}`+"\n"), 0o600); err != nil {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	cfg := config.Defaults()
+	cfg.AI.BaseURL = server.URL
+	cfg.AI.Model = "test-model"
+	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	root := tempGitRepos(t, "repo")
