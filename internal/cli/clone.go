@@ -36,9 +36,10 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		a.error("Invalid visibility option. Use 'all', 'public', or 'private'.")
 		return 1
 	}
-	ghEnv, authSource, ok, err := githubAuthEnv(a)
-	if err != nil {
-		if visibility == "private" || visibility == "all" {
+	ghEnv := githubcli.UnauthenticatedEnv()
+	if visibility == "private" || visibility == "all" {
+		resolvedEnv, authSource, ok, err := githubAuthEnv(a)
+		if err != nil {
 			if errors.Is(err, errGitHubCredentialStorageUnavailable) {
 				a.error("Secure credential storage is unavailable. Set GIT_WRANGLER_GITHUB_TOKEN, or use --visibility public to clone only public repositories.")
 			} else {
@@ -46,14 +47,11 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 			}
 			return 1
 		}
-		ghEnv = nil
-		ok = false
-	}
-	if !ok && (visibility == "private" || visibility == "all") {
-		a.errorf("Git Wrangler GitHub auth is required for %s repository cloning. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.", visibility)
-		return 1
-	}
-	if visibility == "private" || visibility == "all" {
+		if !ok {
+			a.errorf("Git Wrangler GitHub auth is required for %s repository cloning. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.", visibility)
+			return 1
+		}
+		ghEnv = resolvedEnv
 		renderStatusLine(a, a.stdout, statusInfo, "GitHub auth", string(authSource))
 	}
 

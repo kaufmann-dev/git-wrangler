@@ -113,6 +113,10 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		a.error("Git Wrangler GitHub auth is required for rename-repo. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.")
 		return 1
 	}
+	if err := a.gh.ValidateAuth(a.ctx, ghEnv); err != nil {
+		a.plainErrorf("GitHub authentication failed: %s", err.Error())
+		return 1
+	}
 	renderStatusLine(a, a.stdout, statusInfo, "GitHub auth", string(authSource))
 	repos, err := commandRepositoryTargets(cmd)
 	if err != nil {
