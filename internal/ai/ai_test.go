@@ -301,6 +301,65 @@ func TestRequestBatchSendsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestRequestBatchPromptsForSemanticPurpose(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Messages) != 2 {
+			t.Fatalf("messages = %d, want 2", len(payload.Messages))
+		}
+		system := payload.Messages[0].Content
+		user := payload.Messages[1].Content
+		for _, want := range []string{
+			"Prefer the high-level purpose over file names",
+			"Return valid JSON only",
+		} {
+			if !strings.Contains(system, want) {
+				t.Fatalf("system prompt missing %q:\n%s", want, system)
+			}
+		}
+		for _, want := range []string{
+			"Summarize the semantic purpose of the change",
+			"Do not merely name changed files",
+			"Choose a concise scope from the product or subsystem area",
+			"Do not repeat the subject or list files in the body",
+		} {
+			if !strings.Contains(user, want) {
+				t.Fatalf("user prompt missing %q:\n%s", want, user)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add capability\",\"body\":\"Explain the user-visible effect.\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	messages, err := requestBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL: server.URL,
+		Model:   "test-model",
+		APIKey:  "test-key",
+		Timeout: time.Second,
+		Body:    true,
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages["c000001"].Subject != "feat(cli): add capability" || messages["c000001"].Body == "" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
 func TestPreflightUsesGenerationAuthentication(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Gateway custom-token" {
@@ -584,6 +643,98 @@ func TestProcessBatchRetryMessageIncludesHTTPFailureReason(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Retrying 1 commit(s) after failed batch attempt 1: HTTP 429: rate limit exceeded") {
 		t.Fatalf("retry output missing HTTP reason:\n%s", out.String())
+	}
+}
+
+func TestBuildContextIncludesChangeSummaryMetadata(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff-tree --root --no-commit-id --name-status -r abc123":
+			return strings.Join([]string{
+				"M\tinternal/cli/commit.go",
+				"A\tdocs/commands.md",
+				"M\t.env",
+				"M\tnode_modules/pkg/index.js",
+			}, "\n") + "\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r abc123":
+			return strings.Join([]string{
+				"10\t2\tinternal/cli/commit.go",
+				"3\t1\tdocs/commands.md",
+				"1\t0\t.env",
+				"50\t0\tnode_modules/pkg/index.js",
+			}, "\n") + "\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123 -- internal/cli/commit.go docs/commands.md":
+			return strings.Join([]string{
+				"diff --git a/internal/cli/commit.go b/internal/cli/commit.go",
+				"+semantic source change",
+				"diff --git a/docs/commands.md b/docs/commands.md",
+				"+document behavior",
+			}, "\n"), "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Change summary:",
+		"Total files: 4",
+		"Change mix: 1 added, 3 modified",
+		"File areas:",
+		"source",
+		"docs",
+		"generated",
+		"Line stats: +64 -3",
+		"Hidden content: 1 sensitive path(s), 1 excluded/generated path(s)",
+		"semantic source change",
+		"node_modules/pkg/index.js",
+	} {
+		if !strings.Contains(contextText, want) {
+			t.Fatalf("context missing %q:\n%s", want, contextText)
+		}
+	}
+	if strings.Contains(contextText, "OPENAI_API_KEY") {
+		t.Fatalf("sensitive content leaked:\n%s", contextText)
+	}
+}
+
+func TestBuildStagedContextPreservesSummaryWhenDiffIsTruncated(t *testing.T) {
+	largeDiff := "diff --git a/file.txt b/file.txt\n" + strings.Repeat("+very long generated context\n", 200)
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff --cached --name-status":
+			return "M\tfile.txt\n", "", nil
+		case "git diff --cached --numstat":
+			return "2\t1\tfile.txt\n", "", nil
+		case "git diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3 -- file.txt":
+			return largeDiff, "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo", 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Change summary:",
+		"Files changed:",
+		"Stats:",
+		"Redacted staged diff snippet:",
+		"[TRUNCATED TO PER-COMMIT CONTEXT BUDGET]",
+	} {
+		if !strings.Contains(contextText, want) {
+			t.Fatalf("context missing %q:\n%s", want, contextText)
+		}
+	}
+	if strings.Count(contextText, "very long generated context") >= 10 {
+		t.Fatalf("diff was not truncated enough:\n%s", contextText)
 	}
 }
 
