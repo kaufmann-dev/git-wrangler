@@ -192,6 +192,12 @@ processes.
 `commit` and `rewrite-commits` use any OpenAI-compatible chat completions
 API to generate Conventional Commit messages from your diffs.
 
+AI context stays privacy-first: Git Wrangler sends file paths, stats, a compact
+change summary, and redacted diff snippets, but not old commit messages. For
+large or cross-cutting changes, use `--body` for rationale, increase
+`--max-chars-per-commit` when relevant diff context is truncated, and prefer a
+stronger model when a cheap/fast model still produces file-level summaries.
+
 ```bash
 # Set up credentials
 git-wrangler init
