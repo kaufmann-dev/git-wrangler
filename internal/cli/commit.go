@@ -23,16 +23,11 @@ type commitAICommitResult struct {
 }
 
 func runCommit(a *app, cmd *cobra.Command, args []string) int {
-	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
 	rpm, _ := cmd.Flags().GetInt("rpm")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
 
-	if maxCharsInt <= 0 {
-		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
-		return 1
-	}
 	if rpm <= 0 {
 		a.plainErrorf("--rpm must be a positive integer.")
 		return 1
@@ -61,7 +56,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 
-	changes, skipped, failed := collectCommitChanges(a, repos, maxCharsInt)
+	changes, skipped, failed := collectCommitChanges(a, repos)
 	if a.ctx.Err() != nil {
 		return 1
 	}
@@ -93,7 +88,8 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		{key: "Endpoint", value: settings.Config.AI.BaseURL},
 		{key: "Model", value: settings.Config.AI.Model},
 		{key: "Repositories", value: fmt.Sprintf("%d", len(changes))},
-		{key: "Context budget", value: fmt.Sprintf("%d characters per commit", maxCharsInt)},
+		{key: "Context", value: "automatic, bounded request packing"},
+		{key: "API batches", value: fmt.Sprintf("%d", ai.RequestBatchCount(inputsFromChanges(changes), 4))},
 	}, bodyLines)
 	confirmation := confirmOrSkip(a, yes, "Send this data to the configured API endpoint?")
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
@@ -110,16 +106,15 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	}
 	apiProgress := (*progress)(nil)
 	messages, generationFailures := ai.GenerateMessages(a.ctx, inputs, ai.Config{
-		BaseURL:           settings.Config.AI.BaseURL,
-		Model:             settings.Config.AI.Model,
-		APIKey:            settings.APIKey,
-		Headers:           settings.Headers,
-		BatchSize:         4,
-		MaxCharsPerCommit: maxCharsInt,
-		RPM:               rpm,
-		Timeout:           time.Duration(timeoutInt) * time.Second,
-		Body:              body,
-		Git:               a.git,
+		BaseURL:   settings.Config.AI.BaseURL,
+		Model:     settings.Config.AI.Model,
+		APIKey:    settings.APIKey,
+		Headers:   settings.Headers,
+		BatchSize: 4,
+		RPM:       rpm,
+		Timeout:   time.Duration(timeoutInt) * time.Second,
+		Body:      body,
+		Git:       a.git,
 		Progress: func(event ai.ProgressEvent) {
 			if event.Phase != "Sending API requests" {
 				return
@@ -204,7 +199,15 @@ func allGenerationFailuresAre(failures []ai.GenerationFailure, reason string) bo
 	return true
 }
 
-func collectCommitChanges(a *app, repos []repo, maxChars int) ([]commitAIChange, int, int) {
+func inputsFromChanges(changes []commitAIChange) []ai.GenerationInput {
+	inputs := make([]ai.GenerationInput, 0, len(changes))
+	for _, change := range changes {
+		inputs = append(inputs, change.input)
+	}
+	return inputs
+}
+
+func collectCommitChanges(a *app, repos []repo) ([]commitAIChange, int, int) {
 	type commitAICollectResult struct {
 		change       commitAIChange
 		repo         repo
@@ -231,7 +234,7 @@ func collectCommitChanges(a *app, repos []repo, maxChars int) ([]commitAIChange,
 		if _, err := a.git.Capture(a.ctx, r.dir, env, "diff", "--cached", "--quiet"); err == nil {
 			return commitAICollectResult{repo: r, skipped: true}
 		}
-		contextText, err := ai.BuildStagedContextWithEnv(a.ctx, a.git, r.dir, r.display, maxChars, env)
+		contextText, err := ai.BuildStagedContextWithEnv(a.ctx, a.git, r.dir, r.display, env)
 		if err != nil {
 			return commitAICollectResult{repo: r, err: err, contextError: true}
 		}

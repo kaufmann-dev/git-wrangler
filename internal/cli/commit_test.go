@@ -369,7 +369,7 @@ func TestCommitPreparationUsesMutationWorkerCap(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 
-	changes, skipped, failed := collectCommitChanges(a, repos, 3000)
+	changes, skipped, failed := collectCommitChanges(a, repos)
 	if len(changes) != 0 || skipped != len(repos) || failed != 0 {
 		t.Fatalf("changes=%d skipped=%d failed=%d", len(changes), skipped, failed)
 	}
