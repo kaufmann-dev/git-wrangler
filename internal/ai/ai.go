@@ -441,20 +441,7 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 		}
 		diffText = RedactDiff(diffText)
 	}
-	contextText := strings.Join([]string{
-		"Repository: " + repoName,
-		"Commit: " + shortHash(commitHash, 12),
-		"",
-		"Files changed:",
-		limitedLines(nameStatus, 80),
-		"",
-		"Stats:",
-		limitedLines(numstat, 80),
-		"",
-		"Redacted diff snippet:",
-		diffText,
-	}, "\n")
-	return truncateText(contextText, charBudget), nil
+	return buildContextText(repoName, shortHash(commitHash, 12), nameStatus, numstat, "Redacted diff snippet", diffText, charBudget), nil
 }
 
 func hiddenDiffMarker(nameStatus string) string {
@@ -536,8 +523,18 @@ func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDi
 		}
 		diffText = RedactDiff(diffText)
 	}
-	contextText := strings.Join([]string{
-		"Repository: " + repoName,
+	return buildContextText(repoName, "", nameStatus, numstat, "Redacted staged diff snippet", diffText, charBudget), nil
+}
+
+func buildContextText(repoName, commitRef, nameStatus, numstat, diffLabel, diffText string, charBudget int) string {
+	prefixSections := []string{"Repository: " + repoName}
+	if commitRef != "" {
+		prefixSections = append(prefixSections, "Commit: "+commitRef)
+	}
+	prefixSections = append(prefixSections,
+		"",
+		"Change summary:",
+		changeSummary(nameStatus, numstat),
 		"",
 		"Files changed:",
 		limitedLines(nameStatus, 80),
@@ -545,10 +542,191 @@ func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDi
 		"Stats:",
 		limitedLines(numstat, 80),
 		"",
-		"Redacted staged diff snippet:",
-		diffText,
-	}, "\n")
-	return truncateText(contextText, charBudget), nil
+		diffLabel+":",
+	)
+	return appendDiffWithBudget(strings.Join(prefixSections, "\n"), diffText, charBudget)
+}
+
+func changeSummary(nameStatus, numstat string) string {
+	groups := changedPathGroups(nameStatus)
+	if len(groups) == 0 {
+		return "Total files: 0"
+	}
+	statusCounts := map[string]int{}
+	categoryCounts := map[string]int{}
+	sensitive := 0
+	excluded := 0
+	for _, group := range groups {
+		statusCounts[changeStatusName(groupStatus(nameStatus, group))]++
+		for _, path := range group {
+			categoryCounts[pathCategory(path)]++
+			if IsSensitivePath(path) {
+				sensitive++
+			}
+			if IsExcludedDiffPath(path) {
+				excluded++
+			}
+		}
+	}
+	insertions, deletions, binaryFiles := numstatTotals(numstat)
+	lines := []string{
+		fmt.Sprintf("Total files: %d", len(groups)),
+		"Change mix: " + formatCounts(statusCounts, []string{"added", "modified", "deleted", "renamed", "copied", "typechanged", "unmerged", "other"}),
+		"File areas: " + formatCounts(categoryCounts, []string{"source", "tests", "docs", "config", "assets", "generated", "other"}),
+	}
+	if insertions > 0 || deletions > 0 || binaryFiles > 0 {
+		line := fmt.Sprintf("Line stats: +%d -%d", insertions, deletions)
+		if binaryFiles > 0 {
+			line += fmt.Sprintf(", %d binary", binaryFiles)
+		}
+		lines = append(lines, line)
+	}
+	if sensitive > 0 || excluded > 0 {
+		lines = append(lines, fmt.Sprintf("Hidden content: %d sensitive path(s), %d excluded/generated path(s)", sensitive, excluded))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func groupStatus(nameStatus string, group []string) string {
+	for _, line := range splitLines(nameStatus) {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		if sameStringSlice(fields[1:], group) {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+func sameStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func changeStatusName(status string) string {
+	if status == "" {
+		return "other"
+	}
+	switch status[0] {
+	case 'A':
+		return "added"
+	case 'M':
+		return "modified"
+	case 'D':
+		return "deleted"
+	case 'R':
+		return "renamed"
+	case 'C':
+		return "copied"
+	case 'T':
+		return "typechanged"
+	case 'U':
+		return "unmerged"
+	default:
+		return "other"
+	}
+}
+
+func pathCategory(path string) string {
+	normalized := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	base := filepath.Base(normalized)
+	ext := filepath.Ext(base)
+	if IsExcludedDiffPath(path) {
+		return "generated"
+	}
+	for _, segment := range strings.Split(normalized, "/") {
+		switch segment {
+		case "test", "tests", "__tests__", "spec", "specs":
+			return "tests"
+		case "docs", "doc":
+			return "docs"
+		case "config", ".github":
+			return "config"
+		}
+	}
+	if strings.Contains(base, "test") || strings.Contains(base, "spec") {
+		return "tests"
+	}
+	switch ext {
+	case ".md", ".mdx", ".rst", ".txt", ".adoc":
+		return "docs"
+	case ".json", ".yaml", ".yml", ".toml", ".ini", ".env", ".lock":
+		return "config"
+	case ".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".pdf", ".png", ".svg", ".webp", ".mp3", ".mp4", ".ogg", ".wav", ".webm", ".eot", ".otf", ".ttf", ".woff", ".woff2", ".glb", ".gltf":
+		return "assets"
+	default:
+		return "source"
+	}
+}
+
+func numstatTotals(numstat string) (insertions, deletions, binaryFiles int) {
+	for _, line := range splitLines(numstat) {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 3 {
+			continue
+		}
+		if fields[0] == "-" || fields[1] == "-" {
+			binaryFiles++
+			continue
+		}
+		added, addErr := strconv.Atoi(fields[0])
+		deleted, deleteErr := strconv.Atoi(fields[1])
+		if addErr == nil {
+			insertions += added
+		}
+		if deleteErr == nil {
+			deletions += deleted
+		}
+	}
+	return insertions, deletions, binaryFiles
+}
+
+func formatCounts(counts map[string]int, order []string) string {
+	parts := []string{}
+	seen := map[string]bool{}
+	for _, key := range order {
+		seen[key] = true
+		if counts[key] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[key], key))
+		}
+	}
+	extras := []string{}
+	for key, count := range counts {
+		if count > 0 && !seen[key] {
+			extras = append(extras, fmt.Sprintf("%d %s", count, key))
+		}
+	}
+	sort.Strings(extras)
+	parts = append(parts, extras...)
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func appendDiffWithBudget(prefix, diffText string, limit int) string {
+	if limit <= 0 {
+		return prefix + "\n" + diffText
+	}
+	full := prefix + "\n" + diffText
+	if len(full) <= limit {
+		return full
+	}
+	suffix := "\n[TRUNCATED TO PER-COMMIT CONTEXT BUDGET]"
+	diffBudget := limit - len(prefix) - 1 - len(suffix)
+	if diffBudget <= 0 {
+		return truncateText(prefix, limit)
+	}
+	return prefix + "\n" + diffText[:diffBudget] + suffix
 }
 
 func IsConventional(message string) bool {
@@ -923,21 +1101,24 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (m
 			"context":    item.Context,
 		})
 	}
-	shape := "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add thing\"}]}"
+	shape := "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add capability\"}]}"
 	if cfg.Body {
-		shape = "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add thing\",\"body\":\"Explain why this change was made.\"}]}"
+		shape = "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add capability\",\"body\":\"Explain the user-visible or architectural effect.\"}]}"
 	}
 	userContent := "Generate one Conventional Commit subject for each commit below.\n" +
 		"Return exactly this JSON shape: " + shape + "\n" +
-		"Preserve every input id exactly once. Use lowercase subjects, present tense, no trailing period.\n"
+		"Preserve every input id exactly once. Use lowercase subjects, present tense, no trailing period.\n" +
+		"Summarize the semantic purpose of the change: user-visible behavior, API contract, architecture, workflow, or test intent.\n" +
+		"Do not merely name changed files, directories, packages, or implementation mechanics when the broader purpose is inferable.\n" +
+		"Choose a concise scope from the product or subsystem area, not a filename, unless the filename is the only meaningful scope.\n"
 	if cfg.Body {
-		userContent += "Include a concise non-empty body for every message. Do not repeat the subject in the body.\n"
+		userContent += "Include a concise non-empty body explaining why the change matters or what effect it has. Do not repeat the subject or list files in the body.\n"
 	}
 	userContent += "\nCommits:\n" + mustJSON(commits)
 	payload := map[string]any{
 		"model": cfg.Model,
 		"messages": []map[string]string{
-			{"role": "system", "content": "You generate concise Conventional Commit messages. Return valid JSON only. Do not include Markdown or explanations."},
+			{"role": "system", "content": "You generate accurate Conventional Commit messages from redacted Git context. Prefer the high-level purpose over file names. Return valid JSON only. Do not include Markdown or explanations."},
 			{"role": "user", "content": userContent},
 		},
 		"temperature": 0.2,
