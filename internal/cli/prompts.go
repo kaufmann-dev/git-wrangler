@@ -447,7 +447,7 @@ var guidedPrompts = map[string][]guidedPrompt{
 	"pull":            {guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")},
 	"fetch":           {guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")},
 	"push":            {},
-	"commit":          {guidedString("repo", "Repository"), guidedPositiveInt("max-chars-per-commit", "Context characters per commit"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
+	"commit":          {guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
 	"fix-gitignore":   {guidedString("repo", "Repository")},
 	"license":         {guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
 	"rename-branch":   {guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")},
@@ -456,7 +456,7 @@ var guidedPrompts = map[string][]guidedPrompt{
 	"untrack":         {guidedString("repo", "Repository")},
 	"remove-secrets":  {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 	"rewrite-authors": {guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedBool("force", "Force filter-repo")},
-	"rewrite-commits": {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedPositiveInt("batch-size", "Commits per API request"), guidedPositiveInt("max-chars-per-commit", "Context characters per commit"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("body", "Generate message bodies")},
+	"rewrite-commits": {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("body", "Generate message bodies")},
 	"info":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 	"status":          {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 }

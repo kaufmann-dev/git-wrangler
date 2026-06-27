@@ -20,7 +20,8 @@ import (
 )
 
 type fakeRunner struct {
-	run func(context.Context, string, []string, string, ...string) (string, string, error)
+	run    func(context.Context, string, []string, string, ...string) (string, string, error)
+	stream func(context.Context, string, []string, string, []string, func(io.Reader) error) error
 }
 
 func (f fakeRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
@@ -36,6 +37,20 @@ func (f fakeRunner) LookPath(name string) (string, error) {
 
 func (f fakeRunner) Pipe(ctx context.Context, dir string, env []string, left run.Command, right run.Command, consume func(io.Reader) error) error {
 	return errors.New("unexpected pipe")
+}
+
+func (f fakeRunner) Stream(ctx context.Context, dir string, env []string, name string, args []string, consume func(io.Reader) error) error {
+	if f.stream == nil {
+		stdout, stderr, err := f.Run(ctx, dir, env, name, args...)
+		if err != nil {
+			if strings.TrimSpace(stderr) != "" {
+				return errors.New(strings.TrimSpace(stderr))
+			}
+			return err
+		}
+		return consume(strings.NewReader(stdout))
+	}
+	return f.stream(ctx, dir, env, name, args, consume)
 }
 
 func TestRedactDiffHidesSensitiveFileContents(t *testing.T) {
@@ -292,7 +307,7 @@ func TestRequestBatchSendsCustomHeaders(t *testing.T) {
 			"X-Project-Id":  "corp-dev-99",
 		},
 		Timeout: time.Second,
-	}, 1)
+	}, 1, maxRequestContextChars)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +366,7 @@ func TestRequestBatchPromptsForSemanticPurpose(t *testing.T) {
 		APIKey:  "test-key",
 		Timeout: time.Second,
 		Body:    true,
-	}, 1)
+	}, 1, maxRequestContextChars)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +516,7 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 	items, stats, err := collectItems(context.Background(), []Repository{
 		{Dir: "repo-a", Name: "repo-a", GitDir: "repo-a/.git"},
 		{Dir: "repo-b", Name: "repo-b", GitDir: "repo-b/.git"},
-	}, gitClient, 3000, true, func(ProgressEvent) {})
+	}, gitClient, true, func(ProgressEvent) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -676,7 +691,7 @@ func TestBuildContextIncludesChangeSummaryMetadata(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +718,7 @@ func TestBuildContextIncludesChangeSummaryMetadata(t *testing.T) {
 }
 
 func TestBuildStagedContextPreservesSummaryWhenDiffIsTruncated(t *testing.T) {
-	largeDiff := "diff --git a/file.txt b/file.txt\n" + strings.Repeat("+very long generated context\n", 200)
+	largeDiff := "diff --git a/file.txt b/file.txt\n" + strings.Repeat("+very long generated context\n", 3000)
 	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 		joined := name + " " + strings.Join(args, " ")
 		switch joined {
@@ -718,7 +733,7 @@ func TestBuildStagedContextPreservesSummaryWhenDiffIsTruncated(t *testing.T) {
 		}
 	}})
 
-	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo", 500)
+	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,15 +742,100 @@ func TestBuildStagedContextPreservesSummaryWhenDiffIsTruncated(t *testing.T) {
 		"Files changed:",
 		"Stats:",
 		"Redacted staged diff snippet:",
-		"[TRUNCATED TO PER-COMMIT CONTEXT BUDGET]",
+		"[TRUNCATED TO SINGLE-COMMIT CONTEXT BUDGET]",
 	} {
 		if !strings.Contains(contextText, want) {
 			t.Fatalf("context missing %q:\n%s", want, contextText)
 		}
 	}
-	if strings.Count(contextText, "very long generated context") >= 10 {
-		t.Fatalf("diff was not truncated enough:\n%s", contextText)
+	if strings.Count(contextText, "very long generated context") >= 3000 {
+		t.Fatalf("diff was not truncated:\n%s", contextText)
 	}
+}
+
+func TestBuildStagedContextIsNotTruncatedAtLegacyDefault(t *testing.T) {
+	largeDiff := "diff --git a/file.txt b/file.txt\n" + strings.Repeat("+useful generated context\n", 250)
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git diff --cached --name-status":
+			return "M\tfile.txt\n", "", nil
+		case "git diff --cached --numstat":
+			return "250\t0\tfile.txt\n", "", nil
+		case "git diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3 -- file.txt":
+			return largeDiff, "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+
+	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contextText) <= 3000 {
+		t.Fatalf("context length = %d, want above legacy 3000 cap", len(contextText))
+	}
+	if strings.Contains(contextText, "[TRUNCATED") {
+		t.Fatalf("context was unexpectedly truncated:\n%s", contextText)
+	}
+}
+
+func TestBuildContextBoundsStreamedDiffCollection(t *testing.T) {
+	reader := &repeatingReader{line: []byte("+large useful context line\n"), remaining: maxSingleCommitContextChars * 20}
+	gitClient := git.New(fakeRunner{
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			joined := name + " " + strings.Join(args, " ")
+			switch joined {
+			case "git diff-tree --root --no-commit-id --name-status -r abc123":
+				return "M\tmain.go\n", "", nil
+			case "git diff-tree --root --no-commit-id --numstat -r abc123":
+				return "100000\t0\tmain.go\n", "", nil
+			default:
+				return "", "", errors.New("unexpected command: " + joined)
+			}
+		},
+		stream: func(ctx context.Context, dir string, env []string, name string, args []string, consume func(io.Reader) error) error {
+			joined := name + " " + strings.Join(args, " ")
+			if joined != "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 abc123 -- main.go" {
+				return errors.New("unexpected stream command: " + joined)
+			}
+			return consume(reader)
+		},
+	})
+
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.read > maxSingleCommitContextChars+32768 {
+		t.Fatalf("stream read %d bytes, want bounded near %d", reader.read, maxSingleCommitContextChars)
+	}
+	if !strings.Contains(contextText, "[TRUNCATED TO SINGLE-COMMIT CONTEXT BUDGET]") {
+		t.Fatalf("missing truncation marker:\n%s", contextText)
+	}
+}
+
+type repeatingReader struct {
+	line      []byte
+	remaining int
+	read      int
+	offset    int
+}
+
+func (r *repeatingReader) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	n := 0
+	for n < len(p) && r.remaining > 0 {
+		p[n] = r.line[r.offset]
+		n++
+		r.read++
+		r.remaining--
+		r.offset = (r.offset + 1) % len(r.line)
+	}
+	return n, nil
 }
 
 func TestBuildContextSkipsShowForSensitiveOnlyCommit(t *testing.T) {
@@ -751,7 +851,7 @@ func TestBuildContextSkipsShowForSensitiveOnlyCommit(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -773,7 +873,7 @@ func TestBuildContextSkipsShowForExcludedOnlyCommit(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -800,7 +900,7 @@ func TestBuildContextShowsOnlyVisiblePathsForMixedStaticCommit(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -827,7 +927,7 @@ func TestBuildContextPreservesVisiblePathWithSpaces(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -849,7 +949,7 @@ func TestBuildContextSkipsDiffForSensitiveRenameSource(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,7 +973,7 @@ func TestBuildContextIncludesNormalRenameDiff(t *testing.T) {
 		}
 	}})
 
-	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123", 3000)
+	contextText, err := buildContext(context.Background(), gitClient, "repo", "repo", "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -895,7 +995,7 @@ func TestBuildStagedContextSkipsDiffForExcludedOnlyChanges(t *testing.T) {
 		}
 	}})
 
-	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo", 3000)
+	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -995,6 +1095,52 @@ func TestProcessItemsPacesRequestStartsAndKeepsResults(t *testing.T) {
 	}
 }
 
+func TestPackItemsUsesBatchSizeAsMaximumAndSplitsLargeContexts(t *testing.T) {
+	items := []item{
+		{ID: "c000001", Context: strings.Repeat("a", 30000)},
+		{ID: "c000002", Context: strings.Repeat("b", 30000)},
+		{ID: "c000003", Context: strings.Repeat("c", 30000)},
+		{ID: "c000004", Context: "small"},
+	}
+	batches := packItems(items, 3, maxRequestContextChars)
+	if len(batches) != 2 {
+		t.Fatalf("batches = %d, want 2", len(batches))
+	}
+	if len(batches[0]) != 2 || len(batches[1]) != 2 {
+		t.Fatalf("batch sizes = %d, %d; want 2, 2", len(batches[0]), len(batches[1]))
+	}
+
+	batches = packItems(items, 2, maxRequestContextChars)
+	if len(batches) != 2 || len(batches[0]) != 2 || len(batches[1]) != 2 {
+		t.Fatalf("max batch size not respected: %#v", batchLengths(batches))
+	}
+}
+
+func TestPackItemsSendsOversizedSingleCommitAlone(t *testing.T) {
+	batches := packItems([]item{
+		{ID: "c000001", Context: strings.Repeat("a", maxRequestContextChars+1000)},
+		{ID: "c000002", Context: "small"},
+		{ID: "c000003", Context: "small"},
+	}, 10, maxRequestContextChars)
+	if len(batches) != 2 {
+		t.Fatalf("batches = %d, want 2", len(batches))
+	}
+	if len(batches[0]) != 1 || batches[0][0].ID != "c000001" {
+		t.Fatalf("oversized commit was not sent alone: %#v", batchLengths(batches))
+	}
+	if len(batches[1]) != 2 {
+		t.Fatalf("remaining batch size = %d, want 2", len(batches[1]))
+	}
+}
+
+func batchLengths(batches [][]item) []int {
+	lengths := make([]int, len(batches))
+	for i, batch := range batches {
+		lengths[i] = len(batch)
+	}
+	return lengths
+}
+
 func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
 	var mu sync.Mutex
 	var starts []time.Time
@@ -1053,6 +1199,74 @@ func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
 			t.Fatalf("request %d started too soon after previous request: %s", i+1, delta)
 		}
 	}
+}
+
+func TestProviderContextLimitRetriesWithSmallerContext(t *testing.T) {
+	var contextLengths []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		content := payload.Messages[1].Content
+		contextLengths = append(contextLengths, strings.Count(content, "context line"))
+		w.Header().Set("Content-Type", "application/json")
+		if len(contextLengths) < 3 {
+			http.Error(w, "maximum context length exceeded", http.StatusBadRequest)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	results, failures := processBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  contextWithLargeDiff(strings.Repeat("+context line\n", 7000)),
+	}}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
+	}, &out)
+	if len(failures) != 0 || len(results) != 1 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if len(contextLengths) != 3 {
+		t.Fatalf("requests = %d, want 3", len(contextLengths))
+	}
+	if !(contextLengths[0] > contextLengths[1] && contextLengths[1] > contextLengths[2]) {
+		t.Fatalf("context lengths did not shrink: %#v", contextLengths)
+	}
+	if !strings.Contains(out.String(), "Retrying 1 commit(s) with smaller context after provider context limit") {
+		t.Fatalf("missing context-limit retry notice:\n%s", out.String())
+	}
+}
+
+func contextWithLargeDiff(diff string) string {
+	return strings.Join([]string{
+		"Repository: repo",
+		"",
+		"Change summary:",
+		"Total files: 1",
+		"",
+		"Files changed:",
+		"M\tmain.go",
+		"",
+		"Stats:",
+		"1\t0\tmain.go",
+		"",
+		"Redacted diff snippet:",
+		diff,
+	}, "\n")
 }
 
 func TestProcessItemsReportsProgressWithoutBatchSpam(t *testing.T) {
