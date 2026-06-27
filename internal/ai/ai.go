@@ -24,6 +24,7 @@ import (
 var (
 	ErrCancelled    = errors.New("cancelled")
 	ErrAPICancelled = errors.New("api generation cancelled")
+	errOutputLimit  = errors.New("output limit reached")
 	conventionalRe  = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+$`)
 	secretAssignRe  = regexp.MustCompile("(?i)\\b(password|passwd|pwd|secret|api_key|apikey|auth_token|access_token|private_key)\\b(\\s*(?::=|:|==|=)\\s*)('[^']{8,}'|\\\"[^\\\"]{8,}\\\"|\\x60[^\\x60]{8,}\\x60|[^'\\\"\\s]{8,})")
 	secretPatterns  = []*regexp.Regexp{
@@ -35,6 +36,12 @@ var (
 	}
 )
 
+const (
+	maxSingleCommitContextChars = 50000
+	maxRequestContextChars      = 80000
+	minRetryRequestContextChars = 20000
+)
+
 type Repository struct {
 	Dir     string
 	Name    string
@@ -43,19 +50,18 @@ type Repository struct {
 }
 
 type Config struct {
-	BaseURL           string
-	Model             string
-	APIKey            string
-	Headers           map[string]string
-	BatchSize         int
-	MaxCharsPerCommit int
-	RPM               int
-	Timeout           time.Duration
-	SkipConventional  bool
-	Body              bool
-	WorkDir           string
-	Git               git.Client
-	Progress          func(ProgressEvent)
+	BaseURL          string
+	Model            string
+	APIKey           string
+	Headers          map[string]string
+	BatchSize        int
+	RPM              int
+	Timeout          time.Duration
+	SkipConventional bool
+	Body             bool
+	WorkDir          string
+	Git              git.Client
+	Progress         func(ProgressEvent)
 }
 
 type ProgressEvent struct {
@@ -145,9 +151,6 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 10
 	}
-	if cfg.MaxCharsPerCommit <= 0 {
-		cfg.MaxCharsPerCommit = 3000
-	}
 	if cfg.RPM <= 0 {
 		cfg.RPM = 300
 	}
@@ -162,7 +165,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	}
 
 	fmt.Fprintln(out, "Scanning repositories and preparing redacted commit context...")
-	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.MaxCharsPerCommit, cfg.SkipConventional, progressFunc(cfg, out))
+	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.SkipConventional, progressFunc(cfg, out))
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +176,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 		return &Plan{Summary: "No commits with usable file context were found for AI rewriting.\n"}, nil
 	}
 
-	batches := (len(items) + cfg.BatchSize - 1) / cfg.BatchSize
+	batches := len(packItems(items, cfg.BatchSize, maxRequestContextChars))
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Data send notice")
 	fmt.Fprintln(out, "----------------")
@@ -186,7 +189,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 		fmt.Fprintf(out, "Skipped already Conventional Commits: %d\n", stats.SkippedFormatted)
 	}
 	fmt.Fprintf(out, "API batches: %d\n", batches)
-	fmt.Fprintf(out, "Per-commit context budget: %d characters\n", cfg.MaxCharsPerCommit)
+	fmt.Fprintln(out, "Context: automatic, bounded request packing")
 	if cfg.Body {
 		fmt.Fprintln(out, "Generated messages will include a subject and body.")
 	}
@@ -213,9 +216,6 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config, out io.Writer) (map[string]Message, []GenerationFailure) {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 4
-	}
-	if cfg.MaxCharsPerCommit <= 0 {
-		cfg.MaxCharsPerCommit = 3000
 	}
 	if cfg.RPM <= 0 {
 		cfg.RPM = 300
@@ -257,6 +257,14 @@ func GenerateMessages(ctx context.Context, changes []GenerationInput, cfg Config
 	return results, publicFailures
 }
 
+func RequestBatchCount(changes []GenerationInput, maxBatchSize int) int {
+	items := make([]item, 0, len(changes))
+	for _, change := range changes {
+		items = append(items, item{Context: change.Context})
+	}
+	return len(packItems(items, maxBatchSize, maxRequestContextChars))
+}
+
 func progressFunc(cfg Config, out io.Writer) func(ProgressEvent) {
 	if cfg.Progress != nil {
 		return cfg.Progress
@@ -275,7 +283,7 @@ func progressFunc(cfg Config, out io.Writer) func(ProgressEvent) {
 	}
 }
 
-func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, charBudget int, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
+func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
 	type repoResult struct {
 		items []item
 		stats Stats
@@ -293,7 +301,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			for repoIndex := range jobs {
 				repo := repositories[repoIndex]
 				progress(ProgressEvent{Phase: "Scanning repositories", Key: repo.Name, RepoName: repo.Name, Current: 0, Total: len(repositories), Detail: repo.Name})
-				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, charBudget, skipConventional, progress)
+				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, skipConventional, progress)
 				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
 				completedMu.Lock()
 				completedRepos++
@@ -328,7 +336,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 	return items, stats, nil
 }
 
-func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, charBudget int, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
+func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
 	stats := Stats{RepoCount: 1}
 	if _, err := gitClient.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
 		stats.SkippedUnborn++
@@ -355,7 +363,7 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 			stats.SkippedFormatted++
 			continue
 		}
-		contextText, err := buildContext(ctx, gitClient, repo.Dir, repo.Name, commit.hash, charBudget)
+		contextText, err := buildContext(ctx, gitClient, repo.Dir, repo.Name, commit.hash)
 		if err != nil {
 			return nil, stats, fmt.Errorf("%s %s: build commit context: %w", repo.Name, shortHash(commit.hash, 8), err)
 		}
@@ -419,7 +427,7 @@ func aiScanWorkerCount(repoCount int) int {
 	return workers
 }
 
-func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, commitHash string, charBudget int) (string, error) {
+func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, commitHash string) (string, error) {
 	nameStatus, err := gitClient.Stdout(ctx, repoDir, nil, "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commitHash)
 	if err != nil {
 		return "", fmt.Errorf("read changed files: %w", err)
@@ -435,13 +443,13 @@ func buildContext(ctx context.Context, gitClient git.Client, repoDir, repoName, 
 	paths := visibleDiffPaths(nameStatus)
 	if len(paths) > 0 {
 		args := append([]string{"show", "--format=", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", commitHash, "--"}, paths...)
-		diffText, err = gitClient.Stdout(ctx, repoDir, nil, args...)
+		diffText, err = limitedGitStdout(ctx, gitClient, repoDir, nil, maxSingleCommitContextChars, args...)
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
 		}
 		diffText = RedactDiff(diffText)
 	}
-	return buildContextText(repoName, shortHash(commitHash, 12), nameStatus, numstat, "Redacted diff snippet", diffText, charBudget), nil
+	return buildContextText(repoName, shortHash(commitHash, 12), nameStatus, numstat, "Redacted diff snippet", diffText), nil
 }
 
 func hiddenDiffMarker(nameStatus string) string {
@@ -497,11 +505,11 @@ func pathGroupSafety(paths []string) (sensitive bool, excluded bool) {
 	return sensitive, excluded
 }
 
-func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repoName string, charBudget int) (string, error) {
-	return BuildStagedContextWithEnv(ctx, gitClient, repoDir, repoName, charBudget, nil)
+func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repoName string) (string, error) {
+	return BuildStagedContextWithEnv(ctx, gitClient, repoDir, repoName, nil)
 }
 
-func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDir, repoName string, charBudget int, env []string) (string, error) {
+func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDir, repoName string, env []string) (string, error) {
 	nameStatus, err := gitClient.Stdout(ctx, repoDir, env, "diff", "--cached", "--name-status")
 	if err != nil {
 		return "", fmt.Errorf("read changed files: %w", err)
@@ -517,16 +525,64 @@ func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDi
 	paths := visibleDiffPaths(nameStatus)
 	if len(paths) > 0 {
 		args := append([]string{"diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", "--find-copies", "--unified=3", "--"}, paths...)
-		diffText, err = gitClient.Stdout(ctx, repoDir, env, args...)
+		diffText, err = limitedGitStdout(ctx, gitClient, repoDir, env, maxSingleCommitContextChars, args...)
 		if err != nil {
 			return "", fmt.Errorf("read diff: %w", err)
 		}
 		diffText = RedactDiff(diffText)
 	}
-	return buildContextText(repoName, "", nameStatus, numstat, "Redacted staged diff snippet", diffText, charBudget), nil
+	return buildContextText(repoName, "", nameStatus, numstat, "Redacted staged diff snippet", diffText), nil
 }
 
-func buildContextText(repoName, commitRef, nameStatus, numstat, diffLabel, diffText string, charBudget int) string {
+func limitedGitStdout(ctx context.Context, gitClient git.Client, repoDir string, env []string, limit int, args ...string) (string, error) {
+	var buf bytes.Buffer
+	limited := false
+	err := gitClient.StreamStdout(ctx, repoDir, env, func(output io.Reader) error {
+		chunk := make([]byte, 32*1024)
+		for {
+			n, readErr := output.Read(chunk)
+			if n > 0 {
+				remaining := limit - buf.Len()
+				if remaining <= 0 {
+					limited = true
+					return errOutputLimit
+				}
+				if n > remaining {
+					buf.Write(chunk[:remaining])
+					limited = true
+					return errOutputLimit
+				}
+				buf.Write(chunk[:n])
+			}
+			if readErr != nil {
+				if errors.Is(readErr, io.EOF) {
+					return nil
+				}
+				return readErr
+			}
+		}
+	}, args...)
+	if err != nil && !errors.Is(err, errOutputLimit) {
+		return "", err
+	}
+	text := buf.String()
+	if limited {
+		text = trimPartialLine(text)
+	}
+	return text, nil
+}
+
+func trimPartialLine(text string) string {
+	if text == "" || strings.HasSuffix(text, "\n") {
+		return text
+	}
+	if idx := strings.LastIndexByte(text, '\n'); idx >= 0 {
+		return text[:idx+1]
+	}
+	return ""
+}
+
+func buildContextText(repoName, commitRef, nameStatus, numstat, diffLabel, diffText string) string {
 	prefixSections := []string{"Repository: " + repoName}
 	if commitRef != "" {
 		prefixSections = append(prefixSections, "Commit: "+commitRef)
@@ -544,7 +600,7 @@ func buildContextText(repoName, commitRef, nameStatus, numstat, diffLabel, diffT
 		"",
 		diffLabel+":",
 	)
-	return appendDiffWithBudget(strings.Join(prefixSections, "\n"), diffText, charBudget)
+	return appendDiffWithBudget(strings.Join(prefixSections, "\n"), diffText, maxSingleCommitContextChars, "SINGLE-COMMIT CONTEXT")
 }
 
 func changeSummary(nameStatus, numstat string) string {
@@ -713,7 +769,7 @@ func formatCounts(counts map[string]int, order []string) string {
 	return strings.Join(parts, ", ")
 }
 
-func appendDiffWithBudget(prefix, diffText string, limit int) string {
+func appendDiffWithBudget(prefix, diffText string, limit int, label string) string {
 	if limit <= 0 {
 		return prefix + "\n" + diffText
 	}
@@ -721,12 +777,12 @@ func appendDiffWithBudget(prefix, diffText string, limit int) string {
 	if len(full) <= limit {
 		return full
 	}
-	suffix := "\n[TRUNCATED TO PER-COMMIT CONTEXT BUDGET]"
+	suffix := "\n[TRUNCATED TO " + label + " BUDGET]"
 	diffBudget := limit - len(prefix) - 1 - len(suffix)
 	if diffBudget <= 0 {
-		return truncateText(prefix, limit)
+		return prefix + suffix
 	}
-	return prefix + "\n" + diffText[:diffBudget] + suffix
+	return prefix + "\n" + trimPartialLine(diffText[:diffBudget]) + suffix
 }
 
 func IsConventional(message string) bool {
@@ -829,7 +885,8 @@ func RedactLine(line string) string {
 }
 
 func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) (map[string]Message, []failure, error) {
-	totalBatches := (len(items) + cfg.BatchSize - 1) / cfg.BatchSize
+	tasks := packItems(items, cfg.BatchSize, maxRequestContextChars)
+	totalBatches := len(tasks)
 	if totalBatches == 0 {
 		return map[string]Message{}, nil, nil
 	}
@@ -842,7 +899,6 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		results  map[string]Message
 		failures []failure
 	}
-	tasks := make([]batchTask, 0, totalBatches)
 	batchResults := make([]batchResult, totalBatches)
 	var wg sync.WaitGroup
 	completedBatches := 0
@@ -850,14 +906,8 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	output := &lockedWriter{writer: out}
 	progress := progressFunc(cfg, output)
 	pacer := newRequestPacer(cfg.RPM)
-	for batchIndex, start := 0, 0; start < len(items); batchIndex, start = batchIndex+1, start+cfg.BatchSize {
-		end := start + cfg.BatchSize
-		if end > len(items) {
-			end = len(items)
-		}
-		tasks = append(tasks, batchTask{index: batchIndex, items: items[start:end]})
-	}
-	for _, task := range tasks {
+	for batchIndex, taskItems := range tasks {
+		task := batchTask{index: batchIndex, items: taskItems}
 		if ctx.Err() != nil {
 			break
 		}
@@ -895,6 +945,52 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		failures = append(failures, batch.failures...)
 	}
 	return results, failures, nil
+}
+
+func packItems(items []item, maxBatchSize int, requestBudget int) [][]item {
+	if maxBatchSize <= 0 {
+		maxBatchSize = 1
+	}
+	if requestBudget <= 0 {
+		requestBudget = maxRequestContextChars
+	}
+	var batches [][]item
+	var current []item
+	currentSize := 0
+	for _, it := range items {
+		size := requestContextSize(it)
+		if len(current) == 0 {
+			current = append(current, it)
+			currentSize = size
+			if len(current) >= maxBatchSize || size >= requestBudget {
+				batches = append(batches, current)
+				current = nil
+				currentSize = 0
+			}
+			continue
+		}
+		if len(current) >= maxBatchSize || currentSize+size > requestBudget {
+			batches = append(batches, current)
+			current = []item{it}
+			currentSize = size
+			if len(current) >= maxBatchSize || size >= requestBudget {
+				batches = append(batches, current)
+				current = nil
+				currentSize = 0
+			}
+			continue
+		}
+		current = append(current, it)
+		currentSize += size
+	}
+	if len(current) > 0 {
+		batches = append(batches, current)
+	}
+	return batches
+}
+
+func requestContextSize(it item) int {
+	return len(it.Context) + len(it.ID) + len(it.RepoName) + len(it.Hash) + 64
 }
 
 func requestInterval(requestsPerMinute int) time.Duration {
@@ -952,13 +1048,26 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 	accepted := map[string]Message{}
 	pending := append([]item(nil), batch...)
 	errorsByID := map[string]string{}
+	requestBudget := maxRequestContextChars
 	for attempt := 1; attempt <= 3 && len(pending) > 0; attempt++ {
 		if !pacer.wait(ctx) {
 			break
 		}
-		returned, err := requestBatch(ctx, pending, cfg, attempt)
+		returned, err := requestBatch(ctx, pending, cfg, attempt, requestBudget)
 		nextPending := []item{}
 		if err != nil {
+			if isLikelyContextLimitError(err) && requestBudget > minRetryRequestContextChars {
+				requestBudget = nextRetryRequestBudget(requestBudget)
+				for _, item := range pending {
+					errorsByID[item.ID] = err.Error()
+				}
+				if ctx.Err() != nil {
+					break
+				}
+				reportRetryMessage(out, reportRetry, fmt.Sprintf("Retrying %d commit(s) with smaller context after provider context limit: %s.", len(pending), err.Error()))
+				attempt--
+				continue
+			}
 			for _, item := range pending {
 				errorsByID[item.ID] = err.Error()
 				nextPending = append(nextPending, item)
@@ -1001,6 +1110,14 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
 	}
 	return accepted, failures
+}
+
+func nextRetryRequestBudget(current int) int {
+	next := current / 2
+	if next < minRetryRequestContextChars {
+		return minRetryRequestContextChars
+	}
+	return next
 }
 
 func reportRetryMessage(out io.Writer, reportRetry func(string), message string) {
@@ -1091,14 +1208,15 @@ func sleepContext(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
-func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (map[string]Message, error) {
+func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int, requestContextBudget int) (map[string]Message, error) {
 	commits := make([]map[string]string, 0, len(batch))
-	for _, item := range batch {
+	contexts := truncateBatchContexts(batch, requestContextBudget)
+	for i, item := range batch {
 		commits = append(commits, map[string]string{
 			"id":         item.ID,
 			"repository": item.RepoName,
 			"commit":     shortHash(item.Hash, 12),
-			"context":    item.Context,
+			"context":    contexts[i],
 		})
 	}
 	shape := "{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(scope): add capability\"}]}"
@@ -1148,6 +1266,97 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int) (m
 	return ExtractMessages(envelope.Choices[0].Message.Content)
 }
 
+func truncateBatchContexts(batch []item, requestContextBudget int) []string {
+	if requestContextBudget <= 0 {
+		requestContextBudget = maxRequestContextChars
+	}
+	contexts := make([]string, len(batch))
+	remaining := requestContextBudget
+	for i, item := range batch {
+		remainingItems := len(batch) - i
+		itemBudget := remaining / remainingItems
+		if itemBudget < minRetryRequestContextChars && remaining >= minRetryRequestContextChars {
+			itemBudget = minRetryRequestContextChars
+		}
+		contexts[i] = truncateContextForRequest(item.Context, itemBudget)
+		remaining -= len(contexts[i])
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
+	return contexts
+}
+
+func truncateContextForRequest(contextText string, budget int) string {
+	if budget <= 0 || len(contextText) <= budget {
+		return contextText
+	}
+	prefix, diff, ok := splitContextDiff(contextText)
+	if !ok {
+		return truncateText(contextText, budget)
+	}
+	truncated := appendDiffWithBudget(strings.TrimRight(prefix, "\n"), diff, budget, "REQUEST CONTEXT")
+	if len(truncated) > budget {
+		return truncateText(truncated, budget)
+	}
+	return truncated
+}
+
+func splitContextDiff(contextText string) (string, string, bool) {
+	for _, marker := range []string{"\nRedacted diff snippet:\n", "\nRedacted staged diff snippet:\n"} {
+		idx := strings.Index(contextText, marker)
+		if idx >= 0 {
+			diffStart := idx + len(marker)
+			return contextText[:diffStart], contextText[diffStart:], true
+		}
+	}
+	return "", "", false
+}
+
+type apiError struct {
+	statusCode int
+	body       string
+}
+
+func (e apiError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.statusCode, truncateText(e.body, 500))
+}
+
+func isLikelyContextLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "output token limit") || strings.Contains(lower, "response was truncated") {
+		return false
+	}
+	var apiErr apiError
+	if errors.As(err, &apiErr) {
+		if apiErr.statusCode == http.StatusRequestEntityTooLarge {
+			return true
+		}
+		if apiErr.statusCode != http.StatusBadRequest && apiErr.statusCode != http.StatusUnprocessableEntity {
+			return false
+		}
+	}
+	for _, marker := range []string{
+		"context length",
+		"context window",
+		"maximum context",
+		"input token limit",
+		"too many tokens",
+		"too large",
+		"too long",
+		"request entity too large",
+		"maximum number of tokens",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // Preflight verifies the configured API endpoint, model, and credentials before
 // commands perform repository work. It intentionally shares the generation path.
 func Preflight(ctx context.Context, cfg Config) error {
@@ -1188,7 +1397,7 @@ func chatCompletion(ctx context.Context, cfg Config, payload any) ([]byte, error
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateText(string(respBody), 500))
+		return nil, apiError{statusCode: resp.StatusCode, body: string(respBody)}
 	}
 	return respBody, nil
 }
@@ -1470,7 +1679,7 @@ func truncateText(text string, limit int) string {
 	if limit <= 0 || len(text) <= limit {
 		return text
 	}
-	suffix := "\n[TRUNCATED TO PER-COMMIT CONTEXT BUDGET]"
+	suffix := "\n[TRUNCATED]"
 	if limit <= len(suffix) {
 		return text[:limit]
 	}

@@ -205,13 +205,29 @@ func TestRewriteCommitsFlagValidation(t *testing.T) {
 	}
 }
 
+func TestRemovedAIContextFlagIsRejected(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, args := range [][]string{
+		{"commit", "--max-chars-per-commit", "3000"},
+		{"rewrite-commits", "--max-chars-per-commit", "3000"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		if err == nil {
+			t.Fatalf("%v returned nil error", args)
+		}
+		if !strings.Contains(stderr.String(), "unknown flag: --max-chars-per-commit") {
+			t.Fatalf("%v stderr:\n%s", args, stderr.String())
+		}
+	}
+}
+
 func TestCommitFlagValidation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, tc := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"commit", "--max-chars-per-commit", "0"}, "--max-chars-per-commit must be a positive integer"},
 		{[]string{"commit", "--rpm", "0"}, "--rpm must be a positive integer"},
 		{[]string{"commit", "--timeout", "0"}, "--timeout must be a positive integer"},
 	} {

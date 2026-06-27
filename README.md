@@ -194,9 +194,9 @@ API to generate Conventional Commit messages from your diffs.
 
 AI context stays privacy-first: Git Wrangler sends file paths, stats, a compact
 change summary, and redacted diff snippets, but not old commit messages. For
-large or cross-cutting changes, use `--body` for rationale, increase
-`--max-chars-per-commit` when relevant diff context is truncated, and prefer a
-stronger model when a cheap/fast model still produces file-level summaries.
+large or cross-cutting changes, use `--body` for rationale and prefer a stronger
+model when a cheap/fast model still produces file-level summaries. Context is
+collected and packed automatically with internal bounds.
 
 ```bash
 # Set up credentials
