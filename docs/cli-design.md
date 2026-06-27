@@ -135,7 +135,7 @@ Show GitHub auth source once when auth is used. When secure credential storage i
 
 ### `commit`
 
-Prepare AI commit context with progress. Before network calls, print a data-send notice containing endpoint, model, repository count, context budget, content description, and secret handling. Prompt on stderr. Show API progress with inline retry/detail text, then commit creation progress. Print only failures/skips plus summary unless there is a single small success surface.
+Prepare AI commit context with progress. Before network calls, print a data-send notice containing endpoint, model, repository count, automatic bounded context, computed API batch count, content description, and secret handling. Prompt on stderr. Show API progress with inline retry/detail text, then commit creation progress. Print only failures/skips plus summary unless there is a single small success surface.
 
 ### `fix-gitignore`
 

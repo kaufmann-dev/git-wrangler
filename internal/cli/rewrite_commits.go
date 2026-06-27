@@ -13,7 +13,6 @@ import (
 
 func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	batch, _ := cmd.Flags().GetInt("batch-size")
-	maxCharsInt, _ := cmd.Flags().GetInt("max-chars-per-commit")
 	rpm, _ := cmd.Flags().GetInt("rpm")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
@@ -26,10 +25,6 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	if batch > 50 {
 		a.plainErrorf("--batch-size must be 50 or less.")
-		return 1
-	}
-	if maxCharsInt <= 0 {
-		a.plainErrorf("--max-chars-per-commit must be a positive integer.")
 		return 1
 	}
 	if rpm <= 0 {
@@ -82,18 +77,17 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	scanProgress := newProgress(a, "Scanning repositories", len(repos))
 	apiProgress := (*progress)(nil)
 	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
-		BaseURL:           settings.Config.AI.BaseURL,
-		Model:             settings.Config.AI.Model,
-		APIKey:            settings.APIKey,
-		Headers:           settings.Headers,
-		BatchSize:         batch,
-		MaxCharsPerCommit: maxCharsInt,
-		RPM:               rpm,
-		Timeout:           time.Duration(timeoutInt) * time.Second,
-		SkipConventional:  skipConventional,
-		Body:              body,
-		WorkDir:           workDir,
-		Git:               a.git,
+		BaseURL:          settings.Config.AI.BaseURL,
+		Model:            settings.Config.AI.Model,
+		APIKey:           settings.APIKey,
+		Headers:          settings.Headers,
+		BatchSize:        batch,
+		RPM:              rpm,
+		Timeout:          time.Duration(timeoutInt) * time.Second,
+		SkipConventional: skipConventional,
+		Body:             body,
+		WorkDir:          workDir,
+		Git:              a.git,
 		Progress: func(event ai.ProgressEvent) {
 			switch event.Phase {
 			case "Sending API requests":
