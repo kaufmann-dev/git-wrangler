@@ -246,7 +246,6 @@ func TestRewriteDatesFetchFailureStopsBeforePlanning(t *testing.T) {
 		args []string
 	}{
 		{name: "rewrite", args: []string{"rewrite-dates", "--yes"}},
-		{name: "rollback", args: []string{"rewrite-dates", "--rollback", "--yes"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := tempGitRepos(t, "repo")

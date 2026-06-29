@@ -400,8 +400,8 @@ func TestRequiredValuePromptsWithYesAndFailsOutsideTTY(t *testing.T) {
 
 func TestGuidedCommandAndYesSurfaces(t *testing.T) {
 	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
-	guidedWant := strings.Fields("activity clone commit fetch fix-gitignore info license pull push remove-secrets rename-branch reset review rewrite-authors rewrite-commits rewrite-dates status untrack")
-	yesWant := strings.Fields("commit fix-gitignore license push remove-secrets reset rewrite-authors rewrite-commits rewrite-dates untrack")
+	guidedWant := strings.Fields("activity clone commit fetch fix-gitignore info license pull push remove-secrets rename-branch reset review rewrite-authors rewrite-commits rewrite-dates rewrite-hours rollback-rewrites status untrack")
+	yesWant := strings.Fields("commit fix-gitignore license push remove-secrets reset rewrite-authors rewrite-commits rewrite-dates rewrite-hours rollback-rewrites untrack")
 	assertFlagSurface(t, root, "guided", guidedWant)
 	assertFlagSurface(t, root, "yes", yesWant)
 	for _, name := range yesWant {
@@ -474,11 +474,10 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 	})
 
 	t.Run("rewrite dates rewrite", func(t *testing.T) {
-		cmd, a, stderr := guidedTestCommand(t, "rewrite-dates", "\n\n\n\n\n\n2024-01-01\n2024-01-31\nseed\n3\n1\n")
+		cmd, a, stderr := guidedTestCommand(t, "rewrite-dates", "\n\n\n\n\n2024-01-01\n2024-01-31\nseed\n3\n1\n\n")
 		if err := runGuidedSetup(a, cmd); err != nil {
 			t.Fatal(err)
 		}
-		assertFlagValue(t, cmd, "rollback", "false")
 		assertFlagValue(t, cmd, "start-date", "2024-01-01")
 		assertFlagValue(t, cmd, "end-date", "2024-01-31")
 		assertFlagValue(t, cmd, "seed", "seed")
@@ -489,15 +488,13 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 		}
 	})
 
-	t.Run("rewrite dates rollback", func(t *testing.T) {
-		cmd, a, stderr := guidedTestCommand(t, "rewrite-dates", "2\n\ny\n")
+	t.Run("rollback rewrites", func(t *testing.T) {
+		cmd, a, stderr := guidedTestCommand(t, "rollback-rewrites", "\n")
 		if err := runGuidedSetup(a, cmd); err != nil {
 			t.Fatal(err)
 		}
-		assertFlagValue(t, cmd, "rollback", "true")
-		assertFlagValue(t, cmd, "no-fetch", "true")
 		if strings.Contains(stderr.String(), "Target range mode") {
-			t.Fatalf("rollback prompted for planning options:\n%s", stderr.String())
+			t.Fatalf("rollback-rewrites prompted for date planning options:\n%s", stderr.String())
 		}
 	})
 
