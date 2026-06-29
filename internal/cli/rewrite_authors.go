@@ -78,7 +78,15 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	results := parallelItemsWithWorkersProgress(a.ctx, applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Rewriting authors", len(applies)), func(apply authorApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply authorApply) authorApplyResult {
+		if err := captureRewriteBaselineForLocalBranches(a, apply.repo); err != nil {
+			return authorApplyResult{apply: apply, err: err}
+		}
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, filterArgs, []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
+		if err == nil {
+			if updateErr := updateRewriteBaselineFromFilterRepoMap(apply.repo.gitDir); updateErr != nil {
+				return authorApplyResult{apply: apply, output: out, err: fmt.Errorf("could not update rewrite baseline: %w", updateErr), restoreErr: restoreErr}
+			}
+		}
 		return authorApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
 	if interrupted(a) {

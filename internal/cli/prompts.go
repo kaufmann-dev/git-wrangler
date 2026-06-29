@@ -420,45 +420,42 @@ func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
 		return guidedPrompts[cmd.Name()]
 	}
 	result := []guidedPrompt{
-		guidedBool("rollback", "Rollback"),
 		guidedString("repo", "Repository"),
 		guidedBool("no-fetch", "Skip origin fetch"),
-	}
-	rollback, _ := cmd.Flags().GetBool("rollback")
-	if !rollback {
-		result = append(result,
-			guidedString("rewrite-after", "Rewrite on or after"),
-			guidedString("rewrite-before", "Rewrite before"),
-			guidedString("start-date", "Target start date"),
-			guidedString("end-date", "Target end date"),
-			guidedPositiveInt("days", "Target last N days"),
-			guidedString("until", "Last-N-days end date"),
-			guidedString("seed", "Seed"),
-			guidedEnum("frequency", "Frequency", "low", "medium", "high"),
-			guidedEnum("spread", "Spread", "low", "medium", "high"),
-		)
+		guidedString("rewrite-after", "Rewrite on or after"),
+		guidedString("rewrite-before", "Rewrite before"),
+		guidedString("start-date", "Target start date"),
+		guidedString("end-date", "Target end date"),
+		guidedPositiveInt("days", "Target last N days"),
+		guidedString("until", "Last-N-days end date"),
+		guidedString("seed", "Seed"),
+		guidedEnum("frequency", "Frequency", "low", "medium", "high"),
+		guidedEnum("spread", "Spread", "low", "medium", "high"),
+		guidedString("window", "Time window"),
 	}
 	return result
 }
 
 var guidedPrompts = map[string][]guidedPrompt{
-	"activity":        {guidedString("repo", "Repository"), guidedString("year", "Year"), guidedRepeatable("user", "Author filters"), guidedBool("all", "Include all refs"), guidedBool("global-scale", "Use global scale")},
-	"clone":           {guidedString("user", "GitHub user or organization"), guidedEnum("visibility", "Visibility", "all", "public", "private"), guidedPositiveInt("limit", "Repository limit"), guidedString("into", "Destination directory")},
-	"pull":            {guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")},
-	"fetch":           {guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")},
-	"push":            {},
-	"commit":          {guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
-	"fix-gitignore":   {guidedString("repo", "Repository")},
-	"license":         {guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
-	"rename-branch":   {guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")},
-	"reset":           {guidedString("repo", "Repository")},
-	"review":          {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"untrack":         {guidedString("repo", "Repository")},
-	"remove-secrets":  {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"rewrite-authors": {guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedBool("force", "Force filter-repo")},
-	"rewrite-commits": {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("body", "Generate message bodies")},
-	"info":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"status":          {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
+	"activity":          {guidedString("repo", "Repository"), guidedString("year", "Year"), guidedRepeatable("user", "Author filters"), guidedBool("all", "Include all refs"), guidedBool("global-scale", "Use global scale")},
+	"clone":             {guidedString("user", "GitHub user or organization"), guidedEnum("visibility", "Visibility", "all", "public", "private"), guidedPositiveInt("limit", "Repository limit"), guidedString("into", "Destination directory")},
+	"pull":              {guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")},
+	"fetch":             {guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")},
+	"push":              {},
+	"commit":            {guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
+	"fix-gitignore":     {guidedString("repo", "Repository")},
+	"license":           {guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
+	"rename-branch":     {guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")},
+	"reset":             {guidedString("repo", "Repository")},
+	"review":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
+	"untrack":           {guidedString("repo", "Repository")},
+	"remove-secrets":    {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
+	"rewrite-authors":   {guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedBool("force", "Force filter-repo")},
+	"rewrite-commits":   {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("body", "Generate message bodies")},
+	"rewrite-hours":     {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedRequiredString("window", "Time window")},
+	"rollback-rewrites": {guidedString("repo", "Repository")},
+	"info":              {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
+	"status":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 }
 
 func guidePush(a *app, cmd *cobra.Command) error {
@@ -508,23 +505,10 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 	if _, ok := rewriteDatesOptionsFromFlags(a, cmd); !ok {
 		return exitError{code: 1}
 	}
-	mode, err := guidedEnumValue(a, "Operation", rewriteDatesMode(cmd), []string{"rewrite", "rollback"})
-	if err != nil {
-		return err
-	}
-	if err := cmd.Flags().Set("rollback", strconv.FormatBool(mode == "rollback")); err != nil {
-		return err
-	}
-	if mode == "rollback" && rewriteDatesPlanningFlagsChanged(cmd) {
-		return fmt.Errorf("--rollback cannot be combined with date planning flags")
-	}
 	for _, prompt := range []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")} {
 		if err := applyGuidedPrompt(a, cmd, prompt); err != nil {
 			return err
 		}
-	}
-	if mode == "rollback" {
-		return nil
 	}
 	for _, prompt := range []guidedPrompt{
 		guidedString("rewrite-after", "Rewrite commits on or after"),
@@ -573,6 +557,7 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 		guidedString("seed", "Seed"),
 		guidedEnum("frequency", "Frequency", "low", "medium", "high"),
 		guidedEnum("spread", "Spread", "low", "medium", "high"),
+		guidedString("window", "Time window"),
 	} {
 		if err := applyGuidedPrompt(a, cmd, prompt); err != nil {
 			return err
@@ -582,20 +567,12 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 }
 
 func rewriteDatesPlanningFlagsChanged(cmd *cobra.Command) bool {
-	for _, name := range []string{"start-date", "end-date", "rewrite-before", "rewrite-after", "days", "until", "seed", "frequency", "spread"} {
+	for _, name := range []string{"start-date", "end-date", "rewrite-before", "rewrite-after", "days", "until", "seed", "frequency", "spread", "window"} {
 		if cmd.Flags().Changed(name) {
 			return true
 		}
 	}
 	return false
-}
-
-func rewriteDatesMode(cmd *cobra.Command) string {
-	rollback, _ := cmd.Flags().GetBool("rollback")
-	if rollback {
-		return "rollback"
-	}
-	return "rewrite"
 }
 
 func rewriteDatesRangeMode(cmd *cobra.Command) string {

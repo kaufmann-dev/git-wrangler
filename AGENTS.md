@@ -18,7 +18,7 @@ Do not automatically load these files into context with `AGENTS.md`; open them o
 
 `internal/cli` also owns command-local repository target selection, confirmation handling, JSON output, progress plumbing, and ordered result reporting. Commands that support `--repo` must use exact single-repository targeting through the shared helper; commands without `--repo` keep discovering repositories below the current directory.
 
-Remote-aware read/report commands and history rewrite planning stay `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates` refresh with `git fetch --prune origin` before inspecting remote-tracking refs unless `--no-fetch` is set. Fetch failures are per-repository failures for read/report commands and hard stops before planning or mutation for history rewrites.
+Remote-aware read/report commands and history rewrite planning stay `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` refresh with `git fetch --prune origin` before inspecting remote-tracking refs unless `--no-fetch` is set. `rollback-rewrites` is local-only and never fetches. Fetch failures are per-repository failures for read/report commands and hard stops before planning or mutation for history rewrites.
 
 Bulk per-repository work in `internal/cli` should use ordered worker patterns: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and history rewrites that are not explicitly parallelized remain sequential. Workers must return result structs; print only after collection so repository output order stays stable. Confirmed AI and non-AI rewrite applications run repositories in parallel with the independent Git mutation cap.
 
@@ -50,7 +50,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `rewrite-hours`, `rollback-rewrites`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
@@ -62,7 +62,7 @@ All interactive prompts use the shared context-aware prompt session. `Ctrl+C` an
 
 `--json` is command-local and limited to `status`, `info`, `review`, `doctor`, `config show`, and `version`. JSON mode writes one document to stdout, suppresses colors/progress/prompts/human summaries, keeps stderr empty except Cobra parse errors or unavoidable process-level failures, and must not expose stored secrets.
 
-`--no-fetch` is command-local and limited to `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and `rewrite-dates`. It skips only the automatic origin refresh; it must not change repository targeting or other command behavior.
+`--no-fetch` is command-local and limited to `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours`. It skips only the automatic origin refresh; it must not change repository targeting or other command behavior.
 
 ## Runtime Dependencies
 
@@ -112,5 +112,9 @@ CI owns slower checks: `go test -race ./...`, `govulncheck ./...`, `goreleaser r
 Keep this as a short top-level section because history rewrite commands are destructive and cross-cut several packages; put detailed command behavior in `docs/commands.md`.
 
 History rewrite commands must require explicit confirmation before mutation, with `--yes` as the standard noninteractive confirmation flag. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations. Bulk commands must return nonzero if any repository operation fails; no-op skips and declined confirmations remain successful.
+
+`rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` share a command-neutral cumulative baseline under `.git/git-wrangler/baseline/`. Existing baseline metadata must not be overwritten; later rewrites add only newly eligible commits and update current SHA mappings from `.git/filter-repo/commit-map`. `rollback-rewrites` restores that shared baseline across commands while preserving commits created between rewrite runs, replaying unbaselined commits only when parent links must be reconnected. `remove-secrets` is the only history rewrite command that clears the shared baseline and creates no replacement baseline.
+
+`rewrite-dates --window HH:MM-HH:MM` uses the existing date planner with one uniform time window for every targeted repository. Omitting `--window` preserves generated per-day working hours. `rewrite-hours --window HH:MM-HH:MM` is required, preserves each commit's current calendar date, and rewrites author and committer dates into the window. Do not restore `rewrite-dates --rollback`; rollback is handled by `rollback-rewrites`.
 
 AI-backed commands must fail before scanning repositories when no API key is available. They must not save plaintext API keys, and they must redact sensitive file contents and common secret patterns before API calls.
