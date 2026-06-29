@@ -542,6 +542,8 @@ func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *test
 				return "fetched\n", "", nil
 			case joined == "git remote get-url origin":
 				return "https://example.test/" + filepath.Base(dir) + ".git\n", "", nil
+			case joined == "git for-each-ref --format=%(refname)%00%(objectname) refs/heads":
+				return "", "", nil
 			case name == "/usr/bin/git-filter-repo" && strings.Contains(strings.Join(args, " "), "--email-callback"):
 				done := trackConcurrentStart(&mu, &activeFilters, &maxActiveFilters, release, &releaseOnce)
 				defer done()

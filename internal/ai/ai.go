@@ -81,11 +81,12 @@ type Plan struct {
 }
 
 type RepoPlan struct {
-	Dir          string
-	Name         string
-	GitDir       string
-	CallbackFile string
-	ChangedCount int
+	Dir           string
+	Name          string
+	GitDir        string
+	CallbackFile  string
+	ChangedCount  int
+	ChangedHashes []string
 }
 
 type Stats struct {
@@ -1542,7 +1543,12 @@ func buildPlan(items []item, results map[string]Message, stats Stats, workDir st
 		if err := writeCommitCallback(callbackFile, byRepo[k]); err != nil {
 			return nil, err
 		}
-		plan.Repos = append(plan.Repos, RepoPlan{Dir: k.dir, Name: k.name, GitDir: k.gitDir, CallbackFile: callbackFile, ChangedCount: len(byRepo[k])})
+		hashes := make([]string, 0, len(byRepo[k]))
+		for _, row := range byRepo[k] {
+			hashes = append(hashes, row.hash)
+		}
+		sort.Strings(hashes)
+		plan.Repos = append(plan.Repos, RepoPlan{Dir: k.dir, Name: k.name, GitDir: k.gitDir, CallbackFile: callbackFile, ChangedCount: len(byRepo[k]), ChangedHashes: hashes})
 		plan.GeneratedCount += len(byRepo[k])
 	}
 	lines := []string{

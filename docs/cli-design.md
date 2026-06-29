@@ -110,7 +110,9 @@ Preferred count orders:
 - `remove-secrets`: rewritten, clean, skipped, failed.
 - `rewrite-authors`: rewritten, skipped, failed.
 - `rewrite-commits`: commit messages rewritten, repositories updated, failed.
-- `rewrite-dates`: rewritten, skipped, failed for normal rewrites; rolled back, skipped, failed for rollback.
+- `rewrite-dates`: rewritten, skipped, failed.
+- `rewrite-hours`: rewritten, skipped, failed.
+- `rollback-rewrites`: rolled back, skipped, failed.
 - `rename-repo`: renamed, description updated, skipped, failed.
 
 ## Per-Command Output Contract
@@ -175,7 +177,15 @@ Validate AI settings, refresh `origin` unless `--no-fetch` is set, then use phas
 
 ### `rewrite-dates`
 
-Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, planning, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Preparation progress completes before durable output. Normal rewrite preview starts with a global date-plan header containing repository count, selected commit count, target range, planning timezone, active days, rest days, forced-active days, final post-topology median/p90/maximum commits per active day, filters, frequency, spread, and seed source. Do not show fixed-threshold workload concepts such as `5+/day`. Candidate repo blocks show selected commits, planned range, timezone, compact old-to-new samples, and tag/signature warnings when detected. Rollback preview starts with repositories, known commits, unknown/new commits, exact branch restores, branches that replay new commits, and skipped branches; repo blocks show branch action counts plus samples. Warn and prompt once. Apply with progress and summarize `rewritten`, `skipped`, and `failed` for normal rewrites or `rolled back`, `skipped`, and `failed` for rollback.
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, planning, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Preparation progress completes before durable output. Rewrite preview starts with a global date-plan header containing repository count, selected commit count, target range, planning timezone, active days, rest days, forced-active days, final post-topology median/p90/maximum commits per active day, filters, frequency, spread, time window, and seed source. Do not show fixed-threshold workload concepts such as `5+/day`. Candidate repo blocks show selected commits, planned range, timezone, compact old-to-new samples, and tag/signature warnings when detected. Warn and prompt once. Apply with progress and summarize `rewritten`, `skipped`, and `failed`.
+
+### `rewrite-hours`
+
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, planning, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Preparation progress completes before durable output. Preview starts with an hour-plan header containing repository count, selected commit count, time window, and planning timezone. Candidate repo blocks show selected commits, planned range, timezone, compact old-to-new samples, and tag/signature warnings when detected. Warn and prompt once. Apply with progress and summarize `rewritten`, `skipped`, and `failed`.
+
+### `rollback-rewrites`
+
+Do not fetch and do not require `git-filter-repo`. Preparation progress completes before durable output. Skip repositories with no shared baseline. Rollback preview starts with repositories, baselined commits, unbaselined commits on affected branches, affected branches, and branches replaying commits. Repo blocks list affected local branch refs and whether they restore directly or restore plus replay. Warn that rollback is local-only and remote propagation requires `git-wrangler push --force`. Prompt once. Apply with progress and summarize `rolled back`, `skipped`, and `failed`.
 
 ### `info`
 

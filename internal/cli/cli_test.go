@@ -88,6 +88,22 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 	}
 }
 
+func TestRollbackRewritesCommandSurface(t *testing.T) {
+	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
+	cmd := commandByName(t, root, "rollback-rewrites")
+	if cmd.GroupID != "history" {
+		t.Fatalf("group = %q, want history", cmd.GroupID)
+	}
+	for _, flag := range []string{"repo", "yes", "guided"} {
+		if cmd.Flags().Lookup(flag) == nil {
+			t.Fatalf("rollback-rewrites missing --%s", flag)
+		}
+	}
+	if cmd.Flags().Lookup("no-fetch") != nil {
+		t.Fatal("rollback-rewrites should not expose --no-fetch")
+	}
+}
+
 func TestRemovedAICommandNamesAreUnknown(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, args := range [][]string{

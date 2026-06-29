@@ -138,6 +138,9 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	results := parallelItemsWithWorkersProgress(a.ctx, applies, gitMutationWorkerCount(len(applies)), newProgress(a, "Removing secrets", len(applies)), func(apply secretApply) (string, string) {
 		return apply.repo.display, apply.repo.display
 	}, func(apply secretApply) secretApplyResult {
+		if err := clearManagedRewriteMetadata(a, apply.repo.dir, apply.repo.gitDir); err != nil {
+			return secretApplyResult{apply: apply, err: err}
+		}
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, apply.filterArgs, nil)
 		return secretApplyResult{apply: apply, output: out, err: err, restoreErr: restoreErr}
 	})
