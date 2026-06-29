@@ -241,6 +241,12 @@ func newRootCommand(a *app) *cobra.Command {
 			boolFlag("body", "Generate commit message bodies."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
+		command(a, "rewrite-hours", "Move commit timestamps into a uniform daily time window.", "history", runRewriteHours, flags{
+			repoFlag(),
+			noFetchFlag(),
+			stringFlag("window", "", "Required same-day time window in HH:MM-HH:MM format."),
+			boolFlag("yes", "Skip confirmation prompts."),
+		}),
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
 			repoFlag(),
 			noFetchFlag(),
@@ -253,7 +259,11 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("seed", "", "Deterministic planner seed."),
 			stringFlag("frequency", "medium", "Planning frequency: low, medium, or high."),
 			stringFlag("spread", "medium", "Planning spread: low, medium, or high."),
-			boolFlag("rollback", "Restore known history from stored rewrite state."),
+			stringFlag("window", "", "Use one same-day time window in HH:MM-HH:MM format."),
+			boolFlag("yes", "Skip confirmation prompts."),
+		}),
+		command(a, "rollback-rewrites", "Roll back Git Wrangler history rewrites from the shared baseline.", "history", runRollbackRewrites, flags{
+			repoFlag(),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "info", "Show detailed repository information.", "utility", runInfo, flags{

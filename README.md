@@ -166,12 +166,14 @@ processes.
 
 ### History Rewriting
 
-| Command                                                                 | What it does                                                    |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`remove-secrets`](https://wrangler.kaufmann.dev/docs/remove-secrets)   | Purge sensitive files from Git history.                         |
-| [`rewrite-authors`](https://wrangler.kaufmann.dev/docs/rewrite-authors) | Rewrite author and committer identity.                          |
-| [`rewrite-commits`](https://wrangler.kaufmann.dev/docs/rewrite-commits) | Generate AI Conventional Commit messages, then rewrite history. |
-| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)     | Redistribute commit timestamps or roll back rewritten history.  |
+| Command                                                                     | What it does                                                      |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [`remove-secrets`](https://wrangler.kaufmann.dev/docs/remove-secrets)       | Purge sensitive files from Git history.                           |
+| [`rewrite-authors`](https://wrangler.kaufmann.dev/docs/rewrite-authors)     | Rewrite author and committer identity.                            |
+| [`rewrite-commits`](https://wrangler.kaufmann.dev/docs/rewrite-commits)     | Generate AI Conventional Commit messages, then rewrite history.   |
+| [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)         | Redistribute commit dates, optionally inside one time window.     |
+| [`rewrite-hours`](https://wrangler.kaufmann.dev/docs/rewrite-hours)         | Move commit times into a uniform daily time window.               |
+| [`rollback-rewrites`](https://wrangler.kaufmann.dev/docs/rollback-rewrites) | Roll back Git Wrangler history rewrites from the shared baseline. |
 
 ### Utility
 
@@ -237,19 +239,24 @@ and designed to fail safely.
   explicit offline/local-only runs.
 - **Origin preservation** — history rewrite commands that use `git-filter-repo`
   restore the `origin` remote after it is removed.
-- **Exact date rollback** — `rewrite-dates --rollback` restores the first
-  stored original baseline from backup refs, even after repeated rewrites,
-  replaying only new commits made after that baseline.
+- **Shared rewrite rollback** — `rewrite-authors`, `rewrite-commits`,
+  `rewrite-dates`, and `rewrite-hours` share one cumulative baseline under
+  `.git/git-wrangler/baseline/`. Use `rollback-rewrites` instead of the removed
+  `rewrite-dates --rollback`; it restores all baselined rewrites together while
+  preserving commits created between rewrite runs.
+- **Secret-removal boundary** — `remove-secrets` clears the shared rewrite
+  baseline before mutation and creates no replacement baseline, so rollbacks
+  never cross a secret-removal rewrite.
 - **Warnings on stderr** — destructive operations warn clearly without polluting
   normal command output.
 
 ## Runtime Dependencies
 
-| Tool              | Required for                                                                                          |
-| ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `git`             | All repository operations (required).                                                                 |
-| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                            |
-| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-commits`, and normal `rewrite-dates`. |
+| Tool              | Required for                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| `git`             | All repository operations (required).                                                                           |
+| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                                      |
+| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours`. |
 
 Run `git-wrangler doctor` to check what's available on your system.
 

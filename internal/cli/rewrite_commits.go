@@ -171,7 +171,15 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 	results := parallelItemsWithWorkersProgress(a.ctx, plan.Repos, gitMutationWorkerCount(len(plan.Repos)), progress, func(repoPlan ai.RepoPlan) (string, string) {
 		return repoPlan.Name, repoPlan.Name
 	}, func(repoPlan ai.RepoPlan) aiApplyResult {
+		if err := captureRewriteBaselineForHashes(a, repo{dir: repoPlan.Dir, gitDir: repoPlan.GitDir, display: repoPlan.Name}, repoPlan.ChangedHashes); err != nil {
+			return aiApplyResult{plan: repoPlan, err: err}
+		}
 		out, err, restoreErr := runFilterRepoRestoringOrigin(a, repoPlan.Dir, repoPlan.GitDir, filterCmd, []string{"--partial", "--commit-callback", repoPlan.CallbackFile, "--force"}, nil)
+		if err == nil {
+			if updateErr := updateRewriteBaselineFromFilterRepoMap(repoPlan.GitDir); updateErr != nil {
+				return aiApplyResult{plan: repoPlan, output: out, err: fmt.Errorf("could not update rewrite baseline: %w", updateErr), restoreErr: restoreErr}
+			}
+		}
 		return aiApplyResult{plan: repoPlan, output: out, err: err, restoreErr: restoreErr}
 	})
 	if interrupted(a) {
