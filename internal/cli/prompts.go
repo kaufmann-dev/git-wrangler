@@ -422,8 +422,8 @@ func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
 	result := []guidedPrompt{
 		guidedString("repo", "Repository"),
 		guidedBool("no-fetch", "Skip origin fetch"),
-		guidedString("rewrite-after", "Rewrite on or after"),
-		guidedString("rewrite-before", "Rewrite before"),
+		guidedString("rewrite-after", "Current author date on or after"),
+		guidedString("rewrite-before", "Current author date before"),
 		guidedString("start-date", "Target start date"),
 		guidedString("end-date", "Target end date"),
 		guidedPositiveInt("days", "Target last N days"),
@@ -450,9 +450,9 @@ var guidedPrompts = map[string][]guidedPrompt{
 	"review":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 	"untrack":           {guidedString("repo", "Repository")},
 	"remove-secrets":    {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"rewrite-authors":   {guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedBool("force", "Force filter-repo")},
-	"rewrite-commits":   {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("body", "Generate message bodies")},
-	"rewrite-hours":     {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedRequiredString("window", "Time window")},
+	"rewrite-authors":   {guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedBool("force", "Force filter-repo")},
+	"rewrite-commits":   {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("body", "Generate message bodies")},
+	"rewrite-hours":     {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedRequiredString("window", "Time window")},
 	"rollback-rewrites": {guidedString("repo", "Repository")},
 	"info":              {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 	"status":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
@@ -511,8 +511,8 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 		}
 	}
 	for _, prompt := range []guidedPrompt{
-		guidedString("rewrite-after", "Rewrite commits on or after"),
-		guidedString("rewrite-before", "Rewrite commits before"),
+		guidedString("rewrite-after", "Current author date on or after"),
+		guidedString("rewrite-before", "Current author date before"),
 		guidedEnum("target-range", "Target range mode", "explicit dates", "last N days"),
 	} {
 		if prompt.flag == "target-range" {

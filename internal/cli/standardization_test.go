@@ -137,10 +137,18 @@ func TestRewriteAuthorsDeclineSkipsSuccessfully(t *testing.T) {
 			}
 		},
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			if name == "git" && strings.Join(args, " ") == "fetch --prune origin" {
+			joined := name + " " + strings.Join(args, " ")
+			hash := fakeRewriteAuthorHash(dir)
+			switch {
+			case joined == "git fetch --prune origin":
 				return "fetched\n", "", nil
-			}
-			if name == "/usr/bin/git-filter-repo" {
+			case joined == "git rev-parse HEAD":
+				return hash + "\n", "", nil
+			case joined == "git for-each-ref --format=%(refname)%00%(objectname) refs/heads":
+				return "refs/heads/main\x00" + hash + "\n", "", nil
+			case strings.HasPrefix(joined, "git log --topo-order --reverse --format="):
+				return fakeRewriteAuthorLog(hash), "", nil
+			case name == "/usr/bin/git-filter-repo":
 				filterRan = true
 			}
 			return "", "", nil
