@@ -43,6 +43,28 @@ func TestRewriteDatesFlagValidation(t *testing.T) {
 	}
 }
 
+func TestCurrentRewriteDateBoundsValidationForRewriteCommands(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"rewrite-authors", "--rewrite-after", "bad"}, "--rewrite-after must be in YYYY-MM-DD format"},
+		{[]string{"rewrite-authors", "--rewrite-after", "2024-02-01", "--rewrite-before", "2024-02-01"}, "--rewrite-after must be before --rewrite-before"},
+		{[]string{"rewrite-commits", "--rewrite-before", "bad"}, "--rewrite-before must be in YYYY-MM-DD format"},
+		{[]string{"rewrite-commits", "--rewrite-after", "2024-02-01", "--rewrite-before", "2024-02-01"}, "--rewrite-after must be before --rewrite-before"},
+		{[]string{"rewrite-hours", "--rewrite-after", "bad"}, "--rewrite-after must be in YYYY-MM-DD format"},
+		{[]string{"rewrite-hours", "--rewrite-after", "2024-02-01", "--rewrite-before", "2024-02-01"}, "--rewrite-after must be before --rewrite-before"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		assertExitCode(t, err, 1)
+		if !strings.Contains(stderr.String(), tc.want) {
+			t.Fatalf("%v stderr:\n%s", tc.args, stderr.String())
+		}
+	}
+}
+
 func TestRewriteDatesRollbackFlagRemoved(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
@@ -215,12 +237,13 @@ func TestRewriteDateProfileDefaultsAndMappings(t *testing.T) {
 	}
 }
 
-func TestRewriteDateSelectionFiltersUseOriginalAuthorDates(t *testing.T) {
+func TestRewriteDateSelectionFiltersUseCurrentAuthorDates(t *testing.T) {
+	bounds, err := parseCurrentRewriteDateBounds("2024-01-10", "2024-01-20")
+	if err != nil {
+		t.Fatal(err)
+	}
 	opts := rewriteDatesOptions{
-		hasRewriteAfter:  true,
-		rewriteAfter:     parseDateStart("2024-01-10"),
-		hasRewriteBefore: true,
-		rewriteBefore:    parseDateStart("2024-01-20"),
+		bounds: bounds,
 	}
 	before := testRewriteDateCommit("a", parseDateStart("2024-01-09"))
 	first := testRewriteDateCommit("b", parseDateStart("2024-01-10"))
@@ -235,6 +258,73 @@ func TestRewriteDateSelectionFiltersUseOriginalAuthorDates(t *testing.T) {
 	}
 	if rewriteDateCommitSelected(after, opts) {
 		t.Fatal("commit at --rewrite-before boundary was selected")
+	}
+
+	commits := []rewriteDateCommit{testRewriteDateCommit("rewritten", parseDateStart("2024-01-15"))}
+	applyRewriteBaselineToDateCommits(rewriteBaselineManifest{Entries: []rewriteBaselineEntry{{
+		FirstSHA:       "original",
+		CurrentSHA:     "rewritten",
+		AuthorEpoch:    parseDateStart("2020-01-15"),
+		AuthorTZ:       "+0000",
+		AuthorDate:     fmt.Sprintf("%d +0000", parseDateStart("2020-01-15")),
+		CommitterEpoch: parseDateStart("2020-01-15"),
+		CommitterTZ:    "+0000",
+		CommitterDate:  fmt.Sprintf("%d +0000", parseDateStart("2020-01-15")),
+	}}}, commits)
+	if !rewriteDateCommitSelected(commits[0], opts) {
+		t.Fatal("commit with current date inside bounds was not selected after baseline metadata was applied")
+	}
+	originalBounds, err := parseCurrentRewriteDateBounds("2020-01-10", "2020-01-20")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rewriteDateCommitSelected(commits[0], rewriteDatesOptions{bounds: originalBounds}) {
+		t.Fatal("commit was selected from baseline/original author date instead of current author date")
+	}
+}
+
+func TestRewriteDateTargetRangeInfersFromCurrentAuthorDates(t *testing.T) {
+	commits := []rewriteDateCommit{
+		testRewriteDateCommit("a", parseDateStartInOffset("2024-03-02", "+0000")),
+		testRewriteDateCommit("b", parseDateStartInOffset("2024-03-04", "+0000")),
+	}
+	for i := range commits {
+		commits[i].originalAuthorEpoch = parseDateStart("2020-01-01") + int64(i)
+		commits[i].originalAuthorTZ = "+0000"
+	}
+	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, []int{0, 1})}
+	plan, err := planRewriteDateCandidates(candidates, rewriteDatesOptions{
+		seed:      "seed",
+		frequency: "medium",
+		spread:    "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.targetStart != parseDateStartInOffset("2024-03-02", "+0000") {
+		t.Fatalf("targetStart = %s", formatEpoch(plan.targetStart, "+0000"))
+	}
+	if plan.targetEnd != parseDateStartInOffset("2024-03-04", "+0000") {
+		t.Fatalf("targetEnd = %s", formatEpoch(plan.targetEnd, "+0000"))
+	}
+}
+
+func TestRewriteDateFixedBoundariesUseCurrentAuthorDates(t *testing.T) {
+	parent := testRewriteDateCommit("parent", parseDateStartInOffset("2024-03-01", "+0000"))
+	child := testRewriteDateCommit("child", parseDateStartInOffset("2024-03-10", "+0000"), "parent")
+	parent.originalAuthorEpoch = parseDateStartInOffset("2020-01-01", "+0000")
+	child.originalAuthorEpoch = parseDateStartInOffset("2020-01-02", "+0000")
+
+	candidate := testRewriteDateCandidate("repo", []rewriteDateCommit{parent, child}, []int{1})
+	minFixed, _ := fixedDateConstraints(candidate, 1)
+	if minFixed != parent.authorEpoch+1 {
+		t.Fatalf("minFixed = %s, want current parent date", formatEpoch(minFixed, "+0000"))
+	}
+
+	candidate = testRewriteDateCandidate("repo", []rewriteDateCommit{parent, child}, []int{0})
+	_, maxFixed := fixedDateConstraints(candidate, 0)
+	if maxFixed != child.authorEpoch-1 {
+		t.Fatalf("maxFixed = %s, want current child date", formatEpoch(maxFixed, "+0000"))
 	}
 }
 
@@ -370,6 +460,38 @@ func TestRewriteHourPlanningFiltersUnscheduledDays(t *testing.T) {
 	}
 	if len(plan.candidates) != 0 || plan.totalSelected != 0 || plan.skippedCandidates != 1 {
 		t.Fatalf("weekend-only plan = candidates %d selected %d skipped %d", len(plan.candidates), plan.totalSelected, plan.skippedCandidates)
+	}
+}
+
+func TestRewriteHourPlanningCombinesDateBoundsAndSchedule(t *testing.T) {
+	schedule, err := parseCommitTimeSchedule("mon-fri=09:00-10:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bounds, err := parseCurrentRewriteDateBounds("2024-02-03", "2024-02-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commits := []rewriteDateCommit{
+		testRewriteDateCommit("fri", parseDateStartInOffset("2024-02-02", "+0000")+22*3600),
+		testRewriteDateCommit("sat", parseDateStartInOffset("2024-02-03", "+0000")+23*3600, "fri"),
+		testRewriteDateCommit("mon", parseDateStartInOffset("2024-02-05", "+0000")+2*3600, "sat"),
+	}
+	selected := selectCurrentAuthorDateCommitIndexes(commits, bounds)
+	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, selected)}
+	plan, err := planRewriteHourCandidates(candidates, schedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.totalSelected != 1 || len(plan.candidates) != 1 || len(plan.candidates[0].selected) != 1 || plan.candidates[0].selected[0] != 2 {
+		t.Fatalf("plan selected = total %d candidates %d indexes %v", plan.totalSelected, len(plan.candidates), plan.candidates[0].selected)
+	}
+	commit := plan.candidates[0].commits[2]
+	if floorDayInOffset(commit.plannedEpoch, "+0000") != parseDateStartInOffset("2024-02-05", "+0000") {
+		t.Fatalf("planned day = %s", formatEpoch(commit.plannedEpoch, "+0000"))
+	}
+	if !epochInCommitTimeWindow(commit.plannedEpoch, "+0000", commitTimeWindow{StartMinute: 9 * 60, EndMinute: 10 * 60, Text: "09:00-10:00"}) {
+		t.Fatalf("mon not inside scheduled window: %s", formatEpoch(commit.plannedEpoch, "+0000"))
 	}
 }
 
@@ -1159,6 +1281,45 @@ func TestRewriteHoursTempRepoScheduleLeavesUnscheduledDates(t *testing.T) {
 	}
 }
 
+func TestRewriteAuthorsDateBoundsRewriteAndBaselineOnlySelected(t *testing.T) {
+	requireGitFilterRepoForTest(t)
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	runGitForTest(t, "", "init", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitEmptyForTest(t, repoDir, "first", "2024-02-01T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "second", "2024-02-02T10:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "third", "2024-02-03T10:00:00 +0000")
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"rewrite-authors", "--repo", repoDir, "--no-fetch", "--rewrite-after", "2024-02-02", "--rewrite-before", "2024-02-03", "--name", "New Name", "--email", "new@example.test", "--force", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("rewrite-authors failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	authors := commitAuthorIdentitiesBySubject(t, repoDir)
+	if authors["first"].Name != "Test User" || authors["first"].Email != "test@example.test" {
+		t.Fatalf("first author changed: %+v", authors["first"])
+	}
+	if authors["second"].Name != "New Name" || authors["second"].Email != "new@example.test" {
+		t.Fatalf("second author was not rewritten: %+v", authors["second"])
+	}
+	if authors["third"].Name != "Test User" || authors["third"].Email != "test@example.test" {
+		t.Fatalf("third author changed: %+v", authors["third"])
+	}
+	manifest, exists, err := loadRewriteBaseline(filepath.Join(repoDir, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists || len(manifest.Entries) != 1 {
+		t.Fatalf("baseline entries = exists %v count %d", exists, len(manifest.Entries))
+	}
+	if strings.TrimSpace(manifest.Entries[0].Message) != "second" {
+		t.Fatalf("baseline captured %q, want second", manifest.Entries[0].Message)
+	}
+}
+
 func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	requireGitFilterRepoForTest(t)
 	t.Setenv("NO_COLOR", "1")
@@ -1452,6 +1613,25 @@ func commitCommitterDatesBySubject(t *testing.T, dir string) map[string]int64 {
 			t.Fatalf("malformed epoch %q: %v", fields[1], err)
 		}
 		result[fields[0]] = epoch
+	}
+	return result
+}
+
+type commitAuthorIdentity struct {
+	Name  string
+	Email string
+}
+
+func commitAuthorIdentitiesBySubject(t *testing.T, dir string) map[string]commitAuthorIdentity {
+	t.Helper()
+	out := runGitForTest(t, dir, "log", "--format=%s%x00%an%x00%ae")
+	result := map[string]commitAuthorIdentity{}
+	for _, line := range splitLines(out) {
+		fields := strings.Split(line, "\x00")
+		if len(fields) != 3 {
+			t.Fatalf("bad author identity line %q", line)
+		}
+		result[fields[0]] = commitAuthorIdentity{Name: fields[1], Email: fields[2]}
 	}
 	return result
 }
