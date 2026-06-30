@@ -12,6 +12,7 @@ type rewriteHoursOptions struct {
 	window       string
 	timeSchedule commitTimeSchedule
 	yes          bool
+	bounds       currentRewriteDateBounds
 }
 
 type hourRewriteScan struct {
@@ -86,6 +87,12 @@ func runRewriteHours(a *app, cmd *cobra.Command, args []string) int {
 
 func rewriteHoursOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteHoursOptions, bool) {
 	opts := rewriteHoursOptions{yes: yesFlag(cmd)}
+	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+	if err != nil {
+		a.error(err.Error())
+		return rewriteHoursOptions{}, false
+	}
+	opts.bounds = bounds
 	opts.window, _ = cmd.Flags().GetString("window")
 	if strings.TrimSpace(opts.window) == "" {
 		a.error("--window is required.")
@@ -106,7 +113,7 @@ func rewriteHoursOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteHoursOptio
 
 func runRewriteHoursRewrite(a *app, repos []repo, filterCmd []string, opts rewriteHoursOptions) int {
 	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Preparing hour rewrites", len(repos)), func(r repo) hourRewriteScan {
-		return scanRewriteHoursRepo(a, r)
+		return scanRewriteHoursRepo(a, r, opts.bounds)
 	})
 	if interrupted(a) {
 		return 1
@@ -226,7 +233,7 @@ func runRewriteHoursRewrite(a *app, repos []repo, filterCmd []string, opts rewri
 	return status
 }
 
-func scanRewriteHoursRepo(a *app, r repo) hourRewriteScan {
+func scanRewriteHoursRepo(a *app, r repo, bounds currentRewriteDateBounds) hourRewriteScan {
 	if !a.git.HasHead(a.ctx, r.dir) {
 		return hourRewriteScan{repo: r}
 	}
@@ -252,6 +259,9 @@ func scanRewriteHoursRepo(a *app, r repo) hourRewriteScan {
 	for i := range commits {
 		if commitHasSignature(commits[i]) {
 			hasSigned = true
+		}
+		if !bounds.selectsCurrentAuthorDate(commits[i]) {
+			continue
 		}
 		commits[i].selected = true
 		commits[i].originalSHA = commits[i].hash

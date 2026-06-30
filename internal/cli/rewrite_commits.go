@@ -18,6 +18,11 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
 	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
+	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
 
 	if batch <= 0 {
 		a.plainErrorf("--batch-size must be a positive integer.")
@@ -63,6 +68,10 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if !refreshOriginForRewrite(a, cmd, repos) {
 		return 1
 	}
+	aiRepos, ok := rewriteCommitAIRepositories(a, repos, bounds)
+	if !ok {
+		return 1
+	}
 	workDir, err := os.MkdirTemp("", "git-wrangler-ai-*")
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
@@ -70,11 +79,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	defer os.RemoveAll(workDir)
 
-	aiRepos := make([]ai.Repository, 0, len(repos))
-	for _, r := range repos {
-		aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
-	}
-	scanProgress := newProgress(a, "Scanning repositories", len(repos))
+	scanProgress := newProgress(a, "Scanning repositories", len(aiRepos))
 	apiProgress := (*progress)(nil)
 	plan, err := ai.Generate(a.ctx, aiRepos, ai.Config{
 		BaseURL:          settings.Config.AI.BaseURL,
@@ -157,6 +162,39 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return 0
 	}
 	return applyAIPlan(a, plan, filterCmd)
+}
+
+func rewriteCommitAIRepositories(a *app, repos []repo, bounds currentRewriteDateBounds) ([]ai.Repository, bool) {
+	if !bounds.enabled() {
+		aiRepos := make([]ai.Repository, 0, len(repos))
+		for _, r := range repos {
+			aiRepos = append(aiRepos, ai.Repository{Dir: r.dir, Name: r.display, GitDir: r.gitDir})
+		}
+		return aiRepos, true
+	}
+	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Selecting commits by current author date", len(repos)), func(r repo) currentRewriteDateSelectionScan {
+		return scanCurrentRewriteDateSelection(a, r, bounds)
+	})
+	if interrupted(a) {
+		return nil, false
+	}
+	aiRepos := make([]ai.Repository, 0, len(repos))
+	for _, scan := range scans {
+		if scan.err != nil {
+			renderErrorBlock(a, scan.repo.display+": "+scan.errLabel, scan.err.Error())
+			return nil, false
+		}
+		if !scan.hasHead || scan.noBranches || scan.noCommits || len(scan.selected) == 0 {
+			continue
+		}
+		aiRepos = append(aiRepos, ai.Repository{
+			Dir:            scan.repo.dir,
+			Name:           scan.repo.display,
+			GitDir:         scan.repo.gitDir,
+			SelectedHashes: selectedRewriteDateHashSet(scan.commits, scan.selected),
+		})
+	}
+	return aiRepos, true
 }
 
 type aiApplyResult struct {

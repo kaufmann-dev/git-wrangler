@@ -537,14 +537,37 @@ func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *test
 		},
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 			joined := name + " " + strings.Join(args, " ")
+			hash := fakeRewriteAuthorHash(dir)
 			switch {
 			case joined == "git fetch --prune origin":
 				return "fetched\n", "", nil
 			case joined == "git remote get-url origin":
 				return "https://example.test/" + filepath.Base(dir) + ".git\n", "", nil
+			case joined == "git rev-parse HEAD":
+				return hash + "\n", "", nil
 			case joined == "git for-each-ref --format=%(refname)%00%(objectname) refs/heads":
+				return "refs/heads/main\x00" + hash + "\n", "", nil
+			case strings.HasPrefix(joined, "git log --topo-order --reverse --format="):
+				return fakeRewriteAuthorLog(hash), "", nil
+			case strings.HasPrefix(joined, "git update-ref refs/git-wrangler/baseline-capture/"):
 				return "", "", nil
-			case name == "/usr/bin/git-filter-repo" && strings.Contains(strings.Join(args, " "), "--email-callback"):
+			case strings.HasPrefix(joined, "git update-ref -d refs/git-wrangler/baseline-capture/"):
+				return "", "", nil
+			case strings.HasPrefix(joined, "git bundle create "):
+				if err := os.WriteFile(args[2], []byte("bundle\n"), 0o644); err != nil {
+					return "", "", err
+				}
+				return "", "", nil
+			case joined == "git cat-file -p "+hash:
+				return fakeRewriteAuthorCatFile(hash), "", nil
+			case name == "/usr/bin/git-filter-repo" && strings.Contains(strings.Join(args, " "), "--commit-callback"):
+				metadataDir := filepath.Join(dir, ".git", "filter-repo")
+				if err := os.MkdirAll(metadataDir, 0o755); err != nil {
+					return "", "", err
+				}
+				if err := os.WriteFile(filepath.Join(metadataDir, "commit-map"), []byte("old new\n"+hash+" "+hash+"new\n"), 0o644); err != nil {
+					return "", "", err
+				}
 				done := trackConcurrentStart(&mu, &activeFilters, &maxActiveFilters, release, &releaseOnce)
 				defer done()
 				return "rewritten\n", "", nil
@@ -565,6 +588,18 @@ func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *test
 	if !strings.Contains(stdout.String(), "Summary: 2 rewritten, 0 skipped, 0 failed") {
 		t.Fatalf("missing rewrite-authors summary:\n%s", stdout.String())
 	}
+}
+
+func fakeRewriteAuthorHash(dir string) string {
+	return "hash-" + filepath.Base(dir)
+}
+
+func fakeRewriteAuthorLog(hash string) string {
+	return hash + "\x00\x00" + "1700000000\x002023-11-14 22:13:20 +0000\x001700000000\x002023-11-14 22:13:20 +0000\x00N\x1e"
+}
+
+func fakeRewriteAuthorCatFile(hash string) string {
+	return "tree tree-" + hash + "\nauthor Test User <test@example.test> 1700000000 +0000\ncommitter Test User <test@example.test> 1700000000 +0000\n\nmessage\n"
 }
 
 func tempGitRepos(t *testing.T, names ...string) string {

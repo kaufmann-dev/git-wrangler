@@ -43,10 +43,11 @@ const (
 )
 
 type Repository struct {
-	Dir     string
-	Name    string
-	GitDir  string
-	Ordinal int
+	Dir            string
+	Name           string
+	GitDir         string
+	Ordinal        int
+	SelectedHashes map[string]bool
 }
 
 type Config struct {
@@ -359,6 +360,9 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 				Total:    len(commits),
 				Detail:   fmt.Sprintf("%s %d/%d commits", repo.Name, commitIndex+1, len(commits)),
 			})
+		}
+		if repo.SelectedHashes != nil && !repo.SelectedHashes[commit.hash] {
+			continue
 		}
 		if skipConventional && IsConventional(commit.message) {
 			stats.SkippedFormatted++

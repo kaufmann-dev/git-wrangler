@@ -25,23 +25,17 @@ const (
 var timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
 
 type rewriteDatesOptions struct {
-	startDate         string
-	endDate           string
-	rewriteBeforeDate string
-	rewriteAfterDate  string
-	untilDate         string
-	seed              string
-	frequency         string
-	spread            string
-	days              int
-	window            string
-	timeSchedule      *commitTimeSchedule
-	yes               bool
-
-	hasRewriteBefore bool
-	rewriteBefore    int64
-	hasRewriteAfter  bool
-	rewriteAfter     int64
+	startDate    string
+	endDate      string
+	untilDate    string
+	seed         string
+	frequency    string
+	spread       string
+	days         int
+	window       string
+	timeSchedule *commitTimeSchedule
+	yes          bool
+	bounds       currentRewriteDateBounds
 }
 
 type rewriteDateProfile struct {
@@ -229,8 +223,6 @@ func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptio
 	opts := rewriteDatesOptions{yes: yesFlag(cmd)}
 	opts.startDate, _ = cmd.Flags().GetString("start-date")
 	opts.endDate, _ = cmd.Flags().GetString("end-date")
-	opts.rewriteBeforeDate, _ = cmd.Flags().GetString("rewrite-before")
-	opts.rewriteAfterDate, _ = cmd.Flags().GetString("rewrite-after")
 	opts.untilDate, _ = cmd.Flags().GetString("until")
 	opts.seed, _ = cmd.Flags().GetString("seed")
 	opts.frequency, _ = cmd.Flags().GetString("frequency")
@@ -238,6 +230,12 @@ func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptio
 	opts.days, _ = cmd.Flags().GetInt("days")
 	opts.window, _ = cmd.Flags().GetString("window")
 	daysSet := cmd.Flags().Changed("days")
+	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+	if err != nil {
+		a.error(err.Error())
+		return rewriteDatesOptions{}, false
+	}
+	opts.bounds = bounds
 
 	for _, value := range []struct {
 		name string
@@ -245,8 +243,6 @@ func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptio
 	}{
 		{name: "start-date", date: opts.startDate},
 		{name: "end-date", date: opts.endDate},
-		{name: "rewrite-before", date: opts.rewriteBeforeDate},
-		{name: "rewrite-after", date: opts.rewriteAfterDate},
 		{name: "until", date: opts.untilDate},
 	} {
 		if value.date != "" && !validDate(value.date) {
@@ -285,18 +281,6 @@ func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptio
 	profile, _ := buildRewriteDateProfile(opts.frequency, opts.spread)
 	opts.frequency = profile.frequencyName
 	opts.spread = profile.spreadName
-	if opts.rewriteBeforeDate != "" {
-		opts.hasRewriteBefore = true
-		opts.rewriteBefore = parseDateStart(opts.rewriteBeforeDate)
-	}
-	if opts.rewriteAfterDate != "" {
-		opts.hasRewriteAfter = true
-		opts.rewriteAfter = parseDateStart(opts.rewriteAfterDate)
-	}
-	if opts.hasRewriteBefore && opts.hasRewriteAfter && opts.rewriteAfter >= opts.rewriteBefore {
-		a.error("--rewrite-after must be before --rewrite-before.")
-		return rewriteDatesOptions{}, false
-	}
 	return opts, true
 }
 
@@ -608,14 +592,7 @@ func rewriteDatesRepoHasTags(a *app, dir string) bool {
 }
 
 func rewriteDateCommitSelected(commit rewriteDateCommit, opts rewriteDatesOptions) bool {
-	epoch := commit.originalAuthorEpoch
-	if opts.hasRewriteAfter && epoch < opts.rewriteAfter {
-		return false
-	}
-	if opts.hasRewriteBefore && epoch >= opts.rewriteBefore {
-		return false
-	}
-	return true
+	return opts.bounds.selectsCurrentAuthorDate(commit)
 }
 
 func planRewriteDateCandidates(candidates []dateCandidate, opts rewriteDatesOptions) (rewriteDatePlan, error) {
@@ -881,20 +858,20 @@ func sortSelectedDateCommits(candidates []dateCandidate, selected []selectedDate
 	sort.Slice(selected, func(i, j int) bool {
 		left := candidates[selected[i].candidate].commits[selected[i].commit]
 		right := candidates[selected[j].candidate].commits[selected[j].commit]
-		if left.originalAuthorEpoch == right.originalAuthorEpoch {
+		if left.authorEpoch == right.authorEpoch {
 			if candidates[selected[i].candidate].repo.display == candidates[selected[j].candidate].repo.display {
 				return left.hash < right.hash
 			}
 			return candidates[selected[i].candidate].repo.display < candidates[selected[j].candidate].repo.display
 		}
-		return left.originalAuthorEpoch < right.originalAuthorEpoch
+		return left.authorEpoch < right.authorEpoch
 	})
 }
 
 func dominantPlanningTimezoneOffset(candidates []dateCandidate, selected []selectedDateCommit) string {
 	counts := map[string]int{}
 	for _, ref := range selected {
-		offset := candidates[ref.candidate].commits[ref.commit].originalAuthorTZ
+		offset := candidates[ref.candidate].commits[ref.commit].authorTZ
 		if timezoneOffsetRe.MatchString(offset) {
 			counts[offset]++
 		}
@@ -918,19 +895,19 @@ func rewriteDateTargetRange(candidates []dateCandidate, selected []selectedDateC
 		start := parseDateStartInOffset(time.Unix(end, 0).In(locationForTimezoneOffset(tzOffset)).AddDate(0, 0, -(opts.days-1)).Format("2006-01-02"), tzOffset)
 		return start, end, true, true, nil
 	}
-	minOriginal := int64(0)
-	maxOriginal := int64(0)
+	minCurrent := int64(0)
+	maxCurrent := int64(0)
 	for i, ref := range selected {
-		epoch := candidates[ref.candidate].commits[ref.commit].originalAuthorEpoch
-		if i == 0 || epoch < minOriginal {
-			minOriginal = epoch
+		epoch := candidates[ref.candidate].commits[ref.commit].authorEpoch
+		if i == 0 || epoch < minCurrent {
+			minCurrent = epoch
 		}
-		if i == 0 || epoch > maxOriginal {
-			maxOriginal = epoch
+		if i == 0 || epoch > maxCurrent {
+			maxCurrent = epoch
 		}
 	}
-	start := minOriginal
-	end := maxOriginal
+	start := minCurrent
+	end := maxCurrent
 	if opts.startDate != "" {
 		start = parseDateStartInOffset(opts.startDate, tzOffset)
 	}
@@ -1005,14 +982,14 @@ func fixedDateConstraints(candidate dateCandidate, commitIndex int) (int64, int6
 		if !ok || selected[parentIndex] {
 			continue
 		}
-		minFixed = maxInt64(minFixed, candidate.commits[parentIndex].originalAuthorEpoch+1)
+		minFixed = maxInt64(minFixed, candidate.commits[parentIndex].authorEpoch+1)
 	}
 	children := childCommitIndexes(candidate.commits)
 	for _, childIndex := range children[commitIndex] {
 		if selected[childIndex] {
 			continue
 		}
-		maxFixed = minInt64(maxFixed, candidate.commits[childIndex].originalAuthorEpoch-1)
+		maxFixed = minInt64(maxFixed, candidate.commits[childIndex].authorEpoch-1)
 	}
 	return minFixed, maxFixed
 }
@@ -2420,7 +2397,7 @@ func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOption
 				break
 			}
 			commit := candidate.commits[commitIndex]
-			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(commit.hash, 8), formatEpoch(commit.originalAuthorEpoch, commit.originalAuthorTZ), formatEpoch(commit.plannedEpoch, candidate.tzOffset))
+			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(commit.hash, 8), formatEpoch(commit.authorEpoch, commit.authorTZ), formatEpoch(commit.plannedEpoch, candidate.tzOffset))
 		}
 		fmt.Fprintln(a.stdout)
 	}
@@ -2442,17 +2419,7 @@ func plannedDailyLoadStats(candidates []dateCandidate, tzOffset string) (int, in
 }
 
 func rewriteDateFilterDescription(opts rewriteDatesOptions) string {
-	parts := []string{}
-	if opts.rewriteAfterDate != "" {
-		parts = append(parts, "after "+opts.rewriteAfterDate)
-	}
-	if opts.rewriteBeforeDate != "" {
-		parts = append(parts, "before "+opts.rewriteBeforeDate)
-	}
-	if len(parts) == 0 {
-		return "all local branch commits"
-	}
-	return strings.Join(parts, ", ")
+	return currentRewriteDateBoundsDescription(opts.bounds)
 }
 
 func rewriteDateTimeWindowDescription(opts rewriteDatesOptions) string {
