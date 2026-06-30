@@ -77,6 +77,56 @@ func TestCommitTimeWindowParsing(t *testing.T) {
 	}
 }
 
+func TestCommitTimeScheduleParsing(t *testing.T) {
+	allDays, err := parseCommitTimeSchedule("09:15-17:45")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, date := range []string{"2024-01-01", "2024-01-06", "2024-01-07"} {
+		day := parseDateStartInOffset(date, "+0000")
+		window, ok := allDays.windowForDay(day, "+0000")
+		if !ok || window.StartMinute != 9*60+15 || window.EndMinute != 17*60+45 {
+			t.Fatalf("%s all-days window = %+v, %v", date, window, ok)
+		}
+	}
+
+	weekdays, err := parseCommitTimeSchedule("mon-fri=16:00-20:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	monday := parseDateStartInOffset("2024-01-01", "+0000")
+	saturday := parseDateStartInOffset("2024-01-06", "+0000")
+	if window, ok := weekdays.windowForDay(monday, "+0000"); !ok || window.Text != "16:00-20:00" {
+		t.Fatalf("monday schedule = %+v, %v", window, ok)
+	}
+	if window, ok := weekdays.windowForDay(saturday, "+0000"); ok {
+		t.Fatalf("saturday unexpectedly scheduled: %+v", window)
+	}
+
+	mixed, err := parseCommitTimeSchedule("mon-fri=16:00-20:00,sat=10:00-14:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if window, ok := mixed.windowForDay(saturday, "+0000"); !ok || window.Text != "10:00-14:00" {
+		t.Fatalf("saturday mixed schedule = %+v, %v", window, ok)
+	}
+
+	for _, value := range []string{
+		"",
+		"mon=",
+		"=09:00-10:00",
+		"foo=09:00-10:00",
+		"fri-mon=09:00-10:00",
+		"mon=09:00-10:00,mon=11:00-12:00",
+		"mon-fri=bad",
+		"mon=09:00-10:00,",
+	} {
+		if _, err := parseCommitTimeSchedule(value); err == nil {
+			t.Fatalf("%q was accepted", value)
+		}
+	}
+}
+
 func TestExplicitWindowEpochsAndOverflow(t *testing.T) {
 	window, err := parseCommitTimeWindow("09:00-09:00")
 	if err == nil {
@@ -212,10 +262,11 @@ func TestRewriteDateTargetRangeDays(t *testing.T) {
 }
 
 func TestRewriteDateExplicitWindowPlanning(t *testing.T) {
-	window, err := parseCommitTimeWindow("09:00-11:00")
+	schedule, err := parseCommitTimeSchedule("09:00-11:00")
 	if err != nil {
 		t.Fatal(err)
 	}
+	window, _ := schedule.windowForDay(parseDateStartInOffset("2024-01-01", "+0000"), "+0000")
 	commits := []rewriteDateCommit{
 		testRewriteDateCommit("a", parseDateStart("2020-01-01")),
 		testRewriteDateCommit("b", parseDateStart("2020-01-02"), "a"),
@@ -224,13 +275,13 @@ func TestRewriteDateExplicitWindowPlanning(t *testing.T) {
 	}
 	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, []int{0, 1, 2, 3})}
 	plan, err := planRewriteDateCandidates(candidates, rewriteDatesOptions{
-		startDate:  "2024-01-01",
-		endDate:    "2024-01-10",
-		seed:       "window-seed",
-		frequency:  "medium",
-		spread:     "medium",
-		window:     window.Text,
-		timeWindow: &window,
+		startDate:    "2024-01-01",
+		endDate:      "2024-01-10",
+		seed:         "window-seed",
+		frequency:    "medium",
+		spread:       "medium",
+		window:       schedule.Text,
+		timeSchedule: &schedule,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -242,6 +293,83 @@ func TestRewriteDateExplicitWindowPlanning(t *testing.T) {
 				t.Fatalf("%s planned outside window: %s", commit.hash, formatEpoch(commit.plannedEpoch, candidate.tzOffset))
 			}
 		}
+	}
+}
+
+func TestRewriteDateScheduleFallsBackForUnscheduledDays(t *testing.T) {
+	schedule, err := parseCommitTimeSchedule("mon-fri=09:00-10:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, _ := buildRewriteDateProfile("medium", "medium")
+	rng := rand.New(rand.NewSource(1))
+	monday := parseDateStartInOffset("2024-01-01", "+0000")
+	mondayEpochs := plannedEpochsForDay(monday, 3, monday, monday+86399, rng, profile, "+0000", &schedule)
+	for _, epoch := range mondayEpochs {
+		if !epochInCommitTimeWindow(epoch, "+0000", commitTimeWindow{StartMinute: 9 * 60, EndMinute: 10 * 60, Text: "09:00-10:00"}) {
+			t.Fatalf("weekday epoch outside explicit schedule: %s", formatEpoch(epoch, "+0000"))
+		}
+	}
+
+	rng = rand.New(rand.NewSource(1))
+	saturday := parseDateStartInOffset("2024-01-06", "+0000")
+	saturdayEpochs := plannedEpochsForDay(saturday, 1, saturday, saturday+86399, rng, profile, "+0000", &schedule)
+	if len(saturdayEpochs) != 1 {
+		t.Fatalf("saturday epochs = %v", saturdayEpochs)
+	}
+	if epochInCommitTimeWindow(saturdayEpochs[0], "+0000", commitTimeWindow{StartMinute: 9 * 60, EndMinute: 10 * 60, Text: "09:00-10:00"}) {
+		t.Fatalf("unscheduled saturday used explicit window: %s", formatEpoch(saturdayEpochs[0], "+0000"))
+	}
+
+	candidate := testRewriteDateCandidate("repo", []rewriteDateCommit{
+		testRewriteDateCommit("sat", saturdayEpochs[0]),
+	}, []int{0})
+	candidate.commits[0].plannedEpoch = saturdayEpochs[0]
+	if err := verifySelectedDateSchedule([]dateCandidate{candidate}, []selectedDateCommit{{candidate: 0, commit: 0}}, schedule); err != nil {
+		t.Fatalf("unscheduled saturday was constrained: %v", err)
+	}
+
+	candidate.commits[0].plannedEpoch = monday + 12*3600
+	if err := verifySelectedDateSchedule([]dateCandidate{candidate}, []selectedDateCommit{{candidate: 0, commit: 0}}, schedule); err == nil {
+		t.Fatal("scheduled monday outside the window was accepted")
+	}
+}
+
+func TestRewriteHourPlanningFiltersUnscheduledDays(t *testing.T) {
+	schedule, err := parseCommitTimeSchedule("mon-fri=09:00-10:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commits := []rewriteDateCommit{
+		testRewriteDateCommit("fri", parseDateStartInOffset("2024-02-02", "+0000")+22*3600),
+		testRewriteDateCommit("sat", parseDateStartInOffset("2024-02-03", "+0000")+23*3600, "fri"),
+		testRewriteDateCommit("mon", parseDateStartInOffset("2024-02-05", "+0000")+2*3600, "sat"),
+	}
+	candidates := []dateCandidate{testRewriteDateCandidate("repo", commits, []int{0, 1, 2})}
+	plan, err := planRewriteHourCandidates(candidates, schedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.totalSelected != 2 || len(plan.candidates) != 1 || len(plan.candidates[0].selected) != 2 {
+		t.Fatalf("plan selected = total %d candidates %d indexes %v", plan.totalSelected, len(plan.candidates), plan.candidates[0].selected)
+	}
+	if got := plan.candidates[0].selected; got[0] != 0 || got[1] != 2 {
+		t.Fatalf("selected indexes = %v, want [0 2]", got)
+	}
+	for _, idx := range plan.candidates[0].selected {
+		commit := plan.candidates[0].commits[idx]
+		if !epochInCommitTimeWindow(commit.plannedEpoch, "+0000", commitTimeWindow{StartMinute: 9 * 60, EndMinute: 10 * 60, Text: "09:00-10:00"}) {
+			t.Fatalf("%s not inside scheduled window: %s", commit.hash, formatEpoch(commit.plannedEpoch, "+0000"))
+		}
+	}
+
+	weekendOnly := []dateCandidate{testRewriteDateCandidate("repo", commits[:2], []int{1})}
+	plan, err = planRewriteHourCandidates(weekendOnly, schedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.candidates) != 0 || plan.totalSelected != 0 || plan.skippedCandidates != 1 {
+		t.Fatalf("weekend-only plan = candidates %d selected %d skipped %d", len(plan.candidates), plan.totalSelected, plan.skippedCandidates)
 	}
 }
 
@@ -992,6 +1120,42 @@ func TestRewriteHoursTempRepoWindowPreservesCalendarDates(t *testing.T) {
 		if committerEpoch != after[subject] {
 			t.Fatalf("%s committer date %s does not match author date %s", subject, formatEpoch(committerEpoch, "+0000"), formatEpoch(after[subject], "+0000"))
 		}
+	}
+}
+
+func TestRewriteHoursTempRepoScheduleLeavesUnscheduledDates(t *testing.T) {
+	requireGitFilterRepoForTest(t)
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	runGitForTest(t, "", "init", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitEmptyForTest(t, repoDir, "friday", "2024-02-02T22:00:00 +0000")
+	commitEmptyForTest(t, repoDir, "saturday", "2024-02-03T23:30:00 +0000")
+	commitEmptyForTest(t, repoDir, "monday", "2024-02-05T02:00:00 +0000")
+	before := commitAuthorDatesBySubject(t, repoDir)
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"rewrite-hours", "--repo", repoDir, "--no-fetch", "--window", "mon-fri=09:00-10:00", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("rewrite-hours failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Selected commits: 2") {
+		t.Fatalf("preview did not show only scheduled commits:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
+	}
+	after := commitAuthorDatesBySubject(t, repoDir)
+	for _, subject := range []string{"friday", "monday"} {
+		afterEpoch := after[subject]
+		if floorDayInOffset(afterEpoch, "+0000") != floorDayInOffset(before[subject], "+0000") {
+			t.Fatalf("%s day changed from %s to %s", subject, formatEpoch(before[subject], "+0000"), formatEpoch(afterEpoch, "+0000"))
+		}
+		if !epochInCommitTimeWindow(afterEpoch, "+0000", commitTimeWindow{StartMinute: 9 * 60, EndMinute: 10 * 60, Text: "09:00-10:00"}) {
+			t.Fatalf("%s not inside weekday window: %s", subject, formatEpoch(afterEpoch, "+0000"))
+		}
+	}
+	if after["saturday"] != before["saturday"] {
+		t.Fatalf("unscheduled saturday changed from %s to %s", formatEpoch(before["saturday"], "+0000"), formatEpoch(after["saturday"], "+0000"))
 	}
 }
 

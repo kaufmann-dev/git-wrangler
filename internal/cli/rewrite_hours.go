@@ -9,9 +9,9 @@ import (
 )
 
 type rewriteHoursOptions struct {
-	window     string
-	timeWindow commitTimeWindow
-	yes        bool
+	window       string
+	timeSchedule commitTimeSchedule
+	yes          bool
 }
 
 type hourRewriteScan struct {
@@ -40,10 +40,11 @@ type hourCandidate struct {
 }
 
 type hourRewritePlan struct {
-	candidates    []dateCandidate
-	totalSelected int
-	tzOffset      string
-	window        commitTimeWindow
+	candidates        []dateCandidate
+	totalSelected     int
+	tzOffset          string
+	schedule          commitTimeSchedule
+	skippedCandidates int
 }
 
 type hourApply struct {
@@ -90,12 +91,16 @@ func rewriteHoursOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteHoursOptio
 		a.error("--window is required.")
 		return rewriteHoursOptions{}, false
 	}
-	parsed, err := parseCommitTimeWindow(opts.window)
+	parsed, err := parseCommitTimeSchedule(opts.window)
 	if err != nil {
 		a.errorf("--window %s.", err.Error())
 		return rewriteHoursOptions{}, false
 	}
-	opts.timeWindow = parsed
+	if parsed.empty() {
+		a.error("--window must assign at least one day.")
+		return rewriteHoursOptions{}, false
+	}
+	opts.timeSchedule = parsed
 	return opts, true
 }
 
@@ -140,15 +145,24 @@ func runRewriteHoursRewrite(a *app, repos []repo, filterCmd []string, opts rewri
 		)
 		return status
 	}
-	plan, err := planRewriteHourCandidates(candidates, opts.timeWindow)
+	plan, err := planRewriteHourCandidates(candidates, opts.timeSchedule)
+	skipped += plan.skippedCandidates
 	if err != nil {
 		renderErrorBlock(a, "rewrite-hours: could not plan hours", err.Error())
 		renderSummary(a,
-			summaryCount{label: "with rewrites", value: len(candidates), color: a.ui.Yellow},
+			summaryCount{label: "with rewrites", value: len(plan.candidates), color: a.ui.Yellow},
 			summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
 			summaryCount{label: "failed", value: failed + 1, color: a.ui.Red},
 		)
 		return 1
+	}
+	if len(plan.candidates) == 0 {
+		renderSummary(a,
+			summaryCount{label: "with rewrites", value: 0, color: a.ui.Yellow},
+			summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
+		return status
 	}
 	renderRewriteHourPlan(a, plan)
 	renderSummary(a,
@@ -261,7 +275,7 @@ func scanRewriteHoursRepo(a *app, r repo) hourRewriteScan {
 	}
 }
 
-func planRewriteHourCandidates(candidates []dateCandidate, window commitTimeWindow) (hourRewritePlan, error) {
+func planRewriteHourCandidates(candidates []dateCandidate, schedule commitTimeSchedule) (hourRewritePlan, error) {
 	selected := selectedDateCommits(candidates)
 	sortSelectedHourCommits(candidates, selected)
 	tzOffset := dominantCurrentPlanningTimezoneOffset(candidates, selected)
@@ -269,18 +283,24 @@ func planRewriteHourCandidates(candidates []dateCandidate, window commitTimeWind
 	for i := range planned {
 		planned[i].tzOffset = tzOffset
 	}
-	assignHourWindowEpochs(planned, selected, tzOffset, window)
-	if err := verifySelectedTopologyForHours(planned); err != nil {
-		return hourRewritePlan{}, err
+	selected = filterHourScheduleSelection(planned, selected, tzOffset, schedule)
+	skippedCandidates := countHourCandidatesWithoutSelection(planned)
+	if len(selected) == 0 {
+		return hourRewritePlan{tzOffset: tzOffset, schedule: schedule, skippedCandidates: skippedCandidates}, nil
 	}
-	if err := verifySelectedDateWindow(planned, selected, window); err != nil {
-		return hourRewritePlan{}, err
+	assignHourWindowEpochs(planned, selected, tzOffset, schedule)
+	if err := verifySelectedTopologyForHours(planned); err != nil {
+		return hourRewritePlan{candidates: hourCandidatesWithSelection(planned), totalSelected: len(selected), tzOffset: tzOffset, schedule: schedule, skippedCandidates: skippedCandidates}, err
+	}
+	if err := verifySelectedDateSchedule(planned, selected, schedule); err != nil {
+		return hourRewritePlan{candidates: hourCandidatesWithSelection(planned), totalSelected: len(selected), tzOffset: tzOffset, schedule: schedule, skippedCandidates: skippedCandidates}, err
 	}
 	return hourRewritePlan{
-		candidates:    planned,
-		totalSelected: len(selected),
-		tzOffset:      tzOffset,
-		window:        window,
+		candidates:        hourCandidatesWithSelection(planned),
+		totalSelected:     len(selected),
+		tzOffset:          tzOffset,
+		schedule:          schedule,
+		skippedCandidates: skippedCandidates,
 	}, nil
 }
 
@@ -311,7 +331,55 @@ func sortSelectedHourCommits(candidates []dateCandidate, selected []selectedDate
 	})
 }
 
-func assignHourWindowEpochs(candidates []dateCandidate, selected []selectedDateCommit, tzOffset string, window commitTimeWindow) {
+func filterHourScheduleSelection(candidates []dateCandidate, selected []selectedDateCommit, tzOffset string, schedule commitTimeSchedule) []selectedDateCommit {
+	scheduled := make([]map[int]bool, len(candidates))
+	for _, ref := range selected {
+		commit := candidates[ref.candidate].commits[ref.commit]
+		day := floorDayInOffset(commit.authorEpoch, tzOffset)
+		if _, ok := schedule.windowForDay(day, tzOffset); !ok {
+			continue
+		}
+		if scheduled[ref.candidate] == nil {
+			scheduled[ref.candidate] = map[int]bool{}
+		}
+		scheduled[ref.candidate][ref.commit] = true
+	}
+	filteredRefs := []selectedDateCommit{}
+	for candidateIndex := range candidates {
+		filteredIndexes := candidates[candidateIndex].selected[:0]
+		for _, commitIndex := range candidates[candidateIndex].selected {
+			if scheduled[candidateIndex][commitIndex] {
+				filteredIndexes = append(filteredIndexes, commitIndex)
+				filteredRefs = append(filteredRefs, selectedDateCommit{candidate: candidateIndex, commit: commitIndex})
+			}
+		}
+		candidates[candidateIndex].selected = filteredIndexes
+	}
+	sortSelectedHourCommits(candidates, filteredRefs)
+	return filteredRefs
+}
+
+func countHourCandidatesWithoutSelection(candidates []dateCandidate) int {
+	skipped := 0
+	for _, candidate := range candidates {
+		if len(candidate.selected) == 0 {
+			skipped++
+		}
+	}
+	return skipped
+}
+
+func hourCandidatesWithSelection(candidates []dateCandidate) []dateCandidate {
+	filtered := make([]dateCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if len(candidate.selected) > 0 {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func assignHourWindowEpochs(candidates []dateCandidate, selected []selectedDateCommit, tzOffset string, schedule commitTimeSchedule) {
 	byDay := map[int64][]selectedDateCommit{}
 	days := []int64{}
 	seen := map[int64]bool{}
@@ -328,6 +396,10 @@ func assignHourWindowEpochs(candidates []dateCandidate, selected []selectedDateC
 	for _, day := range days {
 		refs := byDay[day]
 		sortSelectedHourCommits(candidates, refs)
+		window, ok := schedule.windowForDay(day, tzOffset)
+		if !ok {
+			continue
+		}
 		start, end := commitTimeWindowBounds(day, window)
 		timestamps := evenlyDistributedEpochs(len(refs), start, end)
 		for i, ref := range refs {
@@ -375,7 +447,7 @@ func renderRewriteHourPlan(a *app, plan hourRewritePlan) {
 	renderKeyValuesTo(a.stdout, []keyValueRow{
 		{key: "Repositories", value: fmt.Sprintf("%d", len(plan.candidates))},
 		{key: "Selected commits", value: fmt.Sprintf("%d", plan.totalSelected)},
-		{key: "Time window", value: plan.window.Text},
+		{key: "Time window", value: plan.schedule.Text},
 		{key: "Planning timezone", value: plan.tzOffset},
 	})
 	fmt.Fprintln(a.stdout)
