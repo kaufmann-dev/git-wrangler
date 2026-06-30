@@ -244,7 +244,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "rewrite-hours", "Move commit timestamps into a uniform daily time window.", "history", runRewriteHours, flags{
 			repoFlag(),
 			noFetchFlag(),
-			stringFlag("window", "", "Required same-day time window or weekday schedule."),
+			stringFlag("window", "", "Required same-day time window or day-of-week schedule."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rewrite-dates", "Redistribute commit timestamps.", "history", runRewriteDates, flags{
@@ -259,7 +259,7 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("seed", "", "Deterministic planner seed."),
 			stringFlag("frequency", "medium", "Planning frequency: low, medium, or high."),
 			stringFlag("spread", "medium", "Planning spread: low, medium, or high."),
-			stringFlag("window", "", "Use one same-day time window or weekday schedule."),
+			stringFlag("window", "", "Use one same-day time window or day-of-week schedule."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),
 		command(a, "rollback-rewrites", "Roll back Git Wrangler history rewrites from the shared baseline.", "history", runRollbackRewrites, flags{
