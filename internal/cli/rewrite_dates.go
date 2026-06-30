@@ -35,7 +35,7 @@ type rewriteDatesOptions struct {
 	spread            string
 	days              int
 	window            string
-	timeWindow        *commitTimeWindow
+	timeSchedule      *commitTimeSchedule
 	yes               bool
 
 	hasRewriteBefore bool
@@ -275,12 +275,12 @@ func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptio
 		return rewriteDatesOptions{}, false
 	}
 	if opts.window != "" {
-		parsed, err := parseCommitTimeWindow(opts.window)
+		parsed, err := parseCommitTimeSchedule(opts.window)
 		if err != nil {
 			a.errorf("--window %s.", err.Error())
 			return rewriteDatesOptions{}, false
 		}
-		opts.timeWindow = &parsed
+		opts.timeSchedule = &parsed
 	}
 	profile, _ := buildRewriteDateProfile(opts.frequency, opts.spread)
 	opts.frequency = profile.frequencyName
@@ -636,7 +636,7 @@ func planRewriteDateCandidates(candidates []dateCandidate, opts rewriteDatesOpti
 	if err != nil {
 		return rewriteDatePlan{}, err
 	}
-	plannedCandidates, calendar, _, err := planRewriteDateCandidateTimestamps(candidates, selected, targetStart, targetEnd, seed, profile, tzOffset, opts.timeWindow)
+	plannedCandidates, calendar, _, err := planRewriteDateCandidateTimestamps(candidates, selected, targetStart, targetEnd, seed, profile, tzOffset, opts.timeSchedule)
 	if err != nil {
 		return rewriteDatePlan{}, err
 	}
@@ -752,7 +752,7 @@ func selectedDateCommits(candidates []dateCandidate) []selectedDateCommit {
 	return selected
 }
 
-func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []selectedDateCommit, targetStart, targetEnd int64, seed string, profile rewriteDateProfile, tzOffset string, window *commitTimeWindow) ([]dateCandidate, rewriteDateCalendarPlan, rewriteDateTopologyCompression, error) {
+func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []selectedDateCommit, targetStart, targetEnd int64, seed string, profile rewriteDateProfile, tzOffset string, schedule *commitTimeSchedule) ([]dateCandidate, rewriteDateCalendarPlan, rewriteDateTopologyCompression, error) {
 	var bestCandidates []dateCandidate
 	var bestCalendar rewriteDateCalendarPlan
 	var bestStats rewriteDateTopologyCompression
@@ -767,7 +767,7 @@ func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []s
 		}
 		calendarSeed := rewriteDatePlanningSeed(seed, attempt)
 		calendar := buildRewriteDateCalendarPlanForRepos(len(selected), targetStart, targetEnd, calendarSeed, profile, tzOffset, effectiveRepos)
-		timestamps := plannedEpochsForCalendar(calendar, len(selected), calendarSeed, profile, window)
+		timestamps := plannedEpochsForCalendar(calendar, len(selected), calendarSeed, profile, schedule)
 		assignPlannedEpochs(attemptCandidates, selected, timestamps)
 		if err := enforceRewriteDateTopologyWithSelected(attemptCandidates, selected, targetStart, targetEnd); err != nil {
 			if firstErr == nil {
@@ -775,8 +775,8 @@ func planRewriteDateCandidateTimestamps(candidates []dateCandidate, selected []s
 			}
 			continue
 		}
-		if window != nil {
-			if err := verifySelectedDateWindow(attemptCandidates, selected, *window); err != nil {
+		if schedule != nil {
+			if err := verifySelectedDateSchedule(attemptCandidates, selected, *schedule); err != nil {
 				if firstErr == nil {
 					firstErr = err
 				}
@@ -1157,12 +1157,17 @@ func verifyGlobalSelectedDateOrder(candidates []dateCandidate, selectedRefs []se
 	return nil
 }
 
-func verifySelectedDateWindow(candidates []dateCandidate, selectedRefs []selectedDateCommit, window commitTimeWindow) error {
+func verifySelectedDateSchedule(candidates []dateCandidate, selectedRefs []selectedDateCommit, schedule commitTimeSchedule) error {
 	for _, ref := range selectedRefs {
 		candidate := candidates[ref.candidate]
 		commit := candidate.commits[ref.commit]
+		day := floorDayInOffset(commit.plannedEpoch, candidate.tzOffset)
+		window, ok := schedule.windowForDay(day, candidate.tzOffset)
+		if !ok {
+			continue
+		}
 		if !epochInCommitTimeWindow(commit.plannedEpoch, candidate.tzOffset, window) {
-			return fmt.Errorf("%s %s cannot fit inside --window %s while preserving topology", candidate.repo.display, prefix(commit.hash, 8), window.Text)
+			return fmt.Errorf("%s %s cannot fit inside --window %s while preserving topology", candidate.repo.display, prefix(commit.hash, 8), schedule.Text)
 		}
 	}
 	return nil
@@ -1431,7 +1436,7 @@ func buildRewriteDateCalendarPlanForRepos(selectedCount int, startEpoch, endEpoc
 	return calendar
 }
 
-func plannedEpochsForCalendar(calendar rewriteDateCalendarPlan, n int, seed string, profile rewriteDateProfile, window *commitTimeWindow) []int64 {
+func plannedEpochsForCalendar(calendar rewriteDateCalendarPlan, n int, seed string, profile rewriteDateProfile, schedule *commitTimeSchedule) []int64 {
 	if n <= 0 {
 		return nil
 	}
@@ -1456,7 +1461,7 @@ func plannedEpochsForCalendar(calendar rewriteDateCalendarPlan, n int, seed stri
 		if count <= 0 {
 			continue
 		}
-		dayTimes := plannedEpochsForDay(day.epoch, count, calendar.targetStart, calendar.targetEnd, rng, profile, calendar.tzOffset, window)
+		dayTimes := plannedEpochsForDay(day.epoch, count, calendar.targetStart, calendar.targetEnd, rng, profile, calendar.tzOffset, schedule)
 		for _, ts := range dayTimes {
 			if slotIndex >= len(timestamps) {
 				break
@@ -2034,12 +2039,14 @@ func planningDayWeight(day int64, restDays map[int64]bool, profile rewriteDatePr
 	return weight * (0.75 + rng.Float64()*0.5)
 }
 
-func plannedEpochsForDay(day int64, count int, startEpoch, endEpoch int64, rng *rand.Rand, profile rewriteDateProfile, tzOffset string, window *commitTimeWindow) []int64 {
+func plannedEpochsForDay(day int64, count int, startEpoch, endEpoch int64, rng *rand.Rand, profile rewriteDateProfile, tzOffset string, schedule *commitTimeSchedule) []int64 {
 	if count <= 0 {
 		return nil
 	}
-	if window != nil {
-		return plannedEpochsForExplicitWindow(day, count, startEpoch, endEpoch, *window)
+	if schedule != nil {
+		if window, ok := schedule.windowForDay(day, tzOffset); ok {
+			return plannedEpochsForExplicitWindow(day, count, startEpoch, endEpoch, window)
+		}
 	}
 	dayStart := maxInt64(day, startEpoch)
 	dayEnd := minInt64(day+86399, endEpoch)
@@ -2449,10 +2456,10 @@ func rewriteDateFilterDescription(opts rewriteDatesOptions) string {
 }
 
 func rewriteDateTimeWindowDescription(opts rewriteDatesOptions) string {
-	if opts.timeWindow == nil {
+	if opts.timeSchedule == nil {
 		return "generated per active day"
 	}
-	return opts.timeWindow.Text
+	return opts.timeSchedule.Text
 }
 
 func rewriteDateCandidateWarnings(candidate dateCandidate) []string {
