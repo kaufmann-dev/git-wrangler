@@ -400,7 +400,7 @@ func TestRequiredValuePromptsWithYesAndFailsOutsideTTY(t *testing.T) {
 
 func TestGuidedCommandAndYesSurfaces(t *testing.T) {
 	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
-	guidedWant := strings.Fields("activity clone commit fetch fix-gitignore info license pull push remove-secrets rename-branch reset review rewrite-authors rewrite-commits rewrite-dates rewrite-hours rollback-rewrites status untrack")
+	guidedWant := strings.Fields("activity clone commit fetch fix-gitignore info license log pull push remove-secrets rename-branch reset review rewrite-authors rewrite-commits rewrite-dates rewrite-hours rollback-rewrites status untrack")
 	yesWant := strings.Fields("commit fix-gitignore license push remove-secrets reset rewrite-authors rewrite-commits rewrite-dates rewrite-hours rollback-rewrites untrack")
 	assertFlagSurface(t, root, "guided", guidedWant)
 	assertFlagSurface(t, root, "yes", yesWant)

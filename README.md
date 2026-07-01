@@ -184,6 +184,7 @@ processes.
 | [`doctor`](https://wrangler.kaufmann.dev/docs/doctor)         | Check runtime dependencies and local configuration. |
 | [`info`](https://wrangler.kaufmann.dev/docs/info)             | Show detailed repository information.               |
 | [`init`](https://wrangler.kaufmann.dev/docs/init)             | Set up GitHub and AI credentials.                   |
+| [`log`](https://wrangler.kaufmann.dev/docs/log)               | Show compact Conventional Commit-aware history.     |
 | [`status`](https://wrangler.kaufmann.dev/docs/status)         | Show clean, dirty, ahead, behind, and remote state. |
 | [`version`](https://wrangler.kaufmann.dev/docs/version)       | Print version metadata.                             |
 | [`completion`](https://wrangler.kaufmann.dev/docs/completion) | Generate shell completion scripts.                  |

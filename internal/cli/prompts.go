@@ -190,6 +190,10 @@ func guidedPositiveInt(flag, label string) guidedPrompt {
 	return guidedPrompt{flag: flag, label: label, kind: "positive-int"}
 }
 
+func guidedNonNegativeInt(flag, label string) guidedPrompt {
+	return guidedPrompt{flag: flag, label: label, kind: "non-negative-int"}
+}
+
 func guidedBool(flag, label string) guidedPrompt {
 	return guidedPrompt{flag: flag, label: label, kind: "bool"}
 }
@@ -251,6 +255,12 @@ func applyGuidedPrompt(a *app, cmd *cobra.Command, prompt guidedPrompt) error {
 		return setGuidedFlag(cmd, prompt.flag, strconv.FormatBool(value))
 	case "positive-int":
 		value, err := guidedPositiveIntegerValue(a, label, current)
+		if err != nil {
+			return err
+		}
+		return setGuidedFlag(cmd, prompt.flag, value)
+	case "non-negative-int":
+		value, err := guidedNonNegativeIntegerValue(a, label, current)
 		if err != nil {
 			return err
 		}
@@ -342,6 +352,20 @@ func guidedPositiveIntegerValue(a *app, label, current string) (string, error) {
 			return value, nil
 		}
 		fmt.Fprintln(a.stderr, "Enter a positive integer.")
+	}
+}
+
+func guidedNonNegativeIntegerValue(a *app, label, current string) (string, error) {
+	for {
+		value, err := guidedStringValue(a, label, current)
+		if err != nil {
+			return "", err
+		}
+		number, err := strconv.Atoi(value)
+		if err == nil && number >= 0 {
+			return value, nil
+		}
+		fmt.Fprintln(a.stderr, "Enter 0 or a positive integer.")
 	}
 }
 
@@ -438,6 +462,7 @@ func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
 
 var guidedPrompts = map[string][]guidedPrompt{
 	"activity":          {guidedString("repo", "Repository"), guidedString("year", "Year"), guidedRepeatable("user", "Author filters"), guidedBool("all", "Include all refs"), guidedBool("global-scale", "Use global scale")},
+	"log":               {guidedString("repo", "Repository"), guidedNonNegativeInt("limit", "Commit limit"), guidedString("since", "Author date on or after"), guidedString("until", "Author date on or before"), guidedRepeatable("type", "Types"), guidedRepeatable("scope", "Scopes"), guidedBool("summary", "Print summary")},
 	"clone":             {guidedString("user", "GitHub user or organization"), guidedEnum("visibility", "Visibility", "all", "public", "private"), guidedPositiveInt("limit", "Repository limit"), guidedString("into", "Destination directory")},
 	"pull":              {guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")},
 	"fetch":             {guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")},

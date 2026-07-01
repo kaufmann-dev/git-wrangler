@@ -158,6 +158,15 @@ func newRootCommand(a *app) *cobra.Command {
 			boolFlag("all", "Include commits reachable from all normal refs."),
 			boolFlag("global-scale", "Use one activity scale across all rendered years."),
 		}),
+		command(a, "log", "Show compact Conventional Commit-aware history.", "utility", runLog, flags{
+			repoFlag(),
+			intFlag("limit", 50, "Maximum commits to display after merging repositories; 0 means unlimited."),
+			stringFlag("since", "", "Include commits with author date on or after YYYY-MM-DD."),
+			stringFlag("until", "", "Include commits with author date on or before YYYY-MM-DD."),
+			stringArrayFlag("type", "Only include a Conventional Commit type or other. Repeatable."),
+			stringArrayFlag("scope", "Only include an exact Conventional Commit scope. Repeatable."),
+			boolFlag("summary", "Print compact history counts before entries."),
+		}),
 		command(a, "clone", "Clone multiple GitHub repositories for a user.", "remote", runClone, flags{
 			stringFlag("visibility", "all", "Repository visibility: all, public, or private."),
 			stringFlag("user", "", "GitHub user or organization to clone from."),

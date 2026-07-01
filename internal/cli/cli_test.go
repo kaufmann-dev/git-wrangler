@@ -69,6 +69,7 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 		"rewrite-commits",
 		"completion",
 		"activity",
+		"log",
 		"doctor",
 		"version",
 	} {
