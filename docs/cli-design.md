@@ -100,6 +100,7 @@ Preferred count orders:
 - `fetch`: fetched, failed.
 - `push`: pushed, skipped, failed.
 - `clone`: cloned, skipped, failed.
+- `log`: commits, repositories, failed.
 - `commit`: committed, skipped, failed.
 - `fix-gitignore`: with changes, unchanged, failed; then updated, skipped, failed after apply.
 - `license`: created, overwritten, skipped, failed.
@@ -124,6 +125,10 @@ Refresh `origin` first unless `--no-fetch` is set, then show progress while chec
 ### `activity`
 
 Show `Scanning activity` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then one aggregated calendar and a `commits`, `repositories`, `failed` summary. Keep years newest first, weeks Sunday-first, and include month and weekday labels. Plain output uses `.`, `1`, `2`, `3`, and `4`; TTY output uses GitHub-style green cells. Show the effective maximum in year headings or the shared global-scale heading.
+
+### `log`
+
+Show `Scanning log` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then a dense date-descending table. Multi-repository output includes `Date`, `Repository`, `Hash`, `Type`, `Scope`, and `Subject`; single-repository output omits `Repository`. `--summary` prints compact counts before the table. Use `other` for non-conventional subjects, `-` for missing scope, and inline `!` on breaking Conventional Commits.
 
 ### `pull`, `fetch`, and `push`
 

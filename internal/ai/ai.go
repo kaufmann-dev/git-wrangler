@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/conventional"
 	"github.com/kaufmann-dev/git-wrangler/internal/git"
 )
 
@@ -25,7 +26,6 @@ var (
 	ErrCancelled    = errors.New("cancelled")
 	ErrAPICancelled = errors.New("api generation cancelled")
 	errOutputLimit  = errors.New("output limit reached")
-	conventionalRe  = regexp.MustCompile(`^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+$`)
 	secretAssignRe  = regexp.MustCompile("(?i)\\b(password|passwd|pwd|secret|api_key|apikey|auth_token|access_token|private_key)\\b(\\s*(?::=|:|==|=)\\s*)('[^']{8,}'|\\\"[^\\\"]{8,}\\\"|\\x60[^\\x60]{8,}\\x60|[^'\\\"\\s]{8,})")
 	secretPatterns  = []*regexp.Regexp{
 		regexp.MustCompile(`(['"]?)(sk-[a-zA-Z0-9_-]{20,}|sk_[a-zA-Z0-9_-]{20,})(['"]?)`),
@@ -791,8 +791,7 @@ func appendDiffWithBudget(prefix, diffText string, limit int, label string) stri
 }
 
 func IsConventional(message string) bool {
-	first := firstLine(strings.TrimSpace(message))
-	return conventionalRe.MatchString(first)
+	return conventional.IsConventionalMessage(message)
 }
 
 func IsSensitivePath(path string) bool {
@@ -1473,7 +1472,7 @@ func ValidateMessage(message string) bool {
 }
 
 func ValidateSubject(subject string) bool {
-	return subject != "" && len(subject) <= 120 && !strings.ContainsAny(subject, "\r\n") && conventionalRe.MatchString(subject)
+	return conventional.ValidSubject(subject)
 }
 
 func ValidateBody(body string) bool {
