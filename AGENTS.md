@@ -50,7 +50,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `rewrite-hours`, `rollback-rewrites`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `log`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `rewrite-hours`, `rollback-rewrites`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
