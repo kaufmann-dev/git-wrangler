@@ -316,6 +316,38 @@ func TestRequestBatchSendsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestRequestBatchUsesJSONResponseFormat(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			ResponseFormat map[string]string `json:"response_format"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.ResponseFormat["type"] != "json_object" {
+			t.Fatalf("response_format = %#v, want json_object", payload.ResponseFormat)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	_, err := requestBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL: server.URL,
+		Model:   "test-model",
+		APIKey:  "test-key",
+		Timeout: time.Second,
+	}, 1, maxRequestContextChars)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRequestBatchPromptsForSemanticPurpose(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
@@ -372,6 +404,37 @@ func TestRequestBatchPromptsForSemanticPurpose(t *testing.T) {
 	}
 	if messages["c000001"].Subject != "feat(cli): add capability" || messages["c000001"].Body == "" {
 		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestProcessBatchDoesNotRetryPermanentAuthFailure(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "invalid API key", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	accepted, failures := processBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "bad-key",
+		BatchSize: 1,
+		Timeout:   time.Second,
+	}, io.Discard)
+	if len(accepted) != 0 || len(failures) != 1 {
+		t.Fatalf("accepted = %#v failures = %#v", accepted, failures)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	if !strings.Contains(failures[0].Reason, "HTTP 401") {
+		t.Fatalf("failure = %#v, want HTTP 401", failures[0])
 	}
 }
 
@@ -1271,6 +1334,52 @@ func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
 	}
 }
 
+func TestProcessBatchShrinksContextAfterIncompleteJSON(t *testing.T) {
+	var contextLengths []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		content := payload.Messages[1].Content
+		contextLengths = append(contextLengths, strings.Count(content, "context line"))
+		w.Header().Set("Content-Type", "application/json")
+		if len(contextLengths) == 1 {
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":["}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	results, failures := processBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  contextWithLargeDiff(strings.Repeat("+context line\n", 7000)),
+	}}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
+	}, io.Discard)
+	if len(failures) != 0 || len(results) != 1 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if len(contextLengths) != 2 {
+		t.Fatalf("requests = %d, want 2", len(contextLengths))
+	}
+	if contextLengths[1] >= contextLengths[0] {
+		t.Fatalf("context was not reduced after incomplete JSON: %#v", contextLengths)
+	}
+}
+
 func TestProviderContextLimitRetriesWithSmallerContext(t *testing.T) {
 	var contextLengths []int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1318,6 +1427,101 @@ func TestProviderContextLimitRetriesWithSmallerContext(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Retrying 1 commit(s) with smaller context after provider context limit") {
 		t.Fatalf("missing context-limit retry notice:\n%s", out.String())
+	}
+}
+
+func TestProcessItemsFinalRecoveryRecoversRemainingFailure(t *testing.T) {
+	requests := 0
+	var retryDetails []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if requests <= 3 {
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"not conventional\"}]}"}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	results, failures, err := processItems(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
+		Progress: func(event ProgressEvent) {
+			if event.Error {
+				retryDetails = append(retryDetails, event.Detail)
+			}
+		},
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || len(results) != 1 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if requests != 4 {
+		t.Fatalf("requests = %d, want 4", requests)
+	}
+	foundRecovery := false
+	for _, detail := range retryDetails {
+		if strings.Contains(detail, "final single-commit recovery") {
+			foundRecovery = true
+		}
+	}
+	if !foundRecovery {
+		t.Fatalf("retry details missing final recovery: %#v", retryDetails)
+	}
+}
+
+func TestProcessItemsFinalRecoverySkipsPermanentFailure(t *testing.T) {
+	requests := 0
+	var retryDetails []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "invalid API key", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	results, failures, err := processItems(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "bad-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
+		Progress: func(event ProgressEvent) {
+			if event.Error {
+				retryDetails = append(retryDetails, event.Detail)
+			}
+		},
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 || len(failures) != 1 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	for _, detail := range retryDetails {
+		if strings.Contains(detail, "final single-commit recovery") {
+			t.Fatalf("permanent failure should not run final recovery: %#v", retryDetails)
+		}
 	}
 }
 
@@ -1483,5 +1687,26 @@ func TestProcessItemsCancellationSuppressesRetryOutput(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "Retrying") {
 		t.Fatalf("retry output was printed for cancellation:\n%s", out.String())
+	}
+}
+
+func TestWriteGenerationFailuresGroupsReasonsAndPrintsHint(t *testing.T) {
+	var out bytes.Buffer
+	writeGenerationFailures(&out, []failure{
+		{Item: item{RepoName: "repo-a", Hash: "abcdef123456"}, Reason: "unexpected EOF"},
+		{Item: item{RepoName: "repo-b", Hash: "123456abcdef"}, Reason: "unexpected EOF"},
+		{Item: item{RepoName: "repo-c", Hash: "fedcba654321"}, Reason: "missing or invalid message"},
+	})
+	text := out.String()
+	for _, want := range []string{
+		"Failed repo-a abcdef12: unexpected EOF",
+		"Failure reasons: unexpected EOF (2 commits); missing or invalid message",
+		"Hint: retry the command",
+		"lower --rpm",
+		"reduce --batch-size",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in:\n%s", want, text)
+		}
 	}
 }

@@ -40,6 +40,7 @@ const (
 	maxSingleCommitContextChars = 50000
 	maxRequestContextChars      = 80000
 	minRetryRequestContextChars = 20000
+	finalRecoveryContextChars   = 8000
 )
 
 type Repository struct {
@@ -208,9 +209,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 		return nil, err
 	}
 	if len(failures) > 0 {
-		for _, f := range failures {
-			fmt.Fprintf(out, "Failed %s %s: %s\n", f.Item.RepoName, f.Item.Hash[:8], f.Reason)
-		}
+		writeGenerationFailures(out, failures)
 		return nil, fmt.Errorf("AI generation is incomplete; no history was changed")
 	}
 	return buildPlan(items, results, stats, cfg.WorkDir)
@@ -956,7 +955,24 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 		}
 		failures = append(failures, batch.failures...)
 	}
+	if len(failures) > 0 && ctx.Err() == nil && hasRecoverableGenerationFailures(failures) {
+		progress(ProgressEvent{Phase: "Sending API requests", Key: "final-recovery", Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("Retrying %d failed commit(s) with final single-commit recovery.", len(failures)), Error: true})
+		recovered, remaining := recoverGenerationFailures(ctx, failures, cfg, pacer)
+		for id, message := range recovered {
+			results[id] = message
+		}
+		failures = remaining
+	}
 	return results, failures, nil
+}
+
+func hasRecoverableGenerationFailures(failures []failure) bool {
+	for _, failed := range failures {
+		if !isPermanentAIReason(failed.Reason) {
+			return true
+		}
+	}
+	return false
 }
 
 func packItems(items []item, maxBatchSize int, requestBudget int) [][]item {
@@ -1080,6 +1096,16 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 				attempt--
 				continue
 			}
+			if isPermanentAIError(err) {
+				for _, item := range pending {
+					errorsByID[item.ID] = err.Error()
+					nextPending = append(nextPending, item)
+				}
+				return accepted, failuresForPending(nextPending, errorsByID)
+			}
+			if shouldShrinkContextForRetry(err) && requestBudget > minRetryRequestContextChars {
+				requestBudget = nextRetryRequestBudget(requestBudget)
+			}
 			for _, item := range pending {
 				errorsByID[item.ID] = err.Error()
 				nextPending = append(nextPending, item)
@@ -1122,6 +1148,74 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 		failures = append(failures, failure{Item: item, Reason: errorsByID[item.ID]})
 	}
 	return accepted, failures
+}
+
+func recoverGenerationFailures(ctx context.Context, failures []failure, cfg Config, pacer *requestPacer) (map[string]Message, []failure) {
+	remaining := append([]failure(nil), failures...)
+	sort.SliceStable(remaining, func(i, j int) bool {
+		left, right := remaining[i].Item, remaining[j].Item
+		if left.RepoName != right.RepoName {
+			return left.RepoName < right.RepoName
+		}
+		if left.Hash != right.Hash {
+			return left.Hash < right.Hash
+		}
+		return left.ID < right.ID
+	})
+	accepted := map[string]Message{}
+	unresolved := make([]failure, 0, len(remaining))
+	for _, failed := range remaining {
+		if isPermanentAIReason(failed.Reason) {
+			unresolved = append(unresolved, failed)
+			continue
+		}
+		message, reason, ok := recoverGenerationFailure(ctx, failed.Item, cfg, pacer)
+		if ok {
+			accepted[failed.Item.ID] = message
+			continue
+		}
+		if reason == "" {
+			reason = failed.Reason
+		}
+		unresolved = append(unresolved, failure{Item: failed.Item, Reason: reason})
+	}
+	return accepted, unresolved
+}
+
+func recoverGenerationFailure(ctx context.Context, failedItem item, cfg Config, pacer *requestPacer) (Message, string, bool) {
+	reason := ""
+	for attempt := 1; attempt <= 3; attempt++ {
+		if !pacer.wait(ctx) {
+			if ctx.Err() != nil {
+				return Message{}, ctx.Err().Error(), false
+			}
+			return Message{}, reason, false
+		}
+		returned, err := requestBatch(ctx, []item{failedItem}, cfg, attempt+3, finalRecoveryContextChars)
+		if err != nil {
+			reason = err.Error()
+			if isPermanentAIError(err) || ctx.Err() != nil {
+				return Message{}, reason, false
+			}
+		} else {
+			message := returned[failedItem.ID]
+			if ValidateGeneratedMessage(message, cfg.Body) {
+				return message, "", true
+			}
+			reason = "missing or invalid message"
+		}
+		if attempt < 3 && !sleepContext(ctx, finalRecoveryBackoff(attempt)) {
+			return Message{}, reason, false
+		}
+	}
+	return Message{}, reason, false
+}
+
+func finalRecoveryBackoff(attempt int) time.Duration {
+	if attempt <= 0 {
+		return 0
+	}
+	return time.Duration(attempt) * 500 * time.Millisecond
 }
 
 func nextRetryRequestBudget(current int) int {
@@ -1196,6 +1290,51 @@ func retryReason(pending []item, errorsByID map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+func writeGenerationFailures(out io.Writer, failures []failure) {
+	for _, f := range failures {
+		fmt.Fprintf(out, "Failed %s %s: %s\n", f.Item.RepoName, shortHash(f.Item.Hash, 8), f.Reason)
+	}
+	if len(failures) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "Failure reasons: %s\n", generationFailureSummary(failures))
+	fmt.Fprintln(out, "Hint: retry the command; if transport failures continue, lower --rpm, and if JSON/message failures continue, reduce --batch-size or use a stronger model.")
+}
+
+func generationFailureSummary(failures []failure) string {
+	counts := map[string]int{}
+	for _, f := range failures {
+		reason := strings.TrimSpace(f.Reason)
+		if reason == "" {
+			reason = "unknown error"
+		}
+		counts[truncateText(reason, 160)]++
+	}
+	type row struct {
+		reason string
+		count  int
+	}
+	rows := make([]row, 0, len(counts))
+	for reason, count := range counts {
+		rows = append(rows, row{reason: reason, count: count})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].count == rows[j].count {
+			return rows[i].reason < rows[j].reason
+		}
+		return rows[i].count > rows[j].count
+	})
+	parts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.count == 1 {
+			parts = append(parts, row.reason)
+		} else {
+			parts = append(parts, fmt.Sprintf("%s (%d commits)", row.reason, row.count))
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
 func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	var failures []failure
@@ -1251,8 +1390,9 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int, re
 			{"role": "system", "content": "You generate accurate Conventional Commit messages from redacted Git context. Prefer the high-level purpose over file names. Return valid JSON only. Do not include Markdown or explanations."},
 			{"role": "user", "content": userContent},
 		},
-		"temperature": 0.2,
-		"max_tokens":  messageTokenLimit(len(batch), cfg.Body, attempt),
+		"temperature":     0.2,
+		"max_tokens":      messageTokenLimit(len(batch), cfg.Body, attempt),
+		"response_format": map[string]string{"type": "json_object"},
 	}
 	respBody, err := chatCompletion(ctx, cfg, payload)
 	if err != nil {
@@ -1267,7 +1407,7 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int, re
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBody, &envelope); err != nil {
-		return nil, err
+		return nil, responseJSONError(err)
 	}
 	if len(envelope.Choices) == 0 {
 		return nil, errors.New("response has no choices")
@@ -1275,7 +1415,11 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int, re
 	if envelope.Choices[0].FinishReason == "length" {
 		return nil, errors.New("AI response was truncated by the output token limit")
 	}
-	return ExtractMessages(envelope.Choices[0].Message.Content)
+	content := envelope.Choices[0].Message.Content
+	if strings.TrimSpace(content) == "" {
+		return nil, errors.New("AI response was empty")
+	}
+	return ExtractMessages(content)
 }
 
 func truncateBatchContexts(batch []item, requestContextBudget int) []string {
@@ -1361,6 +1505,67 @@ func isLikelyContextLimitError(err error) bool {
 		"too long",
 		"request entity too large",
 		"maximum number of tokens",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldShrinkContextForRetry(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"ai response was empty",
+		"ai response was incomplete json",
+		"ai response was not valid json",
+		"ai response was truncated",
+		"output token limit",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPermanentAIError(err error) bool {
+	if err == nil || isLikelyContextLimitError(err) {
+		return false
+	}
+	var apiErr apiError
+	if errors.As(err, &apiErr) {
+		if apiErr.statusCode == http.StatusUnauthorized || apiErr.statusCode == http.StatusForbidden || apiErr.statusCode == http.StatusNotFound {
+			return true
+		}
+		if apiErr.statusCode == http.StatusTooManyRequests || apiErr.statusCode >= 500 {
+			return false
+		}
+	}
+	return isPermanentAIReason(err.Error())
+}
+
+func isPermanentAIReason(reason string) bool {
+	lower := strings.ToLower(reason)
+	for _, marker := range []string{
+		"authentication failed",
+		"forbidden",
+		"http 401",
+		"http 403",
+		"http 404",
+		"incorrect api key",
+		"invalid api key",
+		"invalid model",
+		"model not found",
+		"model is not supported",
+		"permission denied",
+		"response_format is not supported",
+		"response format is not supported",
+		"unauthorized",
+		"unsupported model",
 	} {
 		if strings.Contains(lower, marker) {
 			return true

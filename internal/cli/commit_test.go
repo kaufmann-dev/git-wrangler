@@ -241,8 +241,8 @@ func TestCommitInvalidOutputRetriesAndDoesNotCommit(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected generation failure")
 	}
-	if requests != 4 {
-		t.Fatalf("requests = %d, want 4", requests)
+	if requests != 7 {
+		t.Fatalf("requests = %d, want 7", requests)
 	}
 	if committed {
 		t.Fatal("commit should not run after invalid AI output")
