@@ -102,6 +102,7 @@ type Stats struct {
 	RepoCount        int
 	TotalCommits     int
 	SkippedFormatted int
+	SkippedMerges    int
 	SkippedEmpty     int
 	SkippedUnborn    int
 }
@@ -197,6 +198,9 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	fmt.Fprintf(out, "Commits to process: %d\n", len(items))
 	if cfg.SkipConventional {
 		fmt.Fprintf(out, "Skipped already Conventional Commits: %d\n", stats.SkippedFormatted)
+	}
+	if stats.SkippedMerges > 0 {
+		fmt.Fprintf(out, "Skipped merge commits: %d\n", stats.SkippedMerges)
 	}
 	fmt.Fprintf(out, "API batches: %d\n", batches)
 	fmt.Fprintln(out, "Context: automatic, bounded request packing")
@@ -331,6 +335,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 		stats.RepoCount += result.stats.RepoCount
 		stats.TotalCommits += result.stats.TotalCommits
 		stats.SkippedFormatted += result.stats.SkippedFormatted
+		stats.SkippedMerges += result.stats.SkippedMerges
 		stats.SkippedEmpty += result.stats.SkippedEmpty
 		stats.SkippedUnborn += result.stats.SkippedUnborn
 		if result.err != nil {
@@ -370,6 +375,10 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 		if repo.SelectedHashes != nil && !repo.SelectedHashes[commit.hash] {
 			continue
 		}
+		if commit.isMerge {
+			stats.SkippedMerges++
+			continue
+		}
 		if skipConventional && commitSkippable(commit.message, requireScope) {
 			stats.SkippedFormatted++
 			continue
@@ -402,10 +411,11 @@ func shouldReportAIProgress(current, total int) bool {
 type commitMessage struct {
 	hash    string
 	message string
+	isMerge bool
 }
 
 func readCommitMessages(ctx context.Context, gitClient git.Client, repoDir string) ([]commitMessage, error) {
-	out, err := gitClient.Stdout(ctx, repoDir, nil, "log", "--reverse", "--all", "--format=%H%x1f%B%x1e")
+	out, err := gitClient.Stdout(ctx, repoDir, nil, "log", "--reverse", "--all", "--format=%H%x1f%P%x1f%B%x1e")
 	if err != nil {
 		return nil, err
 	}
@@ -415,11 +425,19 @@ func readCommitMessages(ctx context.Context, gitClient git.Client, repoDir strin
 		if record == "" {
 			continue
 		}
-		hash, message, ok := strings.Cut(record, "\x1f")
+		hash, rest, ok := strings.Cut(record, "\x1f")
 		if !ok || strings.TrimSpace(hash) == "" {
 			return nil, fmt.Errorf("malformed commit log record")
 		}
-		commits = append(commits, commitMessage{hash: strings.TrimSpace(hash), message: message})
+		parents, message, ok := strings.Cut(rest, "\x1f")
+		if !ok {
+			return nil, fmt.Errorf("malformed commit log record")
+		}
+		commits = append(commits, commitMessage{
+			hash:    strings.TrimSpace(hash),
+			message: message,
+			isMerge: len(strings.Fields(parents)) > 1,
+		})
 	}
 	return commits, nil
 }
@@ -1132,7 +1150,7 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 		} else {
 			for _, item := range pending {
 				message := returned[item.ID]
-				if ValidateGeneratedMessage(message, cfg.Body) {
+				if ValidateGeneratedMessage(message, cfg.Body, cfg.RequireScope) {
 					accepted[item.ID] = message
 				} else {
 					errorsByID[item.ID] = "missing or invalid message"
@@ -1218,7 +1236,7 @@ func recoverGenerationFailure(ctx context.Context, failedItem item, cfg Config, 
 			}
 		} else {
 			message := returned[failedItem.ID]
-			if ValidateGeneratedMessage(message, cfg.Body) {
+			if ValidateGeneratedMessage(message, cfg.Body, cfg.RequireScope) {
 				return message, "", true
 			}
 			reason = "missing or invalid message"
@@ -1417,8 +1435,13 @@ func requestBatch(ctx context.Context, batch []item, cfg Config, attempt int, re
 		"Return exactly this JSON shape: " + shape + "\n" +
 		"Preserve every input id exactly once. Use lowercase subjects, present tense, no trailing period.\n" +
 		"Summarize the semantic purpose of the change: user-visible behavior, API contract, architecture, workflow, or test intent.\n" +
-		"Do not merely name changed files, directories, packages, or implementation mechanics when the broader purpose is inferable.\n" +
-		"Choose a concise scope from the product or subsystem area, not a filename, unless the filename is the only meaningful scope.\n"
+		"Do not merely name changed files, directories, packages, or implementation mechanics when the broader purpose is inferable.\n"
+	if cfg.RequireScope {
+		userContent += "Every subject must include a scope in parentheses: type(scope): summary. Never omit the scope.\n" +
+			"Choose a concise scope from the product or subsystem area, not a filename; use a broad scope such as repo for repository-wide changes.\n"
+	} else {
+		userContent += "Choose a concise scope from the product or subsystem area, not a filename, unless the filename is the only meaningful scope.\n"
+	}
 	if cfg.Body {
 		userContent += "Include a concise non-empty body explaining why the change matters or what effect it has. Do not repeat the subject or list files in the body.\n"
 	}
@@ -1767,8 +1790,11 @@ func ValidateBody(body string) bool {
 	return true
 }
 
-func ValidateGeneratedMessage(message Message, requireBody bool) bool {
+func ValidateGeneratedMessage(message Message, requireBody, requireScope bool) bool {
 	if !ValidateSubject(message.Subject) {
+		return false
+	}
+	if requireScope && !conventional.IsScopedConventionalMessage(message.Subject) {
 		return false
 	}
 	return !requireBody || ValidateBody(message.Body)
@@ -1848,6 +1874,9 @@ func buildPlan(items []item, results map[string]Message, stats Stats, workDir st
 	}
 	if stats.SkippedFormatted > 0 {
 		lines = append(lines, fmt.Sprintf("Skipped already Conventional Commits: %d", stats.SkippedFormatted))
+	}
+	if stats.SkippedMerges > 0 {
+		lines = append(lines, fmt.Sprintf("Skipped merge commits: %d", stats.SkippedMerges))
 	}
 	if stats.SkippedUnborn > 0 {
 		lines = append(lines, fmt.Sprintf("Skipped repositories with no commits: %d", stats.SkippedUnborn))
