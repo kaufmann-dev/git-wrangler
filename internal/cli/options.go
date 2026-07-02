@@ -44,8 +44,9 @@ type configShowOptions struct {
 }
 
 type configSetOptions struct {
-	key  string
-	args []string
+	key      string
+	value    string
+	hasValue bool
 }
 
 type configUnsetOptions struct {
@@ -102,10 +103,14 @@ func configShowOptionsFromCommand(cmd *cobra.Command) configShowOptions {
 	return configShowOptions{json: jsonOptionsFromCommand(cmd)}
 }
 
-func configSetOptionsFromCommand(cmd *cobra.Command, args []string) configSetOptions {
-	opts := configSetOptions{args: args}
+func configSetOptionsFromCommand(_ *cobra.Command, args []string) configSetOptions {
+	opts := configSetOptions{}
 	if len(args) > 0 {
 		opts.key = args[0]
+	}
+	if len(args) > 1 {
+		opts.value = args[1]
+		opts.hasValue = true
 	}
 	return opts
 }

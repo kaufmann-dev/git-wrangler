@@ -229,3 +229,18 @@ func TestDirectFlagReadsStayInOptionsOrGuidedPlumbing(t *testing.T) {
 		}
 	}
 }
+
+func TestGuidedMetadataIsNotStoredInCobraContext(t *testing.T) {
+	for _, file := range []string{"command_specs.go", "prompts.go"} {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, forbidden := range []string{"guidedContextKey", "context.WithValue", ".SetContext(", ".Context().Value"} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("%s stores guided metadata through Cobra context with %q", file, forbidden)
+			}
+		}
+	}
+}
