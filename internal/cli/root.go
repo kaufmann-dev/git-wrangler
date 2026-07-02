@@ -251,6 +251,7 @@ func newRootCommand(a *app) *cobra.Command {
 			intFlag("rpm", 300, "Maximum API requests to start per minute."),
 			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
+			boolFlag("require-scope", "Skip only Conventional Commits that also have a scope; implies --skip-conventional."),
 			boolFlag("body", "Generate commit message bodies."),
 			boolFlag("yes", "Skip confirmation prompts."),
 		}),

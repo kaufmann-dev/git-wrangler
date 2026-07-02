@@ -16,6 +16,10 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	rpm, _ := cmd.Flags().GetInt("rpm")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
+	requireScope, _ := cmd.Flags().GetBool("require-scope")
+	if requireScope {
+		skipConventional = true
+	}
 	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
 	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
@@ -90,6 +94,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		RPM:              rpm,
 		Timeout:          time.Duration(timeoutInt) * time.Second,
 		SkipConventional: skipConventional,
+		RequireScope:     requireScope,
 		Body:             body,
 		WorkDir:          workDir,
 		Git:              a.git,
