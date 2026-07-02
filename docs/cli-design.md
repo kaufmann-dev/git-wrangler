@@ -41,8 +41,10 @@ Color supports meaning but never carries meaning alone:
 - Yellow: skip, dirty state, warning, or user-declined no-op.
 - Red: error, failed check, behind state, or destructive warning.
 - Cyan: informational values such as ahead counts, auth source, current branch, or active target.
-- Muted gray: secondary or absent values such as `no remote`, `<unset>`, or `not configured`.
+- Dim: secondary or absent values such as `no remote`, `<unset>`, or `not configured`, using the ANSI dim attribute so terminals fade their own foreground color.
 - Bold blue: repository names in multi-line repo blocks when it improves scanning.
+
+Semantic colors use basic ANSI codes so terminal themes control the exact values. Custom truecolor palettes exist only for data visualization (activity calendar cells, log type colors) and adapt to the detected terminal background (OSC 11 query, then `COLORFGBG`, defaulting to dark).
 
 Symbols are optional and TTY-only through `internal/ui`. Plain output must remain readable as text.
 
@@ -124,7 +126,7 @@ Refresh `origin` first unless `--no-fetch` is set, then show progress while chec
 
 ### `activity`
 
-Show `Scanning activity` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then one aggregated calendar and a `commits`, `repositories`, `failed` summary. Keep years newest first, weeks Sunday-first, and include month and weekday labels. Plain output uses `.`, `1`, `2`, `3`, and `4`; TTY output uses GitHub-style green cells. Show the effective maximum in year headings or the shared global-scale heading.
+Show `Scanning activity` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then one aggregated calendar and a `commits`, `repositories`, `failed` summary. Keep years newest first, weeks Sunday-first, and include month and weekday labels. Plain output uses `.`, `1`, `2`, `3`, and `4`; TTY output uses GitHub-style green cells with dark- and light-background variants. Show the effective maximum in year headings or the shared global-scale heading.
 
 ### `log`
 

@@ -18,6 +18,27 @@ func activityRecord(hash, date, name, email string) string {
 	return strings.Join([]string{hash, date, name, email, ""}, "\x00")
 }
 
+func TestActivityCellAdaptsToBackground(t *testing.T) {
+	t.Parallel()
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard)
+	a.ui.Reset = "\033[0m"
+	a.ui.Dark = true
+	if got := activityCell(a, 0); got != "\033[48;2;22;27;34m \033[0m" {
+		t.Fatalf("dark empty cell = %q", got)
+	}
+	a.ui.Dark = false
+	if got := activityCell(a, 0); got != "\033[48;2;235;237;240m \033[0m" {
+		t.Fatalf("light empty cell = %q", got)
+	}
+	if got := activityCell(a, 4); got != "\033[48;2;33;110;57m \033[0m" {
+		t.Fatalf("light max cell = %q", got)
+	}
+	a.ui.Reset = ""
+	if got := activityCell(a, 2); got != "2" {
+		t.Fatalf("plain cell = %q, want 2", got)
+	}
+}
+
 func TestParseActivityLogFiltersUsersYearAndUsesUTC(t *testing.T) {
 	t.Parallel()
 	log := activityRecord("one", "2025-12-31T23:30:00-02:00", "Alice", "alice@example.test") +

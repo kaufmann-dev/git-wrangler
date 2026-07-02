@@ -15,6 +15,27 @@ func logRecord(hash, date, subject string) string {
 	return strings.Join([]string{hash, date, subject, ""}, "\x00")
 }
 
+func TestLogTypeColorAdaptsToBackground(t *testing.T) {
+	t.Parallel()
+	a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard)
+	a.ui.Reset = "\033[0m"
+	a.ui.Dark = true
+	if got := logTypeColor(a, "feat"); got != "\033[38;2;63;185;80m" {
+		t.Fatalf("dark feat color = %q", got)
+	}
+	a.ui.Dark = false
+	if got := logTypeColor(a, "feat"); got != "\033[38;2;26;127;55m" {
+		t.Fatalf("light feat color = %q", got)
+	}
+	if got := logTypeColor(a, "other"); got != "" {
+		t.Fatalf("other color = %q, want default", got)
+	}
+	a.ui.Reset = ""
+	if got := logTypeColor(a, "feat"); got != "" {
+		t.Fatalf("color-disabled feat color = %q, want empty", got)
+	}
+}
+
 func TestParseLogOutputFiltersAndParsesConventionalSubjects(t *testing.T) {
 	t.Parallel()
 	output := logRecord("one11111", "2026-01-04T12:00:00Z", "feat(cli): add log") +

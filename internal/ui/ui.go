@@ -16,6 +16,7 @@ type Theme struct {
 	Muted      string
 	Bold       string
 	Reset      string
+	Dark       bool
 	RepoColor  string
 	OKSymbol   string
 	WarnSymbol string
@@ -34,9 +35,10 @@ func New(stdout io.Writer) Theme {
 		t.Yellow = "\033[33m"
 		t.Blue = "\033[34m"
 		t.Cyan = "\033[36m"
-		t.Muted = "\033[38;2;139;148;158m"
+		t.Muted = "\033[2m"
 		t.Bold = "\033[1m"
 		t.Reset = "\033[0m"
+		t.Dark = DarkBackground(stdout)
 	}
 	t.RepoColor = t.Bold + t.Blue
 	if UnicodeEnabled(stdout) {
