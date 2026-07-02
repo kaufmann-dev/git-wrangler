@@ -91,7 +91,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 		if prune {
 			fetchArgs = []string{"fetch", "--prune", "origin"}
 		}
-		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, fetchArgs...)
+		out, err := captureRemoteGitWithRetry(a, r.dir, nil, fetchArgs...)
 		return fetchResult{repo: r, out: out, err: err}
 	})
 	if interrupted(a) {

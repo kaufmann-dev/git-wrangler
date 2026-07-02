@@ -6,6 +6,7 @@ import (
 	"io"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
@@ -83,6 +84,32 @@ func TestFilterRepoCommandRequiresSuccessfulFallback(t *testing.T) {
 	}})
 	if cmd, ok := client.FilterRepoCommand(context.Background()); ok {
 		t.Fatalf("expected no fallback command, got %#v", cmd)
+	}
+}
+
+func TestCaptureRemoteUsesRemoteTimeout(t *testing.T) {
+	t.Parallel()
+	client := New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		if name != "git" || len(args) != 1 || args[0] != "fetch" {
+			return "", "", errors.New("unexpected command")
+		}
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("remote command did not receive a deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 25*time.Second || remaining > RemoteTimeout {
+			t.Fatalf("remote deadline remaining = %s, want close to %s", remaining, RemoteTimeout)
+		}
+		return "fetched\n", "", nil
+	}})
+
+	out, err := client.CaptureRemote(context.Background(), "", nil, "fetch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "fetched\n" {
+		t.Fatalf("out = %q", out)
 	}
 }
 

@@ -56,7 +56,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	}
 
 	listArgs := githubcli.RepoListArgs(user, visibility, "1")
-	out, err := a.gh.StdoutEnv(a.ctx, "", ghEnv, listArgs...)
+	out, err := stdoutGitHubWithRetry(a, "", ghEnv, listArgs...)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
 		return 1
@@ -83,7 +83,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	}
 
 	listArgs = githubcli.RepoListArgs(user, visibility, strconv.Itoa(limitInt))
-	reposOut, err := a.gh.StdoutEnv(a.ctx, "", ghEnv, listArgs...)
+	reposOut, err := stdoutGitHubWithRetry(a, "", ghEnv, listArgs...)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
 		return 1
@@ -153,12 +153,28 @@ func cloneRepository(a *app, ghEnv []string, fullName, into string) cloneResult 
 		abs, _ := filepath.Abs(into)
 		return cloneResult{name: repoName, detail: "already exists in " + abs, skipped: true}
 	}
-	if out, err := a.gh.CaptureEnv(a.ctx, "", ghEnv, "repo", "clone", fullName, target); err == nil {
-		abs, _ := filepath.Abs(target)
-		return cloneResult{name: repoName, detail: abs}
-	} else {
-		return cloneResult{name: repoName, output: out, err: err}
+	ownedTarget := !fileExists(target)
+	var out string
+	var err error
+	for attempt := 1; attempt <= remoteRetryAttempts; attempt++ {
+		out, err = a.gh.CaptureEnv(a.ctx, "", ghEnv, "repo", "clone", fullName, target)
+		if err == nil {
+			abs, _ := filepath.Abs(target)
+			return cloneResult{name: repoName, detail: abs}
+		}
+		if a.ctx.Err() != nil || !isTransientRemoteFailure(out, err) || attempt == remoteRetryAttempts {
+			return cloneResult{name: repoName, output: out, err: err}
+		}
+		if ownedTarget {
+			if cleanupErr := os.RemoveAll(target); cleanupErr != nil {
+				return cloneResult{name: repoName, output: outputOrError(out, err), err: cleanupErr}
+			}
+		}
+		if !waitRemoteRetry(a.ctx, attempt) {
+			return cloneResult{name: repoName, output: out, err: a.ctx.Err()}
+		}
 	}
+	return cloneResult{name: repoName, output: out, err: err}
 }
 
 func githubAuthEnv(a *app) ([]string, credentials.Source, bool, error) {

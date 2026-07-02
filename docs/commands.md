@@ -143,7 +143,7 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `clone`
 
-`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Private and all visibility use that request as their early authenticated validation. Public visibility never resolves or sends Git Wrangler credentials. Existing destination directories are skipped successfully. When secure credential storage is unavailable, authenticated cloning hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`; `--visibility public` continues without authentication. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
+`clone` lists repositories through `gh repo list` and clones each repository with `gh repo clone`. It performs an initial one-item listing to distinguish empty result sets from listing failures before creating the destination directory. Private and all visibility use that request as their early authenticated validation. Public visibility never resolves or sends Git Wrangler credentials. Transient GitHub transport failures while listing or cloning are retried with short backoff; authentication, permission, not-found, and target-exists failures are not retried. Existing destination directories are skipped successfully. If a retryable clone failure creates a partial target directory that did not exist before the command, Git Wrangler removes that partial target before retrying. When secure credential storage is unavailable, authenticated cloning hides backend errors and directs users to `GIT_WRANGLER_GITHUB_TOKEN`; `--visibility public` continues without authentication. Human output reports GitHub auth source when used, actionable skips/failures, optional small-run success lines, and a cloned/skipped/failed summary.
 
 ### `commit`
 
@@ -151,11 +151,11 @@ Human output follows `docs/cli-design.md`: progress and prompts on stderr, durab
 
 ### `fetch`
 
-`pull`, `fetch`, `push`, and automatic `git fetch --prune origin` refreshes use a 30-second timeout per repository. Timeouts are per-repository failures and include the repository plus operation, such as `golden-blog: git pull timed out after 30s`. Local Git operations and history rewrite subprocesses keep the default longer subprocess timeout.
+`pull`, `fetch`, `push`, and automatic `git fetch --prune origin` refreshes use a 30-second timeout per repository. Timeouts are per-repository failures and include the repository plus operation, such as `golden-blog: git pull timed out after 30s`. Timed-out subprocesses terminate their child process tree so helper processes cannot hold the command open after the timeout. Local Git operations and history rewrite subprocesses keep the default longer subprocess timeout.
 
-`fetch` runs `git fetch origin` for every target repository. `fetch --prune` runs `git fetch --prune origin`. Missing or invalid `origin` remotes are per-repository failures and count in the summary. Routine success lines are suppressed.
+`fetch` runs `git fetch origin` for every target repository. `fetch --prune` runs `git fetch --prune origin`. Transient transport failures are retried with short backoff; missing or invalid `origin` remotes are not retried and count as per-repository failures. Routine success lines are suppressed.
 
-The built-in auto-refresh used by reporting and history rewrite commands is separate from the explicit `fetch` command. It always uses `git fetch --prune origin` and has no remote selector or public timeout flag.
+The built-in auto-refresh used by reporting and history rewrite commands is separate from the explicit `fetch` command. It always uses `git fetch --prune origin`, retries transient transport failures, and has no remote selector or public timeout flag.
 
 ### `status`
 
@@ -195,7 +195,7 @@ Human output is one dense table. Multi-repository output includes `Date`, `Repos
 
 ### `reset`
 
-`reset` fetches `origin <current-branch>`, skips detached HEAD and missing remote counterparts, previews candidates in a table with ahead/behind and dirty state, and then runs `git reset --hard origin/<branch>` after one aggregate confirmation.
+`reset` fetches `origin <current-branch>` with the remote timeout and transient retry policy, skips detached HEAD and missing remote counterparts, previews candidates in a table with ahead/behind and dirty state, and then runs `git reset --hard origin/<branch>` after one aggregate confirmation.
 
 ### `remove-secrets`
 

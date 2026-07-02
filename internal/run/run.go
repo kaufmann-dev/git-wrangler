@@ -14,6 +14,7 @@ import (
 type CommandFunc func(ctx context.Context, dir string, env []string, name string, args ...string) (stdout string, stderr string, err error)
 
 const DefaultTimeout = 5 * time.Minute
+const commandWaitDelay = 2 * time.Second
 
 type Command struct {
 	Name string
@@ -119,6 +120,7 @@ func (RealRunner) Run(ctx context.Context, dir string, env []string, name string
 		defer cancel()
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
+	configureCommandCancellation(cmd)
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -147,6 +149,7 @@ func (RealRunner) Stream(ctx context.Context, dir string, env []string, name str
 	processCtx, cancelProcess := context.WithCancel(ctx)
 	defer cancelProcess()
 	cmd := exec.CommandContext(processCtx, name, args...)
+	configureCommandCancellation(cmd)
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -199,6 +202,8 @@ func (r RealRunner) Pipe(ctx context.Context, dir string, env []string, left Com
 	}
 	leftCmd := exec.CommandContext(ctx, left.Name, left.Args...)
 	rightCmd := exec.CommandContext(ctx, right.Name, right.Args...)
+	configureCommandCancellation(leftCmd)
+	configureCommandCancellation(rightCmd)
 	if dir != "" {
 		leftCmd.Dir = dir
 		rightCmd.Dir = dir
@@ -225,7 +230,7 @@ func (r RealRunner) Pipe(ctx context.Context, dir string, env []string, left Com
 	}
 	if err := leftCmd.Start(); err != nil {
 		if rightCmd.Process != nil {
-			_ = rightCmd.Process.Kill()
+			_ = cancelCommand(rightCmd)
 		}
 		_ = rightCmd.Wait()
 		return err
@@ -237,6 +242,10 @@ func (r RealRunner) Pipe(ctx context.Context, dir string, env []string, left Com
 		}
 	}
 	consumeErr := consume(output)
+	if consumeErr != nil {
+		_ = cancelCommand(leftCmd)
+		_ = cancelCommand(rightCmd)
+	}
 	leftRunErr := leftCmd.Wait()
 	rightRunErr := rightCmd.Wait()
 	if consumeErr != nil {
