@@ -12,12 +12,20 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
+
+func shrinkRetryBackoff(t *testing.T) {
+	t.Helper()
+	previous := retryBackoffBase
+	retryBackoffBase = 2 * time.Millisecond
+	t.Cleanup(func() { retryBackoffBase = previous })
+}
 
 type fakeRunner struct {
 	run    func(context.Context, string, []string, string, ...string) (string, string, error)
@@ -708,6 +716,7 @@ func TestProcessBatchRetrySleepRespectsCanceledContext(t *testing.T) {
 }
 
 func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
+	shrinkRetryBackoff(t)
 	requests := 0
 	var maxTokens []int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -724,7 +733,7 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 		maxTokens = append(maxTokens, payload.MaxTokens)
 		content := payload.Messages[1].Content
 		w.Header().Set("Content-Type", "application/json")
-		if requests <= 3 {
+		if requests <= 4 {
 			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"length","message":{"content":"{\"messages\":["}}]}`)
 			return
 		}
@@ -752,18 +761,22 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 	if len(accepted) != 2 {
 		t.Fatalf("accepted = %#v", accepted)
 	}
-	if requests != 5 {
-		t.Fatalf("requests = %d, want 5", requests)
+	if requests != 6 {
+		t.Fatalf("requests = %d, want 6", requests)
 	}
-	if len(maxTokens) < 3 || maxTokens[0] >= maxTokens[1] || maxTokens[1] >= maxTokens[2] {
+	if len(maxTokens) < 4 || maxTokens[0] >= maxTokens[1] || maxTokens[1] >= maxTokens[2] || maxTokens[2] >= maxTokens[3] {
 		t.Fatalf("max_tokens did not increase across retries: %#v", maxTokens)
 	}
-	if !strings.Contains(out.String(), "Retrying 2 commit(s) after failed batch attempt 1: AI response was truncated by the output token limit (2 commits).") {
-		t.Fatalf("retry output missing reason:\n%s", out.String())
+	if strings.Contains(out.String(), "after failed batch attempt") {
+		t.Fatalf("per-attempt retry line should not be printed:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Retrying 2 commit(s) individually after failed batch generation.") {
+		t.Fatalf("retry output missing individual escalation:\n%s", out.String())
 	}
 }
 
-func TestProcessBatchRetryMessageIncludesHTTPFailureReason(t *testing.T) {
+func TestProcessItemsRetrySummaryIncludesHTTPFailureReason(t *testing.T) {
+	shrinkRetryBackoff(t)
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
@@ -776,21 +789,33 @@ func TestProcessBatchRetryMessageIncludesHTTPFailureReason(t *testing.T) {
 	}))
 	defer server.Close()
 
-	var out bytes.Buffer
-	accepted, failures := processBatch(context.Background(), []item{
+	var retryDetails []string
+	results, failures, err := processItems(context.Background(), []item{
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 	}, Config{
 		BaseURL:   server.URL,
 		Model:     "test-model",
 		APIKey:    "test-key",
 		BatchSize: 1,
+		RPM:       60000,
 		Timeout:   time.Second,
-	}, &out)
-	if len(failures) != 0 || len(accepted) != 1 {
-		t.Fatalf("accepted = %#v failures = %#v", accepted, failures)
+		Progress: func(event ProgressEvent) {
+			if event.Error {
+				retryDetails = append(retryDetails, event.Detail)
+			}
+		},
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Retrying 1 commit(s) after failed batch attempt 1: HTTP 429: rate limit exceeded") {
-		t.Fatalf("retry output missing HTTP reason:\n%s", out.String())
+	if len(failures) != 0 || len(results) != 1 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if len(retryDetails) != 1 {
+		t.Fatalf("retry details = %#v, want one summary", retryDetails)
+	}
+	if !strings.Contains(retryDetails[0], "Retried 1 transient API failure(s)") || !strings.Contains(retryDetails[0], "HTTP 429: rate limit exceeded") {
+		t.Fatalf("retry summary missing HTTP reason: %q", retryDetails[0])
 	}
 }
 
@@ -1275,6 +1300,7 @@ func batchLengths(batches [][]item) []int {
 }
 
 func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
+	shrinkRetryBackoff(t)
 	var mu sync.Mutex
 	var starts []time.Time
 	requests := 0
@@ -1295,7 +1321,7 @@ func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
 		}
 		content := payload.Messages[1].Content
 		w.Header().Set("Content-Type", "application/json")
-		if request <= 3 {
+		if request <= 4 {
 			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"not conventional\"},{\"id\":\"c000002\",\"subject\":\"not conventional\"}]}"}}]}`)
 			return
 		}
@@ -1324,8 +1350,8 @@ func TestProcessItemsPacesIndividualFallbackRetries(t *testing.T) {
 	if len(failures) != 0 || len(results) != 2 {
 		t.Fatalf("results = %#v failures = %#v", results, failures)
 	}
-	if len(starts) != 5 {
-		t.Fatalf("starts = %d, want 5", len(starts))
+	if len(starts) != 6 {
+		t.Fatalf("starts = %d, want 6", len(starts))
 	}
 	for i := 1; i < len(starts); i++ {
 		if delta := starts[i].Sub(starts[i-1]); delta < 40*time.Millisecond {
@@ -1431,12 +1457,13 @@ func TestProviderContextLimitRetriesWithSmallerContext(t *testing.T) {
 }
 
 func TestProcessItemsFinalRecoveryRecoversRemainingFailure(t *testing.T) {
+	shrinkRetryBackoff(t)
 	requests := 0
 	var retryDetails []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		w.Header().Set("Content-Type", "application/json")
-		if requests <= 3 {
+		if requests <= 4 {
 			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"not conventional\"}]}"}}]}`)
 			return
 		}
@@ -1468,8 +1495,8 @@ func TestProcessItemsFinalRecoveryRecoversRemainingFailure(t *testing.T) {
 	if len(failures) != 0 || len(results) != 1 {
 		t.Fatalf("results = %#v failures = %#v", results, failures)
 	}
-	if requests != 4 {
-		t.Fatalf("requests = %d, want 4", requests)
+	if requests != 5 {
+		t.Fatalf("requests = %d, want 5", requests)
 	}
 	foundRecovery := false
 	for _, detail := range retryDetails {
@@ -1654,8 +1681,8 @@ func TestProcessItemsReportsRetryDetailThroughProgress(t *testing.T) {
 	if strings.Contains(out.String(), "Retrying") {
 		t.Fatalf("retry output should use progress detail:\n%s", out.String())
 	}
-	if len(retryDetails) != 1 || !strings.Contains(retryDetails[0], "Retrying 1 commit(s) after failed batch attempt 1: missing or invalid message.") {
-		t.Fatalf("retry details = %#v", retryDetails)
+	if len(retryDetails) != 1 || !strings.Contains(retryDetails[0], "Retried 1 transient API failure(s): missing or invalid message.") {
+		t.Fatalf("retry details = %#v, want one aggregate summary", retryDetails)
 	}
 }
 
@@ -1688,6 +1715,9 @@ func TestProcessItemsCancellationSuppressesRetryOutput(t *testing.T) {
 	if strings.Contains(out.String(), "Retrying") {
 		t.Fatalf("retry output was printed for cancellation:\n%s", out.String())
 	}
+	if strings.Contains(out.String(), "Retried") {
+		t.Fatalf("retry summary was printed for cancellation:\n%s", out.String())
+	}
 }
 
 func TestWriteGenerationFailuresGroupsReasonsAndPrintsHint(t *testing.T) {
@@ -1702,11 +1732,169 @@ func TestWriteGenerationFailuresGroupsReasonsAndPrintsHint(t *testing.T) {
 		"Failed repo-a abcdef12: unexpected EOF",
 		"Failure reasons: unexpected EOF (2 commits); missing or invalid message",
 		"Hint: retry the command",
-		"lower --rpm",
+		"lower --concurrency or --rpm",
 		"reduce --batch-size",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in:\n%s", want, text)
 		}
+	}
+}
+
+func TestProcessItemsBoundsInFlightRequests(t *testing.T) {
+	var inFlight, maxInFlight atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			observed := maxInFlight.Load()
+			if current <= observed || maxInFlight.CompareAndSwap(observed, current) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+			return
+		}
+		id := "c000001"
+		for _, candidate := range []string{"c000002", "c000003", "c000004", "c000005", "c000006"} {
+			if strings.Contains(payload.Messages[1].Content, candidate) {
+				id = candidate
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	items := make([]item, 0, 6)
+	for _, id := range []string{"c000001", "c000002", "c000003", "c000004", "c000005", "c000006"} {
+		items = append(items, item{ID: id, RepoName: "repo", Hash: "abcdef123456", Context: "context"})
+	}
+	results, failures, err := processItems(context.Background(), items, Config{
+		BaseURL:     server.URL,
+		Model:       "test-model",
+		APIKey:      "test-key",
+		BatchSize:   1,
+		RPM:         60000,
+		Concurrency: 2,
+		Timeout:     time.Second,
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || len(results) != 6 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if observed := maxInFlight.Load(); observed > 2 {
+		t.Fatalf("max in-flight requests = %d, want at most 2", observed)
+	}
+}
+
+func TestRetryBackoffStaysWithinJitterBounds(t *testing.T) {
+	for attempt := 1; attempt <= 6; attempt++ {
+		expected := retryBackoffBase << (attempt - 1)
+		if expected > 8*time.Second {
+			expected = 8 * time.Second
+		}
+		for range 50 {
+			delay := retryBackoff(attempt)
+			if delay < expected/2 || delay >= expected {
+				t.Fatalf("retryBackoff(%d) = %s, want in [%s, %s)", attempt, delay, expected/2, expected)
+			}
+		}
+	}
+}
+
+func TestChatCompletionAppliesPerRequestTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[]}`)
+	}))
+	defer server.Close()
+
+	_, err := chatCompletion(context.Background(), Config{
+		BaseURL: server.URL,
+		Model:   "test-model",
+		Timeout: 50 * time.Millisecond,
+	}, map[string]any{"model": "test-model"})
+	if err == nil || !strings.Contains(err.Error(), "deadline exceeded") {
+		t.Fatalf("err = %v, want context deadline exceeded", err)
+	}
+}
+
+func TestProcessItemsEmitsSingleRetrySummary(t *testing.T) {
+	shrinkRetryBackoff(t)
+	var mu sync.Mutex
+	failedBatches := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+			return
+		}
+		id := "c000001"
+		if strings.Contains(payload.Messages[1].Content, "c000002") {
+			id = "c000002"
+		}
+		mu.Lock()
+		firstAttempt := !failedBatches[id]
+		failedBatches[id] = true
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if firstAttempt {
+			if id == "c000001" {
+				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			}
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":["}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"`+id+`\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	var retryDetails []string
+	results, failures, err := processItems(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
+	}, Config{
+		BaseURL:   server.URL,
+		Model:     "test-model",
+		APIKey:    "test-key",
+		BatchSize: 1,
+		RPM:       60000,
+		Timeout:   time.Second,
+		Progress: func(event ProgressEvent) {
+			if event.Error {
+				retryDetails = append(retryDetails, event.Detail)
+			}
+		},
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || len(results) != 2 {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if len(retryDetails) != 1 {
+		t.Fatalf("retry details = %#v, want exactly one summary", retryDetails)
+	}
+	if !strings.Contains(retryDetails[0], "Retried 2 transient API failure(s)") ||
+		!strings.Contains(retryDetails[0], "HTTP 429: rate limit exceeded") ||
+		!strings.Contains(retryDetails[0], "AI response was incomplete JSON") {
+		t.Fatalf("retry summary missing aggregated reasons: %q", retryDetails[0])
 	}
 }

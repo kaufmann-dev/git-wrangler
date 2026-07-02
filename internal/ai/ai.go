@@ -3,10 +3,13 @@ package ai
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,6 +44,8 @@ const (
 	maxRequestContextChars      = 80000
 	minRetryRequestContextChars = 20000
 	finalRecoveryContextChars   = 8000
+	defaultRequestConcurrency   = 8
+	maxBatchAttempts            = 4
 )
 
 type Repository struct {
@@ -58,6 +63,7 @@ type Config struct {
 	Headers          map[string]string
 	BatchSize        int
 	RPM              int
+	Concurrency      int
 	Timeout          time.Duration
 	SkipConventional bool
 	RequireScope     bool
@@ -901,10 +907,6 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	if totalBatches == 0 {
 		return map[string]Message{}, nil, nil
 	}
-	type batchTask struct {
-		index int
-		items []item
-	}
 	type batchResult struct {
 		index    int
 		results  map[string]Message
@@ -917,31 +919,45 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	output := &lockedWriter{writer: out}
 	progress := progressFunc(cfg, output)
 	pacer := newRequestPacer(cfg.RPM)
-	for batchIndex, taskItems := range tasks {
-		task := batchTask{index: batchIndex, items: taskItems}
-		if ctx.Err() != nil {
-			break
-		}
+	stats := &retryStats{}
+	workers := cfg.Concurrency
+	if workers <= 0 {
+		workers = defaultRequestConcurrency
+	}
+	if workers > totalBatches {
+		workers = totalBatches
+	}
+	jobs := make(chan int)
+	for range workers {
 		wg.Add(1)
-		go func(task batchTask) {
+		go func() {
 			defer wg.Done()
-			batchKey := fmt.Sprintf("batch-%d", task.index+1)
-			completedMu.Lock()
-			progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: 0, Total: totalBatches, Detail: fmt.Sprintf("batch %d", task.index+1)})
-			completedMu.Unlock()
-			reportRetry := func(message string) {
+			for batchIndex := range jobs {
+				if ctx.Err() != nil {
+					continue
+				}
+				batchKey := fmt.Sprintf("batch-%d", batchIndex+1)
 				completedMu.Lock()
-				progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: completedBatches, Total: totalBatches, Detail: message, Error: true})
+				progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: 0, Total: totalBatches, Detail: fmt.Sprintf("batch %d", batchIndex+1)})
+				completedMu.Unlock()
+				reportRetry := func(message string) {
+					completedMu.Lock()
+					progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: completedBatches, Total: totalBatches, Detail: message, Error: true})
+					completedMu.Unlock()
+				}
+				accepted, batchFailures := processBatchWithProgress(ctx, tasks[batchIndex], cfg, output, reportRetry, pacer, stats)
+				batchResults[batchIndex] = batchResult{index: batchIndex, results: accepted, failures: batchFailures}
+				completedMu.Lock()
+				completedBatches++
+				progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("batch %d completed", batchIndex+1)})
 				completedMu.Unlock()
 			}
-			accepted, batchFailures := processBatchWithProgress(ctx, task.items, cfg, output, reportRetry, pacer)
-			batchResults[task.index] = batchResult{index: task.index, results: accepted, failures: batchFailures}
-			completedMu.Lock()
-			completedBatches++
-			progress(ProgressEvent{Phase: "Sending API requests", Key: batchKey, Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("batch %d completed", task.index+1)})
-			completedMu.Unlock()
-		}(task)
+		}()
 	}
+	for batchIndex := range tasks {
+		jobs <- batchIndex
+	}
+	close(jobs)
 	wg.Wait()
 	if ctx.Err() != nil {
 		return nil, nil, ErrAPICancelled
@@ -957,11 +973,14 @@ func processItems(ctx context.Context, items []item, cfg Config, out io.Writer) 
 	}
 	if len(failures) > 0 && ctx.Err() == nil && hasRecoverableGenerationFailures(failures) {
 		progress(ProgressEvent{Phase: "Sending API requests", Key: "final-recovery", Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("Retrying %d failed commit(s) with final single-commit recovery.", len(failures)), Error: true})
-		recovered, remaining := recoverGenerationFailures(ctx, failures, cfg, pacer)
+		recovered, remaining := recoverGenerationFailures(ctx, failures, cfg, pacer, stats)
 		for id, message := range recovered {
 			results[id] = message
 		}
 		failures = remaining
+	}
+	if total, reasons := stats.summary(3); total > 0 && ctx.Err() == nil {
+		progress(ProgressEvent{Phase: "Sending API requests", Key: "retry-summary", Current: completedBatches, Total: totalBatches, Detail: fmt.Sprintf("Retried %d transient API failure(s): %s.", total, reasons), Error: true})
 	}
 	return results, failures, nil
 }
@@ -1069,15 +1088,15 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 }
 
 func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
-	return processBatchWithProgress(ctx, batch, cfg, out, nil, nil)
+	return processBatchWithProgress(ctx, batch, cfg, out, nil, nil, nil)
 }
 
-func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer) (map[string]Message, []failure) {
+func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer, stats *retryStats) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	pending := append([]item(nil), batch...)
 	errorsByID := map[string]string{}
 	requestBudget := maxRequestContextChars
-	for attempt := 1; attempt <= 3 && len(pending) > 0; attempt++ {
+	for attempt := 1; attempt <= maxBatchAttempts && len(pending) > 0; attempt++ {
 		if !pacer.wait(ctx) {
 			break
 		}
@@ -1122,12 +1141,12 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 			}
 		}
 		pending = nextPending
-		if len(pending) > 0 && attempt < 3 {
+		if len(pending) > 0 && attempt < maxBatchAttempts {
 			if ctx.Err() != nil {
 				break
 			}
-			reportRetryMessage(out, reportRetry, retryBatchMessage(len(pending), attempt, retryReason(pending, errorsByID)))
-			if !sleepContext(ctx, time.Duration(attempt)*250*time.Millisecond) {
+			stats.addPending(pending, errorsByID)
+			if !sleepContext(ctx, retryBackoff(attempt)) {
 				break
 			}
 		}
@@ -1137,7 +1156,7 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 			return accepted, failuresForPending(pending, errorsByID)
 		}
 		reportRetryMessage(out, reportRetry, fmt.Sprintf("Retrying %d commit(s) individually after failed batch generation.", len(pending)))
-		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out, reportRetry, pacer)
+		recovered, individualFailures := processSingleItemRetries(ctx, pending, cfg, out, reportRetry, pacer, stats)
 		for id, message := range recovered {
 			accepted[id] = message
 		}
@@ -1150,7 +1169,7 @@ func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out
 	return accepted, failures
 }
 
-func recoverGenerationFailures(ctx context.Context, failures []failure, cfg Config, pacer *requestPacer) (map[string]Message, []failure) {
+func recoverGenerationFailures(ctx context.Context, failures []failure, cfg Config, pacer *requestPacer, stats *retryStats) (map[string]Message, []failure) {
 	remaining := append([]failure(nil), failures...)
 	sort.SliceStable(remaining, func(i, j int) bool {
 		left, right := remaining[i].Item, remaining[j].Item
@@ -1169,7 +1188,7 @@ func recoverGenerationFailures(ctx context.Context, failures []failure, cfg Conf
 			unresolved = append(unresolved, failed)
 			continue
 		}
-		message, reason, ok := recoverGenerationFailure(ctx, failed.Item, cfg, pacer)
+		message, reason, ok := recoverGenerationFailure(ctx, failed.Item, cfg, pacer, stats)
 		if ok {
 			accepted[failed.Item.ID] = message
 			continue
@@ -1182,7 +1201,7 @@ func recoverGenerationFailures(ctx context.Context, failures []failure, cfg Conf
 	return accepted, unresolved
 }
 
-func recoverGenerationFailure(ctx context.Context, failedItem item, cfg Config, pacer *requestPacer) (Message, string, bool) {
+func recoverGenerationFailure(ctx context.Context, failedItem item, cfg Config, pacer *requestPacer, stats *retryStats) (Message, string, bool) {
 	reason := ""
 	for attempt := 1; attempt <= 3; attempt++ {
 		if !pacer.wait(ctx) {
@@ -1204,18 +1223,14 @@ func recoverGenerationFailure(ctx context.Context, failedItem item, cfg Config, 
 			}
 			reason = "missing or invalid message"
 		}
-		if attempt < 3 && !sleepContext(ctx, finalRecoveryBackoff(attempt)) {
-			return Message{}, reason, false
+		if attempt < 3 {
+			stats.add(reason, 1)
+			if !sleepContext(ctx, retryBackoff(attempt+1)) {
+				return Message{}, reason, false
+			}
 		}
 	}
 	return Message{}, reason, false
-}
-
-func finalRecoveryBackoff(attempt int) time.Duration {
-	if attempt <= 0 {
-		return 0
-	}
-	return time.Duration(attempt) * 500 * time.Millisecond
 }
 
 func nextRetryRequestBudget(current int) int {
@@ -1234,8 +1249,62 @@ func reportRetryMessage(out io.Writer, reportRetry func(string), message string)
 	fmt.Fprintln(out, message)
 }
 
-func retryBatchMessage(count, attempt int, reason string) string {
-	return fmt.Sprintf("Retrying %d commit(s) after failed batch attempt %d: %s.", count, attempt, reason)
+// retryBackoffBase is a variable so tests can shrink retry sleeps.
+var retryBackoffBase = 500 * time.Millisecond
+
+// retryBackoff returns an exponentially growing delay with equal jitter in
+// [d/2, d) so concurrent batches do not retry in lockstep.
+func retryBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := retryBackoffBase << (attempt - 1)
+	if delay > 8*time.Second {
+		delay = 8 * time.Second
+	}
+	half := delay / 2
+	return half + rand.N(half)
+}
+
+type retryStats struct {
+	mu     sync.Mutex
+	total  int
+	counts map[string]int
+}
+
+func (s *retryStats) add(reason string, count int) {
+	if s == nil || count <= 0 {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "unknown error"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.counts == nil {
+		s.counts = map[string]int{}
+	}
+	s.counts[truncateText(reason, 160)] += count
+	s.total += count
+}
+
+func (s *retryStats) addPending(pending []item, errorsByID map[string]string) {
+	if s == nil {
+		return
+	}
+	for _, pendingItem := range pending {
+		s.add(errorsByID[pendingItem.ID], 1)
+	}
+}
+
+func (s *retryStats) summary(maxReasons int) (int, string) {
+	if s == nil {
+		return 0, ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.total, formatReasonCounts(s.counts, maxReasons)
 }
 
 func failuresForPending(pending []item, errorsByID map[string]string) []failure {
@@ -1250,46 +1319,6 @@ func failuresForPending(pending []item, errorsByID map[string]string) []failure 
 	return failures
 }
 
-func retryReason(pending []item, errorsByID map[string]string) string {
-	counts := map[string]int{}
-	for _, item := range pending {
-		reason := strings.TrimSpace(errorsByID[item.ID])
-		if reason == "" {
-			reason = "unknown error"
-		}
-		counts[truncateText(reason, 160)]++
-	}
-	type row struct {
-		reason string
-		count  int
-	}
-	rows := make([]row, 0, len(counts))
-	for reason, count := range counts {
-		rows = append(rows, row{reason: reason, count: count})
-	}
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].count == rows[j].count {
-			return rows[i].reason < rows[j].reason
-		}
-		return rows[i].count > rows[j].count
-	})
-	parts := make([]string, 0, min(len(rows), 3))
-	for i, row := range rows {
-		if i >= 3 {
-			break
-		}
-		if row.count == 1 {
-			parts = append(parts, row.reason)
-		} else {
-			parts = append(parts, fmt.Sprintf("%s (%d commits)", row.reason, row.count))
-		}
-	}
-	if len(rows) > 3 {
-		parts = append(parts, fmt.Sprintf("%d more reason(s)", len(rows)-3))
-	}
-	return strings.Join(parts, "; ")
-}
-
 func writeGenerationFailures(out io.Writer, failures []failure) {
 	for _, f := range failures {
 		fmt.Fprintf(out, "Failed %s %s: %s\n", f.Item.RepoName, shortHash(f.Item.Hash, 8), f.Reason)
@@ -1298,7 +1327,7 @@ func writeGenerationFailures(out io.Writer, failures []failure) {
 		return
 	}
 	fmt.Fprintf(out, "Failure reasons: %s\n", generationFailureSummary(failures))
-	fmt.Fprintln(out, "Hint: retry the command; if transport failures continue, lower --rpm, and if JSON/message failures continue, reduce --batch-size or use a stronger model.")
+	fmt.Fprintln(out, "Hint: retry the command; if transport failures continue, lower --concurrency or --rpm, and if JSON/message failures continue, reduce --batch-size or use a stronger model.")
 }
 
 func generationFailureSummary(failures []failure) string {
@@ -1310,6 +1339,12 @@ func generationFailureSummary(failures []failure) string {
 		}
 		counts[truncateText(reason, 160)]++
 	}
+	return formatReasonCounts(counts, 0)
+}
+
+// formatReasonCounts renders reason counts sorted by frequency. maxReasons > 0
+// truncates the list and appends a "N more reason(s)" marker.
+func formatReasonCounts(counts map[string]int, maxReasons int) string {
 	type row struct {
 		reason string
 		count  int
@@ -1325,7 +1360,11 @@ func generationFailureSummary(failures []failure) string {
 		return rows[i].count > rows[j].count
 	})
 	parts := make([]string, 0, len(rows))
-	for _, row := range rows {
+	for i, row := range rows {
+		if maxReasons > 0 && i >= maxReasons {
+			parts = append(parts, fmt.Sprintf("%d more reason(s)", len(rows)-maxReasons))
+			break
+		}
 		if row.count == 1 {
 			parts = append(parts, row.reason)
 		} else {
@@ -1335,11 +1374,11 @@ func generationFailureSummary(failures []failure) string {
 	return strings.Join(parts, "; ")
 }
 
-func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer) (map[string]Message, []failure) {
+func processSingleItemRetries(ctx context.Context, pending []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer, stats *retryStats) (map[string]Message, []failure) {
 	accepted := map[string]Message{}
 	var failures []failure
 	for _, pendingItem := range pending {
-		itemAccepted, itemFailures := processBatchWithProgress(ctx, []item{pendingItem}, cfg, out, reportRetry, pacer)
+		itemAccepted, itemFailures := processBatchWithProgress(ctx, []item{pendingItem}, cfg, out, reportRetry, pacer, stats)
 		for id, message := range itemAccepted {
 			accepted[id] = message
 		}
@@ -1590,12 +1629,40 @@ func Preflight(ctx context.Context, cfg Config) error {
 	return err
 }
 
+// httpClient is shared across all API requests so connections are pooled
+// instead of churned per call. HTTP/2 is disabled (empty TLSNextProto) so one
+// killed provider connection fails a single request, not every request
+// multiplexed onto it, and idle connections are dropped before typical
+// load-balancer idle-kill windows.
+var httpClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxConnsPerHost:     64,
+		MaxIdleConns:        64,
+		MaxIdleConnsPerHost: 16,
+		IdleConnTimeout:     30 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		ForceAttemptHTTP2:   false,
+		TLSNextProto:        map[string]func(string, *tls.Conn) http.RoundTripper{},
+	},
+}
+
 func chatCompletion(ctx context.Context, cfg Config, payload any) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ChatEndpoint(cfg.BaseURL), bytes.NewReader(body))
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 90 * time.Second
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, ChatEndpoint(cfg.BaseURL), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -1606,8 +1673,7 @@ func chatCompletion(ctx context.Context, cfg Config, payload any) ([]byte, error
 	for name, value := range cfg.Headers {
 		req.Header.Set(name, value)
 	}
-	client := &http.Client{Timeout: cfg.Timeout}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
