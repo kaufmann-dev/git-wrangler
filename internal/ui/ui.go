@@ -34,7 +34,7 @@ func New(stdout io.Writer) Theme {
 		t.Yellow = "\033[33m"
 		t.Blue = "\033[34m"
 		t.Cyan = "\033[36m"
-		t.Muted = "\033[90m"
+		t.Muted = "\033[38;2;139;148;158m"
 		t.Bold = "\033[1m"
 		t.Reset = "\033[0m"
 	}
