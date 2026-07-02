@@ -26,10 +26,6 @@ type Commit struct {
 	Conventional bool
 }
 
-func AllowedTypes() []string {
-	return []string{"feat", "fix", "docs", "style", "refactor", "test", "chore", "perf", "ci", "build", "revert"}
-}
-
 func Parse(subject string) Commit {
 	commit, ok := parse(subject)
 	commit.Conventional = ok

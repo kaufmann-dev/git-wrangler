@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/spf13/cobra"
 )
@@ -445,15 +444,4 @@ func affectedBranchCount(branches []rollbackRewriteBranchPlan) int {
 		}
 	}
 	return count
-}
-
-func sortedRollbackBranchNames(branches []rollbackRewriteBranchPlan) []string {
-	names := []string{}
-	for _, branch := range branches {
-		if branch.Affected {
-			names = append(names, branch.Name)
-		}
-	}
-	sort.Strings(names)
-	return names
 }

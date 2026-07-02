@@ -377,13 +377,6 @@ func secretValue(a *app, key string, hasValue bool, prompt string) (string, bool
 	return value, true
 }
 
-func displayUnset(value string) string {
-	if value == "" {
-		return "<unset>"
-	}
-	return value
-}
-
 func displayUnsetStyled(a *app, value string) string {
 	if value == "" {
 		return a.ui.Muted + "<unset>" + a.ui.Reset

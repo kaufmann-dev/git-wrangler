@@ -32,16 +32,6 @@ type hourRewriteScan struct {
 	hasSignedObjects bool
 }
 
-type hourCandidate struct {
-	repo             repo
-	branches         []dateBranchRef
-	commits          []rewriteDateCommit
-	selected         []int
-	tzOffset         string
-	hasTags          bool
-	hasSignedObjects bool
-}
-
 type hourRewritePlan struct {
 	candidates        []dateCandidate
 	totalSelected     int

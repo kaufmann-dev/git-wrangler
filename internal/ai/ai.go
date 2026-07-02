@@ -502,14 +502,6 @@ func visibleDiffPaths(nameStatus string) []string {
 	return paths
 }
 
-func changedPaths(nameStatus string) []string {
-	paths := []string{}
-	for _, group := range changedPathGroups(nameStatus) {
-		paths = append(paths, group...)
-	}
-	return paths
-}
-
 func changedPathGroups(nameStatus string) [][]string {
 	groups := [][]string{}
 	for _, line := range splitLines(nameStatus) {
