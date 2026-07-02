@@ -157,7 +157,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 func runPush(a *app, cmd *cobra.Command, args []string) int {
 	opts := pushOptionsFromCommand(cmd)
 	if opts.force && opts.forceUnsafe {
-		a.error("Use either --force or --force-unsafe, not both.")
+		a.plainErrorf("Use either --force or --force-unsafe, not both.")
 		return 1
 	}
 	if !requireGit(a, "push") {
@@ -230,28 +230,21 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	results := []pushResult{}
 	for _, r := range repos {
 		progress.start(r.display)
-		pushArgs := []string{"push", "origin", "HEAD"}
-		pushArgs = []string{"push", "--force", "origin", "HEAD"}
-		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pushArgs...)
+		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, "push", "--force", "origin", "HEAD")
 		progress.advance(r.display)
 		results = append(results, pushResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Everything up-to-date")})
 	}
 	finishProgressBeforeOutput(progress)
 	for _, result := range results {
-		r := result.repo
-		out := result.out
-		err := result.err
-		if err == nil {
-			if strings.Contains(out, "Everything up-to-date") {
-				renderStatusLine(a, a.stdout, statusSkip, r.display, "nothing to push")
-				skipped++
-			} else {
-				pushed++
-			}
-		} else {
-			renderRemoteGitFailure(a, r, "push", out, err)
+		if result.err != nil {
+			renderRemoteGitFailure(a, result.repo, "push", result.out, result.err)
 			status = 1
 			failed++
+		} else if result.skipped {
+			renderStatusLine(a, a.stdout, statusSkip, result.repo.display, "nothing to push")
+			skipped++
+		} else {
+			pushed++
 		}
 	}
 	renderSummary(a,

@@ -264,6 +264,28 @@ func TestOptionParsersUseCommandNaming(t *testing.T) {
 	}
 }
 
+func TestFlagValidationErrorsUsePlainErrorStyle(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, forbidden := range []string{`a.error("--`, `a.errorf("--`} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("%s reports a flag validation error through the status vocabulary; use a.plainErrorf so usage errors match Cobra parse errors", file)
+			}
+		}
+	}
+}
+
 func TestJSONModeUsesOptionsParserDirectly(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {

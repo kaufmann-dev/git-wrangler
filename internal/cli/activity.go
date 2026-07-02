@@ -40,7 +40,7 @@ func activityOptionsFromCommand(a *app, cmd *cobra.Command) (activityOptions, bo
 		globalScale: boolFlagValue(cmd, "global-scale"),
 	}
 	if flagChanged(cmd, "year") && (opts.year < 1 || opts.year > 9999) {
-		a.error("--year must be from 1 through 9999.")
+		a.plainErrorf("--year must be from 1 through 9999.")
 		return activityOptions{}, false
 	}
 	opts.userSet = make(map[string]struct{}, len(opts.users))

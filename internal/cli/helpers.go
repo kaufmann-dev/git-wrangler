@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
@@ -13,41 +12,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func (a *app) status(stream io.Writer, color, symbol string, parts ...string) {
-	state := statusInfo
-	switch symbol {
-	case a.ui.OKSymbol:
-		state = statusOK
-	case a.ui.WarnSymbol:
-		state = statusWarn
-	case a.ui.ErrSymbol:
-		state = statusError
-	case a.ui.SkipSymbol:
-		state = statusSkip
-	}
-	_ = color
-	if len(parts) == 1 {
-		renderStatusLine(a, stream, state, parts[0], "")
-		return
-	}
-	if len(parts) >= 2 {
-		renderStatusLine(a, stream, state, parts[0], parts[1])
-	}
-}
+func (a *app) ok(message string) { renderStatusLine(a, a.stdout, statusOK, message, "") }
 
-func (a *app) ok(parts ...string) { a.status(a.stdout, a.ui.Green, a.ui.OKSymbol, parts...) }
-
-func (a *app) warn(parts ...string) { a.status(a.stderr, a.ui.Yellow, a.ui.WarnSymbol, parts...) }
-
-func (a *app) info(parts ...string) { a.status(a.stdout, a.ui.Cyan, a.ui.InfoSymbol, parts...) }
-
-func (a *app) step(parts ...string) {
-	a.status(a.stdout, a.ui.Bold+a.ui.Cyan, a.ui.StepSymbol, parts...)
-}
-
-func (a *app) skip(parts ...string) { a.status(a.stdout, a.ui.Yellow, a.ui.SkipSymbol, parts...) }
-
-func (a *app) error(parts ...string) { a.status(a.stderr, a.ui.Red, a.ui.ErrSymbol, parts...) }
+func (a *app) error(message string) { renderStatusLine(a, a.stderr, statusError, message, "") }
 
 func (a *app) errorf(format string, args ...any) {
 	a.error(fmt.Sprintf(format, args...))
@@ -105,7 +72,7 @@ func resolveRepositoryTargets(repoName string) ([]repo, error) {
 }
 
 func noRepos(a *app) int {
-	a.warn("No Git repositories found in the specified directory.")
+	renderWarning(a, "No Git repositories found in the specified directory.")
 	return 0
 }
 

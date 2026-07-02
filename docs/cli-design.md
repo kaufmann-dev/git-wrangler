@@ -37,6 +37,8 @@ Per-repository error blocks must include actionable detail when available. For s
 
 Use sentence-case human text and stable labels. Prefer `Repository`, `State`, `Tracking`, `Changed`, `Skipped`, `Failed`, `OK`, `WARN`, `ERROR`, `SKIP`, and `INFO`.
 
+Usage errors — invalid or missing flag values and invalid flag combinations — print plain `Error: ...` lines so they match Cobra parse errors. Runtime and environment errors — missing tools, failed repositories, failed subprocesses — use the `ERROR` status vocabulary or per-repository error blocks.
+
 Color supports meaning but never carries meaning alone:
 
 - Green: successful mutation or healthy check.

@@ -12,7 +12,7 @@ import (
 	"github.com/kaufmann-dev/git-wrangler/internal/run"
 )
 
-func TestPrintLargestFilesStreamsTopThree(t *testing.T) {
+func TestWriteLargestFilesStreamsTopThree(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer
 	runner := fakeRunner{pipe: func(ctx context.Context, dir string, env []string, left run.Command, right run.Command, consume func(io.Reader) error) error {
@@ -33,7 +33,7 @@ func TestPrintLargestFilesStreamsTopThree(t *testing.T) {
 	}}
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 
-	if err := printLargestFiles(a, "repo"); err != nil {
+	if err := writeLargestFiles(a.stdout, a, "repo"); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()

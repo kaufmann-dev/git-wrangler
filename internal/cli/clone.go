@@ -43,11 +43,11 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	if opts.limit < 1 {
-		a.error("--limit must be 1 or greater.")
+		a.plainErrorf("--limit must be 1 or greater.")
 		return 1
 	}
 	if !validateStringEnum(opts.visibility, "all", "public", "private") {
-		a.error("Invalid visibility option. Use 'all', 'public', or 'private'.")
+		a.plainErrorf("Invalid visibility option. Use 'all', 'public', or 'private'.")
 		return 1
 	}
 	ghEnv := githubcli.UnauthenticatedEnv()
@@ -72,7 +72,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	listArgs := githubcli.RepoListArgs(opts.user, opts.visibility, "1")
 	out, err := stdoutGitHubWithRetry(a, "", ghEnv, listArgs...)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
+		renderErrorBlock(a, "could not list repositories", err.Error())
 		return 1
 	}
 	if lineCount(out) == 0 {
@@ -99,7 +99,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	listArgs = githubcli.RepoListArgs(opts.user, opts.visibility, strconv.Itoa(opts.limit))
 	reposOut, err := stdoutGitHubWithRetry(a, "", ghEnv, listArgs...)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
+		renderErrorBlock(a, "could not list repositories", err.Error())
 		return 1
 	}
 	status := 0

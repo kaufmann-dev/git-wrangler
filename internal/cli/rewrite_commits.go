@@ -25,7 +25,7 @@ type rewriteCommitsOptions struct {
 func rewriteCommitsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteCommitsOptions, bool) {
 	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
-		a.error(err.Error())
+		a.plainErrorf("%s", err.Error())
 		return rewriteCommitsOptions{}, false
 	}
 	opts := rewriteCommitsOptions{

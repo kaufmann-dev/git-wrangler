@@ -63,7 +63,8 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 		repo       repo
 		out        string
 		err        error
-		message    string
+		skipReason string
+		renamed    bool
 		failed     bool
 		accessible bool
 		validRepo  bool
@@ -74,19 +75,19 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	failed := 0
 	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Renaming branches", len(repos)), func(r repo) renameBranchResult {
 		if _, err := os.Stat(r.dir); err != nil {
-			return renameBranchResult{repo: r, failed: true, message: fmt.Sprintf("Error: Directory is inaccessible: %s", r.display)}
+			return renameBranchResult{repo: r, err: err, failed: true}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true}
 		}
 		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+opts.oldBranch) {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("old branch '%s' does not exist", opts.oldBranch), accessible: true, validRepo: true}
+			return renameBranchResult{repo: r, skipReason: fmt.Sprintf("old branch '%s' does not exist", opts.oldBranch), accessible: true, validRepo: true}
 		}
 		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+opts.newBranch) {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("new branch '%s' already exists", opts.newBranch), accessible: true, validRepo: true}
+			return renameBranchResult{repo: r, skipReason: fmt.Sprintf("new branch '%s' already exists", opts.newBranch), accessible: true, validRepo: true}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", opts.oldBranch, opts.newBranch); err == nil {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("Branch renamed from '%s' to '%s' for %s", opts.oldBranch, opts.newBranch, r.display), accessible: true, validRepo: true}
+			return renameBranchResult{repo: r, renamed: true, accessible: true, validRepo: true}
 		} else {
 			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true, validRepo: true}
 		}
@@ -97,7 +98,7 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	for _, result := range results {
 		switch {
 		case result.failed && !result.accessible:
-			renderErrorBlock(a, result.repo.display+": directory is inaccessible", result.message)
+			renderErrorBlock(a, result.repo.display+": directory is inaccessible", result.err.Error())
 			status = 1
 			failed++
 		case result.failed && !result.validRepo:
@@ -108,10 +109,10 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			renderErrorBlock(a, result.repo.display+": failed to rename branch", outputOrError(result.out, result.err))
 			status = 1
 			failed++
-		case strings.HasPrefix(result.message, "Branch renamed"):
+		case result.renamed:
 			renamed++
 		default:
-			renderStatusLine(a, a.stdout, statusSkip, result.repo.display, result.message)
+			renderStatusLine(a, a.stdout, statusSkip, result.repo.display, result.skipReason)
 			skipped++
 		}
 	}
@@ -155,8 +156,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	if len(repos) == 0 {
-		a.warn("No Git repositories found under the current directory.")
-		return 0
+		return noRepos(a)
 	}
 	status := 0
 	renamed := 0

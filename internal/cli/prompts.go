@@ -566,15 +566,6 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 	return nil
 }
 
-func rewriteDatesPlanningFlagsChanged(cmd *cobra.Command) bool {
-	for _, name := range []string{"start-date", "end-date", "rewrite-before", "rewrite-after", "days", "until", "seed", "frequency", "spread", "window"} {
-		if flagChanged(cmd, name) {
-			return true
-		}
-	}
-	return false
-}
-
 func rewriteDatesRangeMode(cmd *cobra.Command) string {
 	days := intFlagValue(cmd, "days")
 	if days > 0 {

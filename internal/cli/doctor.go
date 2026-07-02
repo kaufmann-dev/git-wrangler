@@ -207,21 +207,6 @@ func doctorConfig(a *app) bool {
 	return true
 }
 
-func doctorCredentialLabel(resolved credentials.Resolved) string {
-	if resolved.Value == "" {
-		return "WARN"
-	}
-	return "OK"
-}
-
-func doctorConfigValue(a *app, name, value string) {
-	if value == "" {
-		fmt.Fprintf(a.stdout, "  WARN  %-16s missing\n", name)
-		return
-	}
-	fmt.Fprintf(a.stdout, "  OK    %-16s %s\n", name, value)
-}
-
 func doctorCredentialState(a *app, resolved credentials.Resolved) string {
 	if resolved.Value == "" {
 		return a.ui.Yellow + "WARN" + a.ui.Reset

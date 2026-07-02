@@ -203,6 +203,10 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "rewrite-dates") {
 		return 1
 	}
+	filterCmd, ok := filterRepoCommand(a, "rewrite-dates")
+	if !ok {
+		return 1
+	}
 	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
@@ -212,10 +216,6 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
-		return 1
-	}
-	filterCmd, ok := filterRepoCommand(a, "rewrite-dates")
-	if !ok {
 		return 1
 	}
 	return runRewriteDatesRewrite(a, repos, filterCmd, opts)
@@ -238,7 +238,7 @@ func rewriteDatesOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteDatesOpt
 	daysSet := flagChanged(cmd, "days")
 	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
-		a.error(err.Error())
+		a.plainErrorf("%s", err.Error())
 		return rewriteDatesOptions{}, false
 	}
 	opts.bounds = boundOpts.bounds
@@ -252,34 +252,34 @@ func rewriteDatesOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteDatesOpt
 		{name: "until", date: opts.untilDate},
 	} {
 		if value.date != "" && !validDate(value.date) {
-			a.errorf("--%s must be in YYYY-MM-DD format.", value.name)
+			a.plainErrorf("--%s must be in YYYY-MM-DD format.", value.name)
 			return rewriteDatesOptions{}, false
 		}
 	}
 	if daysSet && opts.days <= 0 {
-		a.error("--days must be a positive integer.")
+		a.plainErrorf("--days must be a positive integer.")
 		return rewriteDatesOptions{}, false
 	}
 	if opts.days > 0 && (opts.startDate != "" || opts.endDate != "") {
-		a.error("--days cannot be combined with --start-date or --end-date.")
+		a.plainErrorf("--days cannot be combined with --start-date or --end-date.")
 		return rewriteDatesOptions{}, false
 	}
 	if opts.untilDate != "" && opts.days == 0 {
-		a.error("--until requires --days.")
+		a.plainErrorf("--until requires --days.")
 		return rewriteDatesOptions{}, false
 	}
 	if !validRewriteDateProfileLevel(opts.frequency) {
-		a.error("--frequency must be low, medium, or high.")
+		a.plainErrorf("--frequency must be low, medium, or high.")
 		return rewriteDatesOptions{}, false
 	}
 	if !validRewriteDateProfileLevel(opts.spread) {
-		a.error("--spread must be low, medium, or high.")
+		a.plainErrorf("--spread must be low, medium, or high.")
 		return rewriteDatesOptions{}, false
 	}
 	if opts.window != "" {
 		parsed, err := parseCommitTimeSchedule(opts.window)
 		if err != nil {
-			a.errorf("--window %s.", err.Error())
+			a.plainErrorf("--window %s.", err.Error())
 			return rewriteDatesOptions{}, false
 		}
 		opts.timeSchedule = &parsed

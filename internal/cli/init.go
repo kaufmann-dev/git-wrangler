@@ -65,7 +65,7 @@ func runInit(a *app, opts initOptions) int {
 		}
 	}
 	if !keyringAvailable && credentials.ResolveGitHubToken(a.creds, cfg.GitHub.Host).Value == "" {
-		a.warn("Secure credential storage is unavailable, so Git Wrangler skipped GitHub authentication setup. Set GIT_WRANGLER_GITHUB_TOKEN instead.")
+		renderWarning(a, "Secure credential storage is unavailable, so Git Wrangler skipped GitHub authentication setup. Set GIT_WRANGLER_GITHUB_TOKEN instead.")
 	}
 
 	fmt.Fprintln(a.stdout)
@@ -123,7 +123,7 @@ func runInit(a *app, opts initOptions) int {
 		if cfg.AI.Provider == config.DefaultAIProvider {
 			guidance = "Secure credential storage is unavailable, so Git Wrangler skipped AI API key setup. Set GIT_WRANGLER_AI_API_KEY or OPENAI_API_KEY instead."
 		}
-		a.warn(guidance)
+		renderWarning(a, guidance)
 	}
 	if err := config.Save(cfg); err != nil {
 		a.plainErrorf("%s", err.Error())

@@ -55,7 +55,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	failed := 0
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Inspecting repositories", len(repos)), func(r repo) infoResult {
 		if failure, ok := fetchFailures[r.dir]; ok {
-			return infoErrorResult(a, r, "Could not fetch origin", fmt.Errorf("%s", fetchFailureMessage(failure)))
+			return infoErrorResult(r, "could not fetch origin", fmt.Errorf("%s", fetchFailureMessage(failure)))
 		}
 		return collectInfo(a, r)
 	})
@@ -64,10 +64,8 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	}
 	for _, result := range results {
 		fmt.Fprint(a.stdout, result.stdout)
-		if result.stderr != "" {
-			fmt.Fprint(a.stderr, result.stderr)
-		}
 		if result.failed {
+			renderErrorBlock(a, result.repo.display+": "+result.errLabel, result.err.Error())
 			statusCode = 1
 			failed++
 		}
@@ -197,21 +195,21 @@ func runInfoJSON(a *app, opts infoOptions) int {
 }
 
 type infoResult struct {
-	stdout string
-	stderr string
-	failed bool
+	repo     repo
+	stdout   string
+	errLabel string
+	err      error
+	failed   bool
 }
 
-func infoErrorResult(a *app, r repo, label string, err error) infoResult {
-	var stderr bytes.Buffer
-	fmt.Fprintf(&stderr, "%sError: %s for %s:\n%s%s\n\n", a.ui.Red, label, r.display, err.Error(), a.ui.Reset)
-	return infoResult{stderr: stderr.String(), failed: true}
+func infoErrorResult(r repo, label string, err error) infoResult {
+	return infoResult{repo: r, errLabel: label, err: err, failed: true}
 }
 
 func collectInfo(a *app, r repo) infoResult {
 	var stdout bytes.Buffer
 	errorf := func(label string, err error) infoResult {
-		result := infoErrorResult(a, r, label, err)
+		result := infoErrorResult(r, label, err)
 		result.stdout = stdout.String()
 		return result
 	}
@@ -219,7 +217,7 @@ func collectInfo(a *app, r repo) infoResult {
 	fmt.Fprintf(&stdout, "Repository:         %s%s%s\n", a.ui.RepoColor, r.display, a.ui.Reset)
 	status, err := a.git.StatusPorcelain(a.ctx, r.dir)
 	if err != nil {
-		return errorf("Could not inspect status", err)
+		return errorf("could not inspect status", err)
 	}
 	if strings.TrimSpace(status) == "" {
 		fmt.Fprintf(&stdout, "Status:             %sClean%s\n", a.ui.Green, a.ui.Reset)
@@ -229,7 +227,7 @@ func collectInfo(a *app, r repo) infoResult {
 	writeLicenseInfo(&stdout, a, r.dir)
 	branch, err := a.git.CurrentBranch(a.ctx, r.dir)
 	if err != nil {
-		return errorf("Could not inspect branch", err)
+		return errorf("could not inspect branch", err)
 	}
 	fmt.Fprintf(&stdout, "Current branch:     %s\n", strings.TrimSpace(branch))
 	hasCommits := a.git.HasHead(a.ctx, r.dir)
@@ -240,14 +238,14 @@ func collectInfo(a *app, r repo) infoResult {
 		fmt.Fprintln(&stdout, "Ahead/behind:       No upstream set")
 	}
 	if err := writeBranches(&stdout, a, r.dir); err != nil {
-		return errorf("Could not inspect branches", err)
+		return errorf("could not inspect branches", err)
 	}
 	if err := writeRemotes(&stdout, a, r.dir); err != nil {
-		return errorf("Could not inspect remotes", err)
+		return errorf("could not inspect remotes", err)
 	}
 	initial, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--reverse", "--format=%ci - %s")
 	if err != nil && hasCommits {
-		return errorf("Could not inspect initial commit", err)
+		return errorf("could not inspect initial commit", err)
 	}
 	if hasCommits && strings.TrimSpace(initial) != "" {
 		fmt.Fprintf(&stdout, "Initial commit:     %s\n", firstLine(initial))
@@ -256,35 +254,31 @@ func collectInfo(a *app, r repo) infoResult {
 	}
 	commitCount, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count")
 	if err != nil {
-		return errorf("Could not count commits", err)
+		return errorf("could not count commits", err)
 	}
 	fmt.Fprintf(&stdout, "Total commits:      %s\n", strings.TrimSpace(commitCount))
 	lastMonth, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "--since=1 month ago", "--format=%ci")
 	if err != nil && hasCommits {
-		return errorf("Could not inspect recent commits", err)
+		return errorf("could not inspect recent commits", err)
 	}
 	fmt.Fprintf(&stdout, "Commits last month: %d\n", len(splitLines(lastMonth)))
 	last, err := a.git.Stdout(a.ctx, r.dir, nil, "log", "-1", "--format=%ci - %s")
 	if err != nil && hasCommits {
-		return errorf("Could not inspect last commit", err)
+		return errorf("could not inspect last commit", err)
 	}
 	fmt.Fprintf(&stdout, "Last commit:        %s\n", strings.TrimSpace(last))
 	if hasCommits {
 		if err := writeTopAuthors(&stdout, a, r.dir); err != nil {
-			return errorf("Could not inspect authors", err)
+			return errorf("could not inspect authors", err)
 		}
 	} else {
 		fmt.Fprintln(&stdout, "Top authors:        None (repository is empty)")
 	}
 	if err := writeLargestFiles(&stdout, a, r.dir); err != nil {
-		return errorf("Could not inspect largest files", err)
+		return errorf("could not inspect largest files", err)
 	}
 	fmt.Fprintln(&stdout)
-	return infoResult{stdout: stdout.String()}
-}
-
-func printLicenseInfo(a *app, dir string) {
-	writeLicenseInfo(a.stdout, a, dir)
+	return infoResult{repo: r, stdout: stdout.String()}
 }
 
 func writeLicenseInfo(w io.Writer, a *app, dir string) {
@@ -300,10 +294,6 @@ func writeLicenseInfo(w io.Writer, a *app, dir string) {
 	} else {
 		fmt.Fprintf(w, "%s'%s'%s\n", a.ui.Green, truncate(line, 70), a.ui.Reset)
 	}
-}
-
-func printBranches(a *app, dir string) error {
-	return writeBranches(a.stdout, a, dir)
 }
 
 func writeBranches(w io.Writer, a *app, dir string) error {
@@ -333,10 +323,6 @@ func writeBranches(w io.Writer, a *app, dir string) error {
 		fmt.Fprintln(w)
 	}
 	return nil
-}
-
-func printRemotes(a *app, dir string) error {
-	return writeRemotes(a.stdout, a, dir)
 }
 
 func writeRemotes(w io.Writer, a *app, dir string) error {
@@ -374,10 +360,6 @@ func infoRemotes(a *app, dir string) ([]string, error) {
 	}
 	sort.Strings(remotes)
 	return remotes, nil
-}
-
-func printTopAuthors(a *app, dir string) error {
-	return writeTopAuthors(a.stdout, a, dir)
 }
 
 func writeTopAuthors(w io.Writer, a *app, dir string) error {
@@ -419,10 +401,6 @@ func writeTopAuthors(w io.Writer, a *app, dir string) error {
 type largestFileRow struct {
 	size int64
 	path string
-}
-
-func printLargestFiles(a *app, dir string) error {
-	return writeLargestFiles(a.stdout, a, dir)
 }
 
 func writeLargestFiles(w io.Writer, a *app, dir string) error {
