@@ -248,6 +248,8 @@ func TestCommitFlagValidation(t *testing.T) {
 		want string
 	}{
 		{[]string{"commit", "--rpm", "0"}, "--rpm must be a positive integer"},
+		{[]string{"commit", "--concurrency", "0"}, "--concurrency must be a positive integer"},
+		{[]string{"commit", "--concurrency", "65"}, "--concurrency must be 64 or less"},
 		{[]string{"commit", "--timeout", "0"}, "--timeout must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer

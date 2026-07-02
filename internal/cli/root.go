@@ -195,6 +195,7 @@ func newRootCommand(a *app) *cobra.Command {
 		command(a, "commit", "Generate and create one Conventional Commit per changed repository.", "local", runCommit, flags{
 			repoFlag(),
 			intFlag("rpm", 300, "Maximum API requests to start per minute."),
+			intFlag("concurrency", 8, "Maximum in-flight API requests."),
 			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("body", "Generate commit message bodies."),
 			boolFlag("yes", "Skip confirmation prompts."),
