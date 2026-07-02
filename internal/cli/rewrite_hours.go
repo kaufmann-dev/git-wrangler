@@ -90,7 +90,7 @@ func runRewriteHours(a *app, cmd *cobra.Command, args []string) int {
 func rewriteHoursOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteHoursOptions, bool) {
 	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
-		a.error(err.Error())
+		a.plainErrorf("%s", err.Error())
 		return rewriteHoursOptions{}, false
 	}
 	opts := rewriteHoursOptions{
@@ -101,16 +101,16 @@ func rewriteHoursOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteHoursOpt
 		window:       stringFlagValue(cmd, "window"),
 	}
 	if strings.TrimSpace(opts.window) == "" {
-		a.error("--window is required.")
+		a.plainErrorf("--window is required.")
 		return rewriteHoursOptions{}, false
 	}
 	parsed, err := parseCommitTimeSchedule(opts.window)
 	if err != nil {
-		a.errorf("--window %s.", err.Error())
+		a.plainErrorf("--window %s.", err.Error())
 		return rewriteHoursOptions{}, false
 	}
 	if parsed.empty() {
-		a.error("--window must assign at least one day.")
+		a.plainErrorf("--window must assign at least one day.")
 		return rewriteHoursOptions{}, false
 	}
 	opts.timeSchedule = parsed

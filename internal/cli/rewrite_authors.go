@@ -35,7 +35,7 @@ type rewriteAuthorsOptions struct {
 func rewriteAuthorsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteAuthorsOptions, bool) {
 	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
-		a.error(err.Error())
+		a.plainErrorf("%s", err.Error())
 		return rewriteAuthorsOptions{}, false
 	}
 	newName, ok := requiredStringFlag(a, cmd, "name", "New author and committer name: ")

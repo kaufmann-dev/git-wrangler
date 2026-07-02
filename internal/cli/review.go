@@ -60,11 +60,11 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 	failed := 0
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
 		if failure, ok := fetchFailures[r.dir]; ok {
-			return reviewResult{repo: r, err: fmt.Errorf("%s", fetchFailureMessage(failure)), errMessage: "Could not fetch origin"}
+			return reviewResult{repo: r, err: fmt.Errorf("%s", fetchFailureMessage(failure)), errMessage: "could not fetch origin"}
 		}
 		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
 		if err != nil {
-			return reviewResult{repo: r, err: err, errMessage: "Could not list unpushed commits"}
+			return reviewResult{repo: r, err: err, errMessage: "could not list unpushed commits"}
 		}
 		commits := splitLines(unpushed)
 		if len(commits) == 0 {
@@ -78,7 +78,7 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		}
 		diff, err := a.git.Stdout(a.ctx, r.dir, nil, "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
 		if err != nil {
-			return reviewResult{repo: r, err: err, errMessage: "Could not inspect unpushed diff"}
+			return reviewResult{repo: r, err: err, errMessage: "could not inspect unpushed diff"}
 		}
 		added, modified, deleted := parseNameStatusZ(diff)
 		if len(added) == 0 && len(modified) == 0 && len(deleted) == 0 {
