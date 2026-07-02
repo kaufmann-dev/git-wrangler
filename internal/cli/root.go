@@ -186,11 +186,11 @@ func writeJSON(a *app, payload any) int {
 	return 0
 }
 
-func writeJSONStatus(a *app, payload any, code int) int {
+func writeJSONStatus(a *app, payload any) int {
 	if errCode := writeJSON(a, payload); errCode != 0 {
 		return errCode
 	}
-	return code
+	return 1
 }
 
 func commandExitError(a *app, code int) error {

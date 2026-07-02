@@ -433,7 +433,7 @@ func dominantCurrentPlanningTimezoneOffset(candidates []dateCandidate, selected 
 			counts[offset]++
 		}
 	}
-	offset, _ := dominantTimezoneOffsetFromCounts(counts)
+	offset := dominantTimezoneOffsetFromCounts(counts)
 	return offset
 }
 
@@ -444,7 +444,7 @@ func dominantCurrentTimezoneOffsetFromCommits(commits []rewriteDateCommit) strin
 			counts[commit.authorTZ]++
 		}
 	}
-	offset, _ := dominantTimezoneOffsetFromCounts(counts)
+	offset := dominantTimezoneOffsetFromCounts(counts)
 	return offset
 }
 
@@ -476,7 +476,7 @@ func renderRewriteHourPlan(a *app, plan hourRewritePlan) {
 				break
 			}
 			commit := candidate.commits[commitIndex]
-			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(commit.hash, 8), formatEpoch(commit.authorEpoch, commit.authorTZ), formatEpoch(commit.plannedEpoch, candidate.tzOffset))
+			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(commit.hash), formatEpoch(commit.authorEpoch, commit.authorTZ), formatEpoch(commit.plannedEpoch, candidate.tzOffset))
 		}
 		fmt.Fprintln(a.stdout)
 	}

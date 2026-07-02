@@ -85,7 +85,7 @@ func runInfoJSON(a *app, opts infoOptions) int {
 			"ok":      false,
 			"summary": map[string]any{"repositories": 0, "failed": 1},
 			"error":   jsonError{Message: "'git' is required for info. Install it and make sure it is on PATH."},
-		}, 1)
+		})
 	}
 	repos, err := opts.target.repositories()
 	if err != nil {
@@ -93,7 +93,7 @@ func runInfoJSON(a *app, opts infoOptions) int {
 			"ok":      false,
 			"summary": map[string]any{"repositories": 0, "failed": 1},
 			"error":   jsonError{Message: err.Error()},
-		}, 1)
+		})
 	}
 	fetchFailures := map[string]originRefreshResult{}
 	if !opts.fetch.noFetch {
@@ -103,7 +103,7 @@ func runInfoJSON(a *app, opts infoOptions) int {
 				"ok":      false,
 				"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
 				"error":   jsonError{Message: "operation cancelled"},
-			}, 1)
+			})
 		}
 	}
 	type infoJSONRepo struct {
@@ -174,7 +174,7 @@ func runInfoJSON(a *app, opts infoOptions) int {
 			"ok":      false,
 			"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
 			"error":   jsonError{Message: "operation cancelled"},
-		}, 1)
+		})
 	}
 	failed := 0
 	for _, result := range results {

@@ -105,7 +105,7 @@ func runStatusJSON(a *app, opts statusOptions) int {
 			"ok":      false,
 			"summary": map[string]any{"repositories": 0, "failed": 1},
 			"error":   jsonError{Message: "'git' is required for status. Install it and make sure it is on PATH."},
-		}, 1)
+		})
 	}
 	repos, err := opts.target.repositories()
 	if err != nil {
@@ -113,7 +113,7 @@ func runStatusJSON(a *app, opts statusOptions) int {
 			"ok":      false,
 			"summary": map[string]any{"repositories": 0, "failed": 1},
 			"error":   jsonError{Message: err.Error()},
-		}, 1)
+		})
 	}
 	fetchFailures := map[string]originRefreshResult{}
 	if !opts.fetch.noFetch {
@@ -123,7 +123,7 @@ func runStatusJSON(a *app, opts statusOptions) int {
 				"ok":      false,
 				"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
 				"error":   jsonError{Message: "operation cancelled"},
-			}, 1)
+			})
 		}
 	}
 	type statusJSONRepo struct {

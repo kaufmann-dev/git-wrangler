@@ -375,7 +375,7 @@ func renderLogTable(a *app, entries []logEntry, multiRepo bool) {
 	for _, entry := range entries {
 		row := []string{
 			entry.date.In(time.Local).Format("2006-01-02"),
-			prefix(entry.hash, 8),
+			prefix(entry.hash),
 			logTypeCell(a, entry.parsed),
 			logScopeCell(entry.parsed),
 			logSubjectCell(entry),
@@ -384,7 +384,7 @@ func renderLogTable(a *app, entries []logEntry, multiRepo bool) {
 			row = []string{
 				entry.date.In(time.Local).Format("2006-01-02"),
 				entry.repo.display,
-				prefix(entry.hash, 8),
+				prefix(entry.hash),
 				logTypeCell(a, entry.parsed),
 				logScopeCell(entry.parsed),
 				logSubjectCell(entry),
