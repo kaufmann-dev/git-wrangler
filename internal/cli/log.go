@@ -426,7 +426,7 @@ func logTypeColor(a *app, typ string) string {
 	case "chore":
 		return logRGB(38, 166, 154)
 	default:
-		return a.ui.Muted
+		return ""
 	}
 }
 
