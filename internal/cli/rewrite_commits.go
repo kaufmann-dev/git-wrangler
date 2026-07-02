@@ -245,7 +245,7 @@ func applyAIPlan(a *app, plan *ai.Plan, filterCmd []string) int {
 			succeededCommits += result.plan.ChangedCount
 			continue
 		}
-		renderErrorBlock(a, result.plan.Name+": could not rewrite commit messages", result.output)
+		renderErrorBlock(a, result.plan.Name+": could not rewrite commit messages", outputOrError(result.output, result.err))
 		if result.restoreErr != nil {
 			renderErrorBlock(a, result.plan.Name+": commit rewrite failed, and origin could not be restored", result.restoreErr.Error())
 		}

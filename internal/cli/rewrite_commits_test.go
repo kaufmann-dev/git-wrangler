@@ -145,3 +145,32 @@ func TestApplyAIPlanRunsFilterRepoInParallelWithOrderedOutput(t *testing.T) {
 		t.Fatalf("per-repository success output was printed:\n%s", out)
 	}
 }
+
+func TestApplyAIPlanReportsUnderlyingErrorWhenOutputIsEmpty(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		if strings.HasPrefix(joined, "git update-ref refs/git-wrangler/baseline-capture/") {
+			return "", "", errors.New("update-ref failed")
+		}
+		return "", "", errors.New("unexpected command: " + joined)
+	}}
+	var stdout, stderr bytes.Buffer
+	gitDir := filepath.Join(t.TempDir(), ".git")
+	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
+
+	status := applyAIPlan(a, &ai.Plan{Repos: []ai.RepoPlan{{
+		Dir:           "repo",
+		Name:          "repo",
+		GitDir:        gitDir,
+		CallbackFile:  "callback.py",
+		ChangedCount:  1,
+		ChangedHashes: []string{"abcdef1234567890"},
+	}}}, []string{"git-filter-repo"})
+	if status == 0 {
+		t.Fatal("expected apply failure")
+	}
+	if !strings.Contains(stderr.String(), "update-ref failed") {
+		t.Fatalf("missing underlying error:\n%s", stderr.String())
+	}
+}

@@ -32,6 +32,7 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	type renameBranchResult struct {
 		repo       repo
 		out        string
+		err        error
 		message    string
 		failed     bool
 		accessible bool
@@ -46,7 +47,7 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			return renameBranchResult{repo: r, failed: true, message: fmt.Sprintf("Error: Directory is inaccessible: %s", r.display)}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
-			return renameBranchResult{repo: r, out: out, failed: true, accessible: true}
+			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true}
 		}
 		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+oldBranch) {
 			return renameBranchResult{repo: r, message: fmt.Sprintf("old branch '%s' does not exist", oldBranch), accessible: true, validRepo: true}
@@ -57,7 +58,7 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", oldBranch, newBranch); err == nil {
 			return renameBranchResult{repo: r, message: fmt.Sprintf("Branch renamed from '%s' to '%s' for %s", oldBranch, newBranch, r.display), accessible: true, validRepo: true}
 		} else {
-			return renameBranchResult{repo: r, out: out, failed: true, accessible: true, validRepo: true}
+			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true, validRepo: true}
 		}
 	})
 	if interrupted(a) {
@@ -70,11 +71,11 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			status = 1
 			failed++
 		case result.failed && !result.validRepo:
-			renderErrorBlock(a, result.repo.display+": not a valid git repository", result.out)
+			renderErrorBlock(a, result.repo.display+": not a valid git repository", outputOrError(result.out, result.err))
 			status = 1
 			failed++
 		case result.failed:
-			renderErrorBlock(a, result.repo.display+": failed to rename branch", result.out)
+			renderErrorBlock(a, result.repo.display+": failed to rename branch", outputOrError(result.out, result.err))
 			status = 1
 			failed++
 		case strings.HasPrefix(result.message, "Branch renamed"):

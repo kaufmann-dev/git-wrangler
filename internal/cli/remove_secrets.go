@@ -161,7 +161,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			rewritten++
 			continue
 		}
-		renderErrorBlock(a, r.display+": rewrite failed", result.output)
+		renderErrorBlock(a, r.display+": rewrite failed", outputOrError(result.output, result.err))
 		if result.restoreErr != nil {
 			renderErrorBlock(a, r.display+": rewrite failed, and origin could not be restored", result.restoreErr.Error())
 		}
