@@ -398,36 +398,32 @@ func logTypeCell(a *app, commit conventional.Commit) string {
 	return logTypeColor(a, commit.Type) + label + a.ui.Reset
 }
 
+var logTypePalettes = map[string][2]string{
+	"feat":     {logRGB(63, 185, 80), logRGB(26, 127, 55)},
+	"perf":     {logRGB(126, 231, 135), logRGB(17, 99, 41)},
+	"fix":      {logRGB(248, 81, 73), logRGB(207, 34, 46)},
+	"revert":   {logRGB(255, 148, 146), logRGB(164, 14, 38)},
+	"docs":     {logRGB(88, 166, 255), logRGB(9, 105, 218)},
+	"test":     {logRGB(210, 168, 255), logRGB(130, 80, 223)},
+	"build":    {logRGB(227, 179, 65), logRGB(154, 103, 0)},
+	"ci":       {logRGB(57, 197, 207), logRGB(27, 124, 131)},
+	"style":    {logRGB(219, 97, 162), logRGB(191, 57, 137)},
+	"refactor": {logRGB(240, 136, 62), logRGB(188, 76, 0)},
+	"chore":    {logRGB(38, 166, 154), logRGB(0, 121, 107)},
+}
+
 func logTypeColor(a *app, typ string) string {
 	if a.ui.Reset == "" {
 		return ""
 	}
-	switch typ {
-	case "feat":
-		return logRGB(63, 185, 80)
-	case "perf":
-		return logRGB(126, 231, 135)
-	case "fix":
-		return logRGB(248, 81, 73)
-	case "revert":
-		return logRGB(255, 148, 146)
-	case "docs":
-		return logRGB(88, 166, 255)
-	case "test":
-		return logRGB(210, 168, 255)
-	case "build":
-		return logRGB(227, 179, 65)
-	case "ci":
-		return logRGB(57, 197, 207)
-	case "style":
-		return logRGB(219, 97, 162)
-	case "refactor":
-		return logRGB(240, 136, 62)
-	case "chore":
-		return logRGB(38, 166, 154)
-	default:
+	palette, ok := logTypePalettes[typ]
+	if !ok {
 		return ""
 	}
+	if a.ui.Dark {
+		return palette[0]
+	}
+	return palette[1]
 }
 
 func logRGB(r, g, b int) string {

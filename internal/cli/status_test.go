@@ -189,7 +189,7 @@ func stripColor(s string) string {
 	s = strings.ReplaceAll(s, "\x1b[33m", "") // yellow
 	s = strings.ReplaceAll(s, "\x1b[31m", "") // red
 	s = strings.ReplaceAll(s, "\x1b[36m", "") // cyan
-	s = strings.ReplaceAll(s, "\x1b[38;2;139;148;158m", "") // gray/muted
+	s = strings.ReplaceAll(s, "\x1b[2m", "")  // dim/muted
 	s = strings.ReplaceAll(s, "\x1b[0m", "")  // reset
 	return s
 }
