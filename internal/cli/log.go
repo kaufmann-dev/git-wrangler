@@ -399,30 +399,39 @@ func logTypeCell(a *app, commit conventional.Commit) string {
 }
 
 func logTypeColor(a *app, typ string) string {
+	if a.ui.Reset == "" {
+		return ""
+	}
 	switch typ {
 	case "feat":
-		return a.ui.Green
+		return logRGB(63, 185, 80)
 	case "perf":
-		return a.ui.BrightGreen
+		return logRGB(126, 231, 135)
 	case "fix":
-		return a.ui.Red
+		return logRGB(248, 81, 73)
 	case "revert":
-		return a.ui.BrightRed
+		return logRGB(255, 148, 146)
 	case "docs":
-		return a.ui.Cyan
+		return logRGB(88, 166, 255)
 	case "test":
-		return a.ui.BrightCyan
+		return logRGB(210, 168, 255)
 	case "build":
-		return a.ui.Blue
+		return logRGB(227, 179, 65)
 	case "ci":
-		return a.ui.BrightBlue
+		return logRGB(57, 197, 207)
 	case "style":
-		return a.ui.Magenta
+		return logRGB(219, 97, 162)
 	case "refactor":
-		return a.ui.Yellow
+		return logRGB(240, 136, 62)
+	case "chore":
+		return logRGB(38, 166, 154)
 	default:
 		return a.ui.Muted
 	}
+}
+
+func logRGB(r, g, b int) string {
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b)
 }
 
 func logScopeCell(commit conventional.Commit) string {
