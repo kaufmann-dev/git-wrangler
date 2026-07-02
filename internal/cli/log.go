@@ -402,14 +402,14 @@ var logTypePalettes = map[string][2]string{
 	"feat":     {logRGB(63, 185, 80), logRGB(26, 127, 55)},
 	"perf":     {logRGB(126, 231, 135), logRGB(17, 99, 41)},
 	"fix":      {logRGB(248, 81, 73), logRGB(207, 34, 46)},
-	"revert":   {logRGB(255, 148, 146), logRGB(164, 14, 38)},
+	"revert":   {logRGB(255, 148, 146), logRGB(130, 7, 30)},
 	"docs":     {logRGB(88, 166, 255), logRGB(9, 105, 218)},
 	"test":     {logRGB(210, 168, 255), logRGB(130, 80, 223)},
 	"build":    {logRGB(227, 179, 65), logRGB(154, 103, 0)},
 	"ci":       {logRGB(57, 197, 207), logRGB(27, 124, 131)},
 	"style":    {logRGB(219, 97, 162), logRGB(191, 57, 137)},
 	"refactor": {logRGB(240, 136, 62), logRGB(188, 76, 0)},
-	"chore":    {logRGB(38, 166, 154), logRGB(0, 121, 107)},
+	"chore":    {logRGB(184, 187, 38), logRGB(92, 110, 0)},
 }
 
 func logTypeColor(a *app, typ string) string {
