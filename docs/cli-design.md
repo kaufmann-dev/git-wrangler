@@ -128,7 +128,7 @@ Show `Scanning activity` progress without fetching. After progress closes, print
 
 ### `log`
 
-Show `Scanning log` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then a dense date-descending table. Multi-repository output includes `Date`, `Repository`, `Hash`, `Type`, `Scope`, and `Subject`; single-repository output omits `Repository`. `--summary` prints compact counts before the table. Use `other` for non-conventional subjects, `-` for missing scope, and inline `!` on breaking Conventional Commits.
+Show `Scanning log` progress without fetching. After progress closes, print fallback warnings and per-repository error blocks, then a dense date-descending table. Multi-repository output includes `Date`, `Repository`, `Hash`, `Type`, `Scope`, and `Subject`; single-repository output omits `Repository`. `--summary` prints a colored `commits`, `repository`, `failed`, `breaking` summary line followed by `Types` and `Top scopes` bar-chart sections before the table; bars share the table's type colors, sort by count descending with `other` last, and fall back to `#` in plain output. Use `other` for non-conventional subjects, `-` for missing scope, and inline `!` on breaking Conventional Commits.
 
 ### `pull`, `fetch`, and `push`
 

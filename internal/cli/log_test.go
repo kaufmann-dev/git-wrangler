@@ -238,10 +238,16 @@ func TestLogTypeOtherAndSummary(t *testing.T) {
 		t.Fatalf("log returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"Summary: 2 commits, 1 repositories, 0 failed", "Types: feat 1, other 1", "Scopes: cli 1", "Breaking: 1"} {
+	for _, want := range []string{"Summary: 2 commits, 1 repository, 0 failed, 1 breaking", "Types", "Top scopes", "feat   1  ", "other  1  ", "cli  1  "} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("summary missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Index(out, "feat   1") > strings.Index(out, "other  1") {
+		t.Fatalf("other should sort after feat:\n%s", out)
+	}
+	if !strings.Contains(out, strings.Repeat("#", 30)) {
+		t.Fatalf("summary missing full-width ascii bar:\n%s", out)
 	}
 
 	stdout.Reset()
@@ -279,7 +285,7 @@ func TestLogPerRepoFailureShowsSuccessesAndExitsNonzero(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := ExecuteWithRunner(context.Background(), runner, []string{"log", "--summary"}, strings.NewReader(""), &stdout, &stderr)
 	assertExitCode(t, err, 1)
-	if !strings.Contains(stdout.String(), "success") || !strings.Contains(stdout.String(), "Summary: 1 commits, 2 repositories, 1 failed") {
+	if !strings.Contains(stdout.String(), "success") || !strings.Contains(stdout.String(), "Summary: 1 commit, 2 repositories, 1 failed, 0 breaking") {
 		t.Fatalf("stdout missing successful partial output:\n%s", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "failed: could not scan log") || !strings.Contains(stderr.String(), "log failed") {
