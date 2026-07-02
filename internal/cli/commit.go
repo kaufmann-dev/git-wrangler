@@ -22,41 +22,48 @@ type commitAICommitResult struct {
 	stageErr bool
 }
 
+type commitOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+	ai           aiRequestOptions
+}
+
+func commitOptionsFromCommand(a *app, cmd *cobra.Command) (commitOptions, bool) {
+	opts := commitOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		ai:           aiRequestOptionsFromCommand(cmd),
+	}
+	for _, check := range []error{
+		validatePositiveIntFlag("rpm", opts.ai.rpm),
+		validatePositiveIntFlag("concurrency", opts.ai.concurrency),
+		validateMaxIntFlag("concurrency", opts.ai.concurrency, 64),
+		validatePositiveIntFlag("timeout", opts.ai.timeout),
+	} {
+		if check != nil {
+			a.plainErrorf("%s", check.Error())
+			return commitOptions{}, false
+		}
+	}
+	return opts, true
+}
+
 func runCommit(a *app, cmd *cobra.Command, args []string) int {
-	rpm, _ := cmd.Flags().GetInt("rpm")
-	concurrency, _ := cmd.Flags().GetInt("concurrency")
-	timeoutInt, _ := cmd.Flags().GetInt("timeout")
-	body, _ := cmd.Flags().GetBool("body")
-	yes := yesFlag(cmd)
-
-	if rpm <= 0 {
-		a.plainErrorf("--rpm must be a positive integer.")
+	opts, ok := commitOptionsFromCommand(a, cmd)
+	if !ok {
 		return 1
 	}
-	if concurrency <= 0 {
-		a.plainErrorf("--concurrency must be a positive integer.")
-		return 1
-	}
-	if concurrency > 64 {
-		a.plainErrorf("--concurrency must be 64 or less.")
-		return 1
-	}
-	if timeoutInt <= 0 {
-		a.plainErrorf("--timeout must be a positive integer.")
-		return 1
-	}
-
 	settings, ok := loadAISettings(a)
 	if !ok {
 		return 1
 	}
-	if !preflightAI(a, settings, time.Duration(timeoutInt)*time.Second) {
+	if !preflightAI(a, settings, time.Duration(opts.ai.timeout)*time.Second) {
 		return 1
 	}
 	if !requireGit(a, "commit") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -90,7 +97,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		"Content: file paths, stats, and redacted staged diff snippets",
 		"Secrets: API keys are not sent in commit context",
 	}
-	if body {
+	if opts.ai.body {
 		bodyLines = append(bodyLines, "Messages: subject and body")
 	}
 	renderNotice(a, "Data Send Notice", []keyValueRow{
@@ -100,7 +107,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		{key: "Context", value: "automatic, bounded request packing"},
 		{key: "API batches", value: fmt.Sprintf("%d", ai.RequestBatchCount(inputsFromChanges(changes), 4))},
 	}, bodyLines)
-	confirmation := confirmOrSkip(a, yes, "Send this data to the configured API endpoint?")
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, "Send this data to the configured API endpoint?")
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
@@ -120,10 +127,10 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		APIKey:      settings.APIKey,
 		Headers:     settings.Headers,
 		BatchSize:   4,
-		RPM:         rpm,
-		Concurrency: concurrency,
-		Timeout:     time.Duration(timeoutInt) * time.Second,
-		Body:        body,
+		RPM:         opts.ai.rpm,
+		Concurrency: opts.ai.concurrency,
+		Timeout:     time.Duration(opts.ai.timeout) * time.Second,
+		Body:        opts.ai.body,
 		Git:         a.git,
 		Progress: func(event ai.ProgressEvent) {
 			if event.Phase != "Sending API requests" {
@@ -156,7 +163,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "add", "-A"); err != nil {
 			return commitAICommitResult{change: change, out: out, err: err, stageErr: true}
 		}
-		if body {
+		if opts.ai.body {
 			if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject, "-m", message.Body); err == nil {
 				return commitAICommitResult{change: change, out: out}
 			} else {

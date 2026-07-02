@@ -14,30 +14,44 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runClone(a *app, cmd *cobra.Command, args []string) int {
-	visibility, _ := cmd.Flags().GetString("visibility")
-	user, _ := cmd.Flags().GetString("user")
-	limitInt, _ := cmd.Flags().GetInt("limit")
-	into, _ := cmd.Flags().GetString("into")
+type cloneOptions struct {
+	visibility string
+	user       string
+	limit      int
+	into       string
+}
 
-	var ok bool
-	user, ok = requiredStringFlag(a, cmd, "user", "GitHub user or organization: ")
+func cloneOptionsFromCommand(a *app, cmd *cobra.Command) (cloneOptions, bool) {
+	user, ok := requiredStringFlag(a, cmd, "user", "GitHub user or organization: ")
+	if !ok {
+		return cloneOptions{}, false
+	}
+	return cloneOptions{
+		visibility: stringFlagValue(cmd, "visibility"),
+		user:       user,
+		limit:      intFlagValue(cmd, "limit"),
+		into:       stringFlagValue(cmd, "into"),
+	}, true
+}
+
+func runClone(a *app, cmd *cobra.Command, args []string) int {
+	opts, ok := cloneOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
 	if !requireCommand(a, "gh", "clone") || !requireGit(a, "clone") {
 		return 1
 	}
-	if limitInt < 1 {
+	if opts.limit < 1 {
 		a.error("--limit must be 1 or greater.")
 		return 1
 	}
-	if visibility != "all" && visibility != "public" && visibility != "private" {
+	if !validateStringEnum(opts.visibility, "all", "public", "private") {
 		a.error("Invalid visibility option. Use 'all', 'public', or 'private'.")
 		return 1
 	}
 	ghEnv := githubcli.UnauthenticatedEnv()
-	if visibility == "private" || visibility == "all" {
+	if opts.visibility == "private" || opts.visibility == "all" {
 		resolvedEnv, authSource, ok, err := githubAuthEnv(a)
 		if err != nil {
 			if errors.Is(err, errGitHubCredentialStorageUnavailable) {
@@ -48,41 +62,41 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 			return 1
 		}
 		if !ok {
-			a.errorf("Git Wrangler GitHub auth is required for %s repository cloning. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.", visibility)
+			a.errorf("Git Wrangler GitHub auth is required for %s repository cloning. Run 'git-wrangler init' or 'git-wrangler config set github.auth'.", opts.visibility)
 			return 1
 		}
 		ghEnv = resolvedEnv
 		renderStatusLine(a, a.stdout, statusInfo, "GitHub auth", string(authSource))
 	}
 
-	listArgs := githubcli.RepoListArgs(user, visibility, "1")
+	listArgs := githubcli.RepoListArgs(opts.user, opts.visibility, "1")
 	out, err := stdoutGitHubWithRetry(a, "", ghEnv, listArgs...)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
 		return 1
 	}
 	if lineCount(out) == 0 {
-		if visibility == "public" || visibility == "private" {
-			a.errorf("No %s repositories found for '%s'.", visibility, user)
+		if opts.visibility == "public" || opts.visibility == "private" {
+			a.errorf("No %s repositories found for '%s'.", opts.visibility, opts.user)
 		} else {
-			a.errorf("No repositories found for '%s'.", user)
+			a.errorf("No repositories found for '%s'.", opts.user)
 		}
 		return 1
 	}
 
-	if into == "" {
-		into = user
+	if opts.into == "" {
+		opts.into = opts.user
 	}
-	if info, err := os.Stat(into); err == nil && !info.IsDir() {
-		a.errorf("Unable to create or access the specified directory '%s'.", into)
+	if info, err := os.Stat(opts.into); err == nil && !info.IsDir() {
+		a.errorf("Unable to create or access the specified directory '%s'.", opts.into)
 		return 1
 	}
-	if err := os.MkdirAll(into, 0o755); err != nil {
-		a.errorf("Unable to create or access the specified directory '%s'.", into)
+	if err := os.MkdirAll(opts.into, 0o755); err != nil {
+		a.errorf("Unable to create or access the specified directory '%s'.", opts.into)
 		return 1
 	}
 
-	listArgs = githubcli.RepoListArgs(user, visibility, strconv.Itoa(limitInt))
+	listArgs = githubcli.RepoListArgs(opts.user, opts.visibility, strconv.Itoa(opts.limit))
 	reposOut, err := stdoutGitHubWithRetry(a, "", ghEnv, listArgs...)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%sError: Failed to list repositories:\n%s%s\n\n", a.ui.Red, err.Error(), a.ui.Reset)
@@ -101,7 +115,7 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		progress.start(fields[0])
-		result := cloneRepository(a, ghEnv, fields[0], into)
+		result := cloneRepository(a, ghEnv, fields[0], opts.into)
 		progress.advance(fields[0])
 		results = append(results, result)
 	}

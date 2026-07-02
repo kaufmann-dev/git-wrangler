@@ -8,17 +8,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runLicense(a *app, cmd *cobra.Command, args []string) int {
+type licenseOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+	holder       string
+	overwrite    bool
+}
+
+func licenseOptionsFromCommand(a *app, cmd *cobra.Command) (licenseOptions, bool) {
 	holder, ok := requiredStringFlag(a, cmd, "name", "Copyright holder name: ")
-	overwrite, _ := cmd.Flags().GetBool("overwrite")
-	yes := yesFlag(cmd)
+	if !ok {
+		return licenseOptions{}, false
+	}
+	return licenseOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		holder:       holder,
+		overwrite:    boolFlagValue(cmd, "overwrite"),
+	}, true
+}
+
+func runLicense(a *app, cmd *cobra.Command, args []string) int {
+	opts, ok := licenseOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
 	if !requireGit(a, "license") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -27,7 +45,7 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	overwriteCount := 0
-	if overwrite {
+	if opts.overwrite {
 		for _, r := range repos {
 			if fileExists(filepath.Join(r.dir, "LICENSE")) {
 				overwriteCount++
@@ -36,7 +54,7 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	}
 	overwriteConfirmed := true
 	if overwriteCount > 0 {
-		confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Overwrite existing LICENSE files in %d repositories?", overwriteCount))
+		confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Overwrite existing LICENSE files in %d repositories?", overwriteCount))
 		if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 			return 1
 		}
@@ -49,23 +67,23 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	failed := 0
 	for _, r := range repos {
 		path := filepath.Join(r.dir, "LICENSE")
-		if fileExists(path) && !overwrite {
+		if fileExists(path) && !opts.overwrite {
 			renderStatusLine(a, a.stdout, statusSkip, r.display, "LICENSE already exists; use --overwrite to replace it")
 			skipped++
 			continue
 		}
 		existed := fileExists(path)
-		if existed && overwrite && !overwriteConfirmed {
+		if existed && opts.overwrite && !overwriteConfirmed {
 			skipped++
 			continue
 		}
-		if err := os.WriteFile(path, []byte(mitLicense(holder)), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(mitLicense(opts.holder)), 0o644); err != nil {
 			renderErrorBlock(a, r.display+": could not write LICENSE", err.Error())
 			status = 1
 			failed++
 			continue
 		}
-		if existed && overwrite {
+		if existed && opts.overwrite {
 			overwritten++
 		} else {
 			created++

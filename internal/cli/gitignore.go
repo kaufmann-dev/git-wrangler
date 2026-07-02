@@ -10,12 +10,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type fixGitignoreOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+}
+
+func fixGitignoreOptionsFromCommand(cmd *cobra.Command) fixGitignoreOptions {
+	return fixGitignoreOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+	}
+}
+
 func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
-	yes := yesFlag(cmd)
+	opts := fixGitignoreOptionsFromCommand(cmd)
 	if !requireGit(a, "fix-gitignore") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -77,7 +89,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		return status
 	}
 	renderWarning(a, fmt.Sprintf("This operation will modify .gitignore and create commits in %d repositories.", len(applies)))
-	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Apply and commit .gitignore updates for %d repositories?", len(applies)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Apply and commit .gitignore updates for %d repositories?", len(applies)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

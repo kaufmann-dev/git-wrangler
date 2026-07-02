@@ -9,11 +9,7 @@ type originRefreshResult struct {
 }
 
 func noFetchFlagValue(cmd *cobra.Command) bool {
-	if cmd == nil || cmd.Flags().Lookup("no-fetch") == nil {
-		return false
-	}
-	value, _ := cmd.Flags().GetBool("no-fetch")
-	return value
+	return fetchOptionsFromCommand(cmd).noFetch
 }
 
 func refreshOrigin(a *app, repos []repo) []originRefreshResult {
@@ -38,7 +34,11 @@ func fetchFailureMessage(result originRefreshResult) string {
 }
 
 func refreshOriginForRewrite(a *app, cmd *cobra.Command, repos []repo) bool {
-	if noFetchFlagValue(cmd) {
+	return refreshOriginForRewriteOptions(a, fetchOptionsFromCommand(cmd), repos)
+}
+
+func refreshOriginForRewriteOptions(a *app, opts fetchOptions, repos []repo) bool {
+	if opts.noFetch {
 		renderWarning(a, "Using local remote-tracking refs without fetching first; remote-only commits may be missed.")
 		return true
 	}

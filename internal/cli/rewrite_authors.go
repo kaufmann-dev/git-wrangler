@@ -22,19 +22,43 @@ type authorApplyResult struct {
 	restoreErr error
 }
 
-func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
-	force, _ := cmd.Flags().GetBool("force")
-	yes := yesFlag(cmd)
-	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+type rewriteAuthorsOptions struct {
+	target       targetOptions
+	fetch        fetchOptions
+	confirmation confirmationOptions
+	bounds       currentRewriteDateBounds
+	name         string
+	email        string
+	force        bool
+}
+
+func rewriteAuthorsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteAuthorsOptions, bool) {
+	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
 		a.error(err.Error())
-		return 1
+		return rewriteAuthorsOptions{}, false
 	}
 	newName, ok := requiredStringFlag(a, cmd, "name", "New author and committer name: ")
 	if !ok {
-		return 1
+		return rewriteAuthorsOptions{}, false
 	}
 	newEmail, ok := requiredStringFlag(a, cmd, "email", "New author and committer email: ")
+	if !ok {
+		return rewriteAuthorsOptions{}, false
+	}
+	return rewriteAuthorsOptions{
+		target:       targetOptionsFromCommand(cmd),
+		fetch:        fetchOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		bounds:       boundOpts.bounds,
+		name:         newName,
+		email:        newEmail,
+		force:        boolFlagValue(cmd, "force"),
+	}, true
+}
+
+func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
+	opts, ok := rewriteAuthorsOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
@@ -45,7 +69,7 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -53,12 +77,12 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	if !refreshOriginForRewrite(a, cmd, repos) {
+	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
 		return 1
 	}
 	status := 0
 	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Preparing author rewrites", len(repos)), func(r repo) currentRewriteDateSelectionScan {
-		return scanCurrentRewriteDateSelection(a, r, bounds)
+		return scanCurrentRewriteDateSelection(a, r, opts.bounds)
 	})
 	if interrupted(a) {
 		return 1
@@ -93,12 +117,12 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	}
 	renderNotice(a, "Author Rewrite", []keyValueRow{
 		{key: "Repositories", value: fmt.Sprintf("%d", len(applies))},
-		{key: "New name", value: newName},
-		{key: "New email", value: newEmail},
-		{key: "Current author date filter", value: currentRewriteDateBoundsDescription(bounds)},
+		{key: "New name", value: opts.name},
+		{key: "New email", value: opts.email},
+		{key: "Current author date filter", value: currentRewriteDateBoundsDescription(opts.bounds)},
 	}, nil)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
-	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Rewrite author and committer identity in %d repositories?", len(applies)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
@@ -121,7 +145,7 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 			return authorApplyResult{apply: apply, err: fmt.Errorf("could not create author callback: %w", err)}
 		}
 		defer os.Remove(callback)
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, rewriteAuthorFilterArgs(apply.branches, callback, force), []string{"NEW_EMAIL_ENV=" + newEmail, "NEW_NAME_ENV=" + newName})
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, rewriteAuthorFilterArgs(apply.branches, callback, opts.force), []string{"NEW_EMAIL_ENV=" + opts.email, "NEW_NAME_ENV=" + opts.name})
 		if err == nil {
 			if updateErr := updateRewriteBaselineFromFilterRepoMap(apply.repo.gitDir); updateErr != nil {
 				return authorApplyResult{apply: apply, output: out, err: fmt.Errorf("could not update rewrite baseline: %w", updateErr), restoreErr: restoreErr}

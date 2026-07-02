@@ -1,0 +1,333 @@
+package cli
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/kaufmann-dev/git-wrangler/internal/version"
+	"github.com/spf13/cobra"
+)
+
+type commandRunFunc func(*app, *cobra.Command, []string) int
+
+type commandSpec struct {
+	use   string
+	short string
+	group string
+	run   commandRunFunc
+	flags flags
+}
+
+func rootCommands(a *app) []*cobra.Command {
+	specs := leadingCommandSpecs()
+	commands := make([]*cobra.Command, 0, len(specs)+4)
+	for _, spec := range specs {
+		commands = append(commands, command(a, spec))
+	}
+	commands = append(commands,
+		initCommand(a),
+		configCommand(a),
+		command(a, statusCommandSpec()),
+		versionCommand(a),
+	)
+	return commands
+}
+
+func leadingCommandSpecs() []commandSpec {
+	return []commandSpec{
+		{
+			use:   "activity",
+			short: "Show an aggregated commit activity calendar.",
+			group: "utility",
+			run:   runActivity,
+			flags: joinFlags(targetFlags(), flags{
+				intFlag("year", 0, "Only include UTC author dates in YYYY."),
+				stringArrayFlag("user", "Only include an exact author name or email. Repeatable."),
+				boolFlag("all", "Include commits reachable from all normal refs."),
+				boolFlag("global-scale", "Use one activity scale across all rendered years."),
+			}),
+		},
+		{
+			use:   "log",
+			short: "Show compact Conventional Commit-aware history.",
+			group: "utility",
+			run:   runLog,
+			flags: joinFlags(targetFlags(), flags{
+				intFlag("limit", 50, "Maximum commits to display after merging repositories; 0 means unlimited."),
+				stringFlag("since", "", "Include commits with author date on or after YYYY-MM-DD."),
+				stringFlag("until", "", "Include commits with author date on or before YYYY-MM-DD."),
+				stringArrayFlag("type", "Only include a Conventional Commit type or other. Repeatable."),
+				stringArrayFlag("scope", "Only include an exact Conventional Commit scope. Repeatable."),
+				boolFlag("summary", "Print compact history counts before entries."),
+			}),
+		},
+		{
+			use:   "clone",
+			short: "Clone multiple GitHub repositories for a user.",
+			group: "remote",
+			run:   runClone,
+			flags: flags{
+				stringFlag("visibility", "all", "Repository visibility: all, public, or private."),
+				stringFlag("user", "", "GitHub user or organization to clone from."),
+				intFlag("limit", 100, "Maximum repositories to list."),
+				stringFlag("into", "", "Directory to clone repositories into."),
+			},
+		},
+		{
+			use:   "pull",
+			short: "Pull the latest changes for target repositories.",
+			group: "remote",
+			run:   runPull,
+			flags: joinFlags(targetFlags(), flags{
+				boolFlag("rebase", "Rebase local commits while pulling."),
+				boolFlag("force", "Pass --force to git pull."),
+			}),
+		},
+		{
+			use:   "fetch",
+			short: "Fetch origin updates for target repositories.",
+			group: "remote",
+			run:   runFetch,
+			flags: joinFlags(targetFlags(), flags{
+				boolFlag("prune", "Prune remote-tracking branches that no longer exist on origin."),
+			}),
+		},
+		{
+			use:   "push",
+			short: "Push local commits to origin HEAD.",
+			group: "remote",
+			run:   runPush,
+			flags: joinFlags(targetFlags(), flags{
+				boolFlag("force", "Use --force-with-lease."),
+				boolFlag("force-unsafe", "Use raw --force after confirmation."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "rename-repo",
+			short: "Rename GitHub repositories with gh.",
+			group: "remote",
+			run:   runRenameRepo,
+			flags: joinFlags(targetFlags(), flags{
+				boolFlag("description", "Prompt for repository description updates."),
+			}),
+		},
+		{
+			use:   "commit",
+			short: "Generate and create one Conventional Commit per changed repository.",
+			group: "local",
+			run:   runCommit,
+			flags: joinFlags(targetFlags(), aiRequestFlags(), flags{
+				boolFlag("body", "Generate commit message bodies."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "fix-gitignore",
+			short: "Add missing common generated-file patterns to .gitignore.",
+			group: "local",
+			run:   runFixGitignore,
+			flags: joinFlags(targetFlags(), confirmationFlags()),
+		},
+		{
+			use:   "license",
+			short: "Add or replace MIT LICENSE files.",
+			group: "local",
+			run:   runLicense,
+			flags: joinFlags(targetFlags(), flags{
+				stringFlag("name", "", "Copyright holder name."),
+				boolFlag("overwrite", "Replace an existing LICENSE file."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "rename-branch",
+			short: "Rename a branch across repositories.",
+			group: "local",
+			run:   runRenameBranch,
+			flags: joinFlags(targetFlags(), flags{
+				stringFlag("oldbranch", "", "Existing branch name."),
+				stringFlag("newbranch", "", "New branch name."),
+			}),
+		},
+		{
+			use:   "reset",
+			short: "Reset current branches to their origin counterparts.",
+			group: "local",
+			run:   runReset,
+			flags: joinFlags(targetFlags(), confirmationFlags()),
+		},
+		{
+			use:   "review",
+			short: "Review unpushed changes across repositories.",
+			group: "local",
+			run:   runReview,
+			flags: joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+		},
+		{
+			use:   "untrack",
+			short: "Stop tracking files already covered by .gitignore.",
+			group: "local",
+			run:   runUntrack,
+			flags: joinFlags(targetFlags(), confirmationFlags()),
+		},
+		{
+			use:   "remove-secrets",
+			short: "Purge sensitive files from Git history.",
+			group: "history",
+			run:   runRemoveSecrets,
+			flags: joinFlags(targetFlags(), fetchControlFlags(), confirmationFlags()),
+		},
+		{
+			use:   "rewrite-authors",
+			short: "Rewrite author and committer identity.",
+			group: "history",
+			run:   runRewriteAuthors,
+			flags: joinFlags(flags{
+				stringFlag("name", "", "New author and committer name."),
+				stringFlag("email", "", "New author and committer email."),
+			}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), flags{
+				boolFlag("force", "Pass --force to git-filter-repo."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "rewrite-commits",
+			short: "Generate Conventional Commit messages with an OpenAI-compatible endpoint.",
+			group: "history",
+			run:   runRewriteCommits,
+			flags: joinFlags(targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), flags{
+				intFlag("batch-size", 10, "Maximum commits per API request."),
+			}, aiRequestFlags(), flags{
+				boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
+				boolFlag("require-scope", "Skip only Conventional Commits that also have a scope; implies --skip-conventional."),
+				boolFlag("body", "Generate commit message bodies."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "rewrite-hours",
+			short: "Move commit timestamps into a uniform daily time window.",
+			group: "history",
+			run:   runRewriteHours,
+			flags: joinFlags(targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), flags{
+				stringFlag("window", "", "Required same-day time window or day-of-week schedule."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "rewrite-dates",
+			short: "Redistribute commit timestamps.",
+			group: "history",
+			run:   runRewriteDates,
+			flags: joinFlags(targetFlags(), fetchControlFlags(), flags{
+				stringFlag("start-date", "", "Earliest target date in YYYY-MM-DD format."),
+				stringFlag("end-date", "", "Latest target date in YYYY-MM-DD format."),
+				stringFlag("rewrite-before", "", "Rewrite commits with current author dates before YYYY-MM-DD."),
+				stringFlag("rewrite-after", "", "Rewrite commits with current author dates on or after YYYY-MM-DD."),
+				intFlag("days", 0, "Target the last N days."),
+				stringFlag("until", "", "End date for --days in YYYY-MM-DD format. Defaults to today."),
+				stringFlag("seed", "", "Deterministic planner seed."),
+				stringFlag("frequency", "medium", "Planning frequency: low, medium, or high."),
+				stringFlag("spread", "medium", "Planning spread: low, medium, or high."),
+				stringFlag("window", "", "Use one same-day time window or day-of-week schedule."),
+			}, confirmationFlags()),
+		},
+		{
+			use:   "rollback-rewrites",
+			short: "Roll back Git Wrangler history rewrites from the shared baseline.",
+			group: "history",
+			run:   runRollbackRewrites,
+			flags: joinFlags(targetFlags(), confirmationFlags()),
+		},
+		{
+			use:   "info",
+			short: "Show detailed repository information.",
+			group: "utility",
+			run:   runInfo,
+			flags: joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+		},
+		{
+			use:   "doctor",
+			short: "Check Git Wrangler runtime dependencies.",
+			group: "utility",
+			run:   runDoctor,
+			flags: jsonFlags(),
+		},
+	}
+}
+
+func statusCommandSpec() commandSpec {
+	return commandSpec{
+		use:   "status",
+		short: "Show clean, dirty, and tracking state.",
+		group: "utility",
+		run:   runStatus,
+		flags: joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+	}
+}
+
+func command(a *app, spec commandSpec) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     spec.use,
+		Short:   spec.short,
+		GroupID: spec.group,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a.json = jsonFlagValue(cmd)
+			a.promptFailed = false
+			if err := runGuidedSetup(a, cmd); err != nil {
+				if errors.Is(err, errPromptCancelled) {
+					return commandExitError(a, 1)
+				}
+				return err
+			}
+			if code := spec.run(a, cmd, args); code != 0 {
+				return commandExitError(a, code)
+			}
+			if a.promptFailed {
+				return commandExitError(a, 1)
+			}
+			return nil
+		},
+	}
+	for _, flag := range spec.flags {
+		switch flag.kind {
+		case flagKindBool:
+			if flag.shorthand != "" {
+				cmd.Flags().BoolP(flag.name, flag.shorthand, false, flag.description)
+			} else {
+				cmd.Flags().Bool(flag.name, false, flag.description)
+			}
+		case flagKindInt:
+			cmd.Flags().Int(flag.name, flag.intValue, flag.description)
+		case flagKindStringArray:
+			cmd.Flags().StringArray(flag.name, nil, flag.description)
+		default:
+			cmd.Flags().String(flag.name, flag.stringValue, flag.description)
+		}
+	}
+	if _, ok := guidedPrompts[cmd.Name()]; ok || cmd.Name() == "rewrite-dates" {
+		cmd.Flags().Bool("guided", false, "Interactively configure command options.")
+	}
+	return cmd
+}
+
+func versionCommand(a *app) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "version",
+		Short:   "Print version metadata.",
+		GroupID: "utility",
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			a.json = jsonFlagValue(cmd)
+			if a.json {
+				_ = writeJSON(a, map[string]any{
+					"ok":      true,
+					"summary": map[string]any{"version": version.Version},
+					"version": version.Version,
+					"commit":  version.Commit,
+					"date":    version.Date,
+				})
+				return
+			}
+			fmt.Fprintln(a.stdout, version.Full())
+		},
+	}
+	cmd.Flags().Bool("json", false, "Emit one JSON document.")
+	return cmd
+}

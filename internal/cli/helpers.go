@@ -116,14 +116,6 @@ func resolveRepositoryTargets(repoName string) ([]repo, error) {
 	return []repo{{gitDir: r.GitDir, dir: r.Dir, display: r.Display}}, nil
 }
 
-func commandRepositoryTargets(cmd *cobra.Command) ([]repo, error) {
-	repoName := ""
-	if cmd.Flags().Lookup("repo") != nil {
-		repoName, _ = cmd.Flags().GetString("repo")
-	}
-	return resolveRepositoryTargets(repoName)
-}
-
 func repoDirFromGitDir(gitDir string) string {
 	return repos.DirFromGitDir(gitDir)
 }
@@ -173,17 +165,8 @@ func requireInteractive(a *app, command string) bool {
 	return false
 }
 
-func yesFlag(cmd *cobra.Command) bool {
-	yes, _ := cmd.Flags().GetBool("yes")
-	return yes
-}
-
 func jsonFlagValue(cmd *cobra.Command) bool {
-	if cmd == nil || cmd.Flags().Lookup("json") == nil {
-		return false
-	}
-	value, _ := cmd.Flags().GetBool("json")
-	return value
+	return jsonOptionsFromCommand(cmd).enabled
 }
 
 func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string, bool) {

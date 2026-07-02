@@ -11,8 +11,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type removeSecretsOptions struct {
+	target       targetOptions
+	fetch        fetchOptions
+	confirmation confirmationOptions
+}
+
+func removeSecretsOptionsFromCommand(cmd *cobra.Command) removeSecretsOptions {
+	return removeSecretsOptions{
+		target:       targetOptionsFromCommand(cmd),
+		fetch:        fetchOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+	}
+}
+
 func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
-	yes := yesFlag(cmd)
+	opts := removeSecretsOptionsFromCommand(cmd)
 	if !requireGit(a, "remove-secrets") {
 		return 1
 	}
@@ -20,7 +34,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -28,7 +42,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	if !refreshOriginForRewrite(a, cmd, repos) {
+	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
 		return 1
 	}
 	patterns := []string{
@@ -121,7 +135,7 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	)
 	if len(applies) > 0 {
 		renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote.", len(applies)))
-		confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Purge these files from history in %d repositories?", len(applies)))
+		confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Purge these files from history in %d repositories?", len(applies)))
 		if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 			return 1
 		}

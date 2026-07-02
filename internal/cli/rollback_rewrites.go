@@ -8,7 +8,8 @@ import (
 )
 
 type rollbackRewritesOptions struct {
-	yes bool
+	target       targetOptions
+	confirmation confirmationOptions
 }
 
 type rollbackRewriteScan struct {
@@ -51,11 +52,14 @@ type rollbackRewriteResult struct {
 }
 
 func runRollbackRewrites(a *app, cmd *cobra.Command, args []string) int {
-	opts := rollbackRewritesOptions{yes: yesFlag(cmd)}
+	opts := rollbackRewritesOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+	}
 	if !requireGit(a, "rollback-rewrites") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -116,7 +120,7 @@ func runRollbackRewrites(a *app, cmd *cobra.Command, args []string) int {
 	)
 	renderWarning(a, fmt.Sprintf("This rollback rewrites local branch history in %d repositories. Replayed commits may get new hashes or lose signatures.", len(candidates)))
 	renderWarning(a, "Rollback is local-only. Propagate restored history with git-wrangler push --force.")
-	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rollback for %d repositories?", len(candidates)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Proceed with rollback for %d repositories?", len(candidates)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

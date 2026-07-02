@@ -25,6 +25,9 @@ const (
 var timezoneOffsetRe = regexp.MustCompile(`^[+-][0-9]{4}$`)
 
 type rewriteDatesOptions struct {
+	target       targetOptions
+	fetch        fetchOptions
+	confirmation confirmationOptions
 	startDate    string
 	endDate      string
 	untilDate    string
@@ -34,7 +37,6 @@ type rewriteDatesOptions struct {
 	days         int
 	window       string
 	timeSchedule *commitTimeSchedule
-	yes          bool
 	bounds       currentRewriteDateBounds
 }
 
@@ -201,7 +203,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if !requireGit(a, "rewrite-dates") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -209,7 +211,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	if !refreshOriginForRewrite(a, cmd, repos) {
+	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
 		return 1
 	}
 	filterCmd, ok := filterRepoCommand(a, "rewrite-dates")
@@ -220,22 +222,26 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 }
 
 func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptions, bool) {
-	opts := rewriteDatesOptions{yes: yesFlag(cmd)}
-	opts.startDate, _ = cmd.Flags().GetString("start-date")
-	opts.endDate, _ = cmd.Flags().GetString("end-date")
-	opts.untilDate, _ = cmd.Flags().GetString("until")
-	opts.seed, _ = cmd.Flags().GetString("seed")
-	opts.frequency, _ = cmd.Flags().GetString("frequency")
-	opts.spread, _ = cmd.Flags().GetString("spread")
-	opts.days, _ = cmd.Flags().GetInt("days")
-	opts.window, _ = cmd.Flags().GetString("window")
-	daysSet := cmd.Flags().Changed("days")
-	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+	opts := rewriteDatesOptions{
+		target:       targetOptionsFromCommand(cmd),
+		fetch:        fetchOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		startDate:    stringFlagValue(cmd, "start-date"),
+		endDate:      stringFlagValue(cmd, "end-date"),
+		untilDate:    stringFlagValue(cmd, "until"),
+		seed:         stringFlagValue(cmd, "seed"),
+		frequency:    stringFlagValue(cmd, "frequency"),
+		spread:       stringFlagValue(cmd, "spread"),
+		days:         intFlagValue(cmd, "days"),
+		window:       stringFlagValue(cmd, "window"),
+	}
+	daysSet := flagChanged(cmd, "days")
+	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return rewriteDatesOptions{}, false
 	}
-	opts.bounds = bounds
+	opts.bounds = boundOpts.bounds
 
 	for _, value := range []struct {
 		name string
@@ -343,7 +349,7 @@ func runRewriteDatesRewrite(a *app, repos []repo, filterCmd []string, opts rewri
 		summaryCount{label: "failed", value: failed, color: a.ui.Red},
 	)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote. Tags may still point at old history, and commit or tag signatures may become invalid.", len(plan.candidates)))
-	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

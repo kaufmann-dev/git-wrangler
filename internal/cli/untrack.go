@@ -8,12 +8,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type untrackOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+}
+
+func untrackOptionsFromCommand(cmd *cobra.Command) untrackOptions {
+	return untrackOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+	}
+}
+
 func runUntrack(a *app, cmd *cobra.Command, args []string) int {
-	yes := yesFlag(cmd)
+	opts := untrackOptionsFromCommand(cmd)
 	if !requireGit(a, "untrack") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -71,7 +83,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		return status
 	}
 	renderWarning(a, fmt.Sprintf("This operation will stop tracking ignored files and create commits in %d repositories.", len(applies)))
-	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
