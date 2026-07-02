@@ -8,14 +8,19 @@ import (
 )
 
 type Theme struct {
-	Red        string
-	Green      string
-	Yellow     string
-	Blue       string
-	Cyan       string
-	Muted      string
-	Bold       string
-	Reset      string
+	Red         string
+	Green       string
+	Yellow      string
+	Blue        string
+	Magenta     string
+	Cyan        string
+	BrightRed   string
+	BrightGreen string
+	BrightBlue  string
+	BrightCyan  string
+	Muted       string
+	Bold        string
+	Reset       string
 	RepoColor  string
 	OKSymbol   string
 	WarnSymbol string
@@ -33,7 +38,12 @@ func New(stdout io.Writer) Theme {
 		t.Green = "\033[32m"
 		t.Yellow = "\033[33m"
 		t.Blue = "\033[34m"
+		t.Magenta = "\033[35m"
 		t.Cyan = "\033[36m"
+		t.BrightRed = "\033[91m"
+		t.BrightGreen = "\033[92m"
+		t.BrightBlue = "\033[94m"
+		t.BrightCyan = "\033[96m"
 		t.Muted = "\033[90m"
 		t.Bold = "\033[1m"
 		t.Reset = "\033[0m"

@@ -279,7 +279,7 @@ func renderLogSummary(a *app, entries []logEntry, repos, failed int) {
 	}
 	if scopes := orderedNamedCounts(scopeCounts, 5); len(scopes) > 0 {
 		fmt.Fprintln(a.stdout)
-		renderCountBars(a, "Top scopes", scopes, func(string) string { return a.ui.Cyan })
+		renderCountBars(a, "Top scopes", scopes, func(string) string { return "" })
 	}
 	fmt.Fprintln(a.stdout)
 }
@@ -400,14 +400,24 @@ func logTypeCell(a *app, commit conventional.Commit) string {
 
 func logTypeColor(a *app, typ string) string {
 	switch typ {
-	case "feat", "perf":
+	case "feat":
 		return a.ui.Green
-	case "fix", "revert":
+	case "perf":
+		return a.ui.BrightGreen
+	case "fix":
 		return a.ui.Red
-	case "docs", "test":
+	case "revert":
+		return a.ui.BrightRed
+	case "docs":
 		return a.ui.Cyan
-	case "style", "ci", "build":
+	case "test":
+		return a.ui.BrightCyan
+	case "build":
 		return a.ui.Blue
+	case "ci":
+		return a.ui.BrightBlue
+	case "style":
+		return a.ui.Magenta
 	case "refactor":
 		return a.ui.Yellow
 	default:
