@@ -244,3 +244,41 @@ func TestGuidedMetadataIsNotStoredInCobraContext(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionParsersUseCommandNaming(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "FromFlags") {
+			t.Fatalf("%s uses legacy FromFlags naming; use FromCommand", file)
+		}
+	}
+}
+
+func TestJSONModeUsesOptionsParserDirectly(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "jsonFlagValue") {
+			t.Fatalf("%s reintroduces jsonFlagValue; use jsonOptionsFromCommand", file)
+		}
+	}
+}

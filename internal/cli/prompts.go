@@ -502,7 +502,7 @@ func guideClone(a *app, cmd *cobra.Command) error {
 }
 
 func guideRewriteDates(a *app, cmd *cobra.Command) error {
-	if _, ok := rewriteDatesOptionsFromFlags(a, cmd); !ok {
+	if _, ok := rewriteDatesOptionsFromCommand(a, cmd); !ok {
 		return exitError{code: 1}
 	}
 	for _, prompt := range []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")} {
