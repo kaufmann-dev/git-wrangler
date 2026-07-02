@@ -117,7 +117,11 @@ func captureRewriteBaselineForHashes(a *app, r repo, hashes []string) error {
 	if err := os.MkdirAll(filepath.Dir(bundlePath), 0o755); err != nil {
 		return fmt.Errorf("could not create baseline bundle directory: %w", err)
 	}
-	if err := createRewriteBaselineBundle(a, r.dir, bundlePath, captureID, newHashes); err != nil {
+	bundlePathForGit, err := absoluteRewriteBaselinePath(bundlePath)
+	if err != nil {
+		return fmt.Errorf("could not resolve baseline bundle path: %w", err)
+	}
+	if err := createRewriteBaselineBundle(a, r.dir, bundlePathForGit, captureID, newHashes); err != nil {
 		return fmt.Errorf("could not create baseline bundle: %w", err)
 	}
 	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
@@ -430,6 +434,13 @@ func rewriteBaselineEntryBundlePath(gitDir string, entry rewriteBaselineEntry) s
 	return filepath.Join(rewriteBaselineDir(gitDir), filepath.FromSlash(entry.BundlePath))
 }
 
+func absoluteRewriteBaselinePath(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+	return filepath.Abs(path)
+}
+
 func rewriteBaselineRepresentedSHAs(manifest rewriteBaselineManifest) map[string]bool {
 	represented := map[string]bool{}
 	for _, entry := range manifest.Entries {
@@ -457,11 +468,15 @@ func importRewriteBaselineBundles(a *app, r repo, manifest rewriteBaselineManife
 	seen := map[string]bool{}
 	for _, entry := range manifest.Entries {
 		bundlePath := rewriteBaselineEntryBundlePath(r.gitDir, entry)
-		if seen[bundlePath] {
+		bundlePathForGit, err := absoluteRewriteBaselinePath(bundlePath)
+		if err != nil {
+			return fmt.Errorf("could not resolve baseline bundle %s: %w", filepath.Base(bundlePath), err)
+		}
+		if seen[bundlePathForGit] {
 			continue
 		}
-		seen[bundlePath] = true
-		if _, err := a.git.Capture(a.ctx, r.dir, nil, "bundle", "unbundle", bundlePath); err != nil {
+		seen[bundlePathForGit] = true
+		if _, err := a.git.Capture(a.ctx, r.dir, nil, "bundle", "unbundle", bundlePathForGit); err != nil {
 			return fmt.Errorf("could not import baseline bundle %s: %w", filepath.Base(bundlePath), err)
 		}
 	}

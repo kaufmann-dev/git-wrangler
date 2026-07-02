@@ -107,7 +107,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		for _, chunk := range chunkStrings(files, 100) {
 			rmArgs := append([]string{"rm", "--cached", "-q", "--"}, chunk...)
 			if out, err := a.git.Capture(a.ctx, r.dir, nil, rmArgs...); err != nil {
-				applyErrors = append(applyErrors, applyError{subject: r.display + ": could not untrack files", output: out})
+				applyErrors = append(applyErrors, applyError{subject: r.display + ": could not untrack files", output: outputOrError(out, err)})
 				status = 1
 				applyFailed++
 				failed = true
@@ -121,7 +121,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-q", "-m", "Stop tracking files defined in .gitignore"); err == nil {
 			updated++
 		} else {
-			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit changes", output: out})
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit changes", output: outputOrError(out, err)})
 			status = 1
 			applyFailed++
 		}

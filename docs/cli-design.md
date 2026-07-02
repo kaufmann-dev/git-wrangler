@@ -31,6 +31,8 @@ Stderr is for progress, prompts, warnings, errors, and captured subprocess failu
 
 JSON mode writes exactly one JSON document to stdout. It suppresses progress, colors, prompts, warnings, and human summaries. Stderr should stay empty except Cobra parse errors or unavoidable process-level failures.
 
+Per-repository error blocks must include actionable detail when available. For subprocess failures, render captured stdout/stderr first; if the subprocess produced no output, render the underlying error text instead of only the generic failure subject.
+
 ## Visual Language
 
 Use sentence-case human text and stable labels. Prefer `Repository`, `State`, `Tracking`, `Changed`, `Skipped`, `Failed`, `OK`, `WARN`, `ERROR`, `SKIP`, and `INFO`.

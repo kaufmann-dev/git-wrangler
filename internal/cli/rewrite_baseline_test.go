@@ -74,6 +74,34 @@ func TestRewriteBaselineCaptureAddsOnlyMissingEntries(t *testing.T) {
 	}
 }
 
+func TestRewriteBaselineCaptureWithRelativeDiscoveredGitDir(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := t.TempDir()
+	t.Chdir(root)
+	repoDir := "repo"
+	runGitForTest(t, "", "init", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitEmptyForTest(t, repoDir, "first", "2020-01-01T10:00:00 +0000")
+	r := repo{dir: repoDir, gitDir: filepath.Join(repoDir, ".git"), display: "repo"}
+	a := newApp(context.Background(), run.New(), strings.NewReader(""), io.Discard, io.Discard)
+	hashes := commitSHAsBySubject(t, repoDir)
+
+	if err := captureRewriteBaselineForHashes(a, r, []string{hashes["first"]}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, found, err := loadRewriteBaseline(r.gitDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || len(manifest.Entries) != 1 {
+		t.Fatalf("baseline found=%v entries=%d", found, len(manifest.Entries))
+	}
+	if got := len(rewriteBaselineBundlesForTest(t, r.gitDir)); got != 1 {
+		t.Fatalf("bundle count = %d, want 1", got)
+	}
+}
+
 func TestRewriteBaselineCommitMapUpdatesCurrentOnlyAndKeepsAliases(t *testing.T) {
 	manifest := rewriteBaselineManifest{Version: rewriteBaselineVersion, Entries: []rewriteBaselineEntry{{
 		FirstSHA:       "original",
@@ -118,6 +146,35 @@ func TestRewriteBaselineCommitMapUpdatesCurrentOnlyAndKeepsAliases(t *testing.T)
 		if !containsStringForBaselineTest(entry.KnownSHAs, want) {
 			t.Fatalf("known SHAs %v missing %s", entry.KnownSHAs, want)
 		}
+	}
+}
+
+func TestImportRewriteBaselineBundlesUsesAbsolutePath(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	var imports []string
+	runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		if dir == "repo" && name == "git" && len(args) == 3 && args[0] == "bundle" && args[1] == "unbundle" {
+			if !filepath.IsAbs(args[2]) {
+				t.Fatalf("bundle path is not absolute: %q", args[2])
+			}
+			imports = append(imports, args[2])
+			return "", "", nil
+		}
+		t.Fatalf("unexpected command in %q: %s %s", dir, name, strings.Join(args, " "))
+		return "", "", nil
+	}}
+	a := newApp(context.Background(), runner, strings.NewReader(""), io.Discard, io.Discard)
+	manifest := rewriteBaselineManifest{Version: rewriteBaselineVersion, Entries: []rewriteBaselineEntry{
+		{FirstSHA: "a", CurrentSHA: "a", TreeSHA: "tree", BundlePath: "bundles/capture.bundle"},
+		{FirstSHA: "b", CurrentSHA: "b", TreeSHA: "tree", BundlePath: "bundles/capture.bundle"},
+	}}
+
+	if err := importRewriteBaselineBundles(a, repo{dir: "repo", gitDir: filepath.Join("repo", ".git"), display: "repo"}, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(imports) != 1 {
+		t.Fatalf("bundle imports = %d, want 1", len(imports))
 	}
 }
 

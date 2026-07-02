@@ -98,6 +98,13 @@ func renderErrorBlock(a *app, subject, output string) {
 	fmt.Fprintln(a.stderr)
 }
 
+func outputOrError(output string, err error) string {
+	if strings.TrimSpace(output) != "" || err == nil {
+		return output
+	}
+	return err.Error()
+}
+
 func renderWarning(a *app, message string) {
 	renderStatusLine(a, a.stderr, statusWarn, message, "")
 }

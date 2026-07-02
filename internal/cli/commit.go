@@ -143,8 +143,8 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		return change.repo.display, change.repo.display
 	}, func(change commitAIChange) commitAICommitResult {
 		message := messages[change.input.ID]
-		if _, err := a.git.Capture(a.ctx, change.repo.dir, nil, "add", "-A"); err != nil {
-			return commitAICommitResult{change: change, err: err, stageErr: true}
+		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "add", "-A"); err != nil {
+			return commitAICommitResult{change: change, out: out, err: err, stageErr: true}
 		}
 		if body {
 			if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject, "-m", message.Body); err == nil {
@@ -169,11 +169,11 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		if result.stageErr {
-			renderStatusLine(a, a.stderr, statusError, result.change.repo.display, "could not stage changes")
+			renderErrorBlock(a, result.change.repo.display+": could not stage changes", outputOrError(result.out, result.err))
 			failed++
 			continue
 		}
-		renderErrorBlock(a, result.change.repo.display+": could not commit changes", result.out)
+		renderErrorBlock(a, result.change.repo.display+": could not commit changes", outputOrError(result.out, result.err))
 		failed++
 	}
 	renderSummary(a,

@@ -221,10 +221,3 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	)
 	return status
 }
-
-func outputOrError(output string, err error) string {
-	if strings.TrimSpace(output) != "" || err == nil {
-		return output
-	}
-	return err.Error()
-}

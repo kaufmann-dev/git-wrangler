@@ -109,7 +109,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "add", ".gitignore"); err != nil {
 			progress.advance(r.display)
-			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not stage .gitignore", output: out})
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not stage .gitignore", output: outputOrError(out, err)})
 			status = 1
 			failed++
 			continue
@@ -117,7 +117,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", "Update .gitignore with missing entries"); err == nil {
 			updated++
 		} else {
-			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit .gitignore", output: out})
+			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit .gitignore", output: outputOrError(out, err)})
 			status = 1
 			failed++
 		}
