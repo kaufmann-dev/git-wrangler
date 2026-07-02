@@ -1000,7 +1000,6 @@ func fixedDateConstraints(candidate dateCandidate, commitIndex int) (int64, int6
 	return minFixed, maxFixed
 }
 
-
 func enforceRewriteDateTopologyWithSelected(candidates []dateCandidate, selectedRefs []selectedDateCommit, targetStart, targetEnd int64) error {
 	limit := totalRewriteDateCommits(candidates) + len(selectedRefs) + 2
 	for pass := 0; pass < limit; pass++ {
@@ -1355,8 +1354,6 @@ func maxSelectedChainLength(candidates []dateCandidate) int {
 	}
 	return maxChain
 }
-
-
 
 func buildRewriteDateCalendarPlanForRepos(selectedCount int, startEpoch, endEpoch int64, seed string, profile rewriteDateProfile, tzOffset string, effectiveRepos float64) rewriteDateCalendarPlan {
 	if startEpoch > endEpoch {
@@ -1894,7 +1891,6 @@ func activeCalendarDays(calendar rewriteDateCalendarPlan) []rewriteDateCalendarD
 func calendarDayHasSlots(state rewriteDateCalendarDayState) bool {
 	return state == rewriteDateCalendarActive || state == rewriteDateCalendarForcedActive
 }
-
 
 func calendarActiveDayCount(calendar rewriteDateCalendarPlan) int {
 	count := 0
@@ -2594,7 +2590,6 @@ func formatEpoch(epoch int64, offset string) string {
 	loc := locationForTimezoneOffset(offset)
 	return time.Unix(epoch, 0).In(loc).Format("2006-01-02 15:04:05 ") + offset
 }
-
 
 func writeDateCallbackDates(mapping map[string]dateCallbackDates) (string, error) {
 	f, err := os.CreateTemp("", "git-wrangler-date-callback-*")
