@@ -59,6 +59,7 @@ type Config struct {
 	RPM              int
 	Timeout          time.Duration
 	SkipConventional bool
+	RequireScope     bool
 	Body             bool
 	WorkDir          string
 	Git              git.Client
@@ -167,7 +168,7 @@ func Generate(ctx context.Context, repos []Repository, cfg Config, out io.Writer
 	}
 
 	fmt.Fprintln(out, "Scanning repositories and preparing redacted commit context...")
-	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.SkipConventional, progressFunc(cfg, out))
+	items, stats, err := collectItems(ctx, repos, cfg.Git, cfg.SkipConventional, cfg.RequireScope, progressFunc(cfg, out))
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +286,7 @@ func progressFunc(cfg Config, out io.Writer) func(ProgressEvent) {
 	}
 }
 
-func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
+func collectItems(ctx context.Context, repositories []Repository, gitClient git.Client, skipConventional, requireScope bool, progress func(ProgressEvent)) ([]item, Stats, error) {
 	type repoResult struct {
 		items []item
 		stats Stats
@@ -303,7 +304,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 			for repoIndex := range jobs {
 				repo := repositories[repoIndex]
 				progress(ProgressEvent{Phase: "Scanning repositories", Key: repo.Name, RepoName: repo.Name, Current: 0, Total: len(repositories), Detail: repo.Name})
-				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, skipConventional, progress)
+				items, stats, err := collectRepoItems(ctx, repoIndex, repo, gitClient, skipConventional, requireScope, progress)
 				results[repoIndex] = repoResult{items: items, stats: stats, err: err}
 				completedMu.Lock()
 				completedRepos++
@@ -338,7 +339,7 @@ func collectItems(ctx context.Context, repositories []Repository, gitClient git.
 	return items, stats, nil
 }
 
-func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, skipConventional bool, progress func(ProgressEvent)) ([]item, Stats, error) {
+func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitClient git.Client, skipConventional, requireScope bool, progress func(ProgressEvent)) ([]item, Stats, error) {
 	stats := Stats{RepoCount: 1}
 	if _, err := gitClient.Capture(ctx, repo.Dir, nil, "rev-parse", "HEAD"); err != nil {
 		stats.SkippedUnborn++
@@ -364,7 +365,7 @@ func collectRepoItems(ctx context.Context, repoIndex int, repo Repository, gitCl
 		if repo.SelectedHashes != nil && !repo.SelectedHashes[commit.hash] {
 			continue
 		}
-		if skipConventional && IsConventional(commit.message) {
+		if skipConventional && commitSkippable(commit.message, requireScope) {
 			stats.SkippedFormatted++
 			continue
 		}
@@ -792,6 +793,13 @@ func appendDiffWithBudget(prefix, diffText string, limit int, label string) stri
 
 func IsConventional(message string) bool {
 	return conventional.IsConventionalMessage(message)
+}
+
+func commitSkippable(message string, requireScope bool) bool {
+	if requireScope {
+		return conventional.IsScopedConventionalMessage(message)
+	}
+	return IsConventional(message)
 }
 
 func IsSensitivePath(path string) bool {

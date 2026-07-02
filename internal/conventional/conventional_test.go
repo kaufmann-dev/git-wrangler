@@ -60,3 +60,24 @@ func TestIsConventionalMessageUsesTrimmedFirstLine(t *testing.T) {
 		t.Fatal("expected non-conventional first line")
 	}
 }
+
+func TestIsScopedConventionalMessage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		message string
+		want    bool
+	}{
+		{message: "feat(cli): add thing", want: true},
+		{message: "feat(cli)!: change contract", want: true},
+		{message: "  feat(cli): add thing\n\nbody", want: true},
+		{message: "feat: add thing", want: false},
+		{message: "feat!: change contract", want: false},
+		{message: "plain message", want: false},
+		{message: "not conventional\nfeat(cli): later", want: false},
+	}
+	for _, tc := range tests {
+		if got := IsScopedConventionalMessage(tc.message); got != tc.want {
+			t.Fatalf("IsScopedConventionalMessage(%q) = %v, want %v", tc.message, got, tc.want)
+		}
+	}
+}

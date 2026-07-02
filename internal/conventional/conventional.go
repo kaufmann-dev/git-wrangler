@@ -50,6 +50,11 @@ func IsConventionalMessage(message string) bool {
 	return ValidSubject(first)
 }
 
+func IsScopedConventionalMessage(message string) bool {
+	commit, ok := parse(firstLine(strings.TrimSpace(message)))
+	return ok && commit.Scope != ""
+}
+
 func IsAllowedType(commitType string) bool {
 	_, ok := allowedTypes[commitType]
 	return ok

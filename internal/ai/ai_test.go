@@ -516,7 +516,7 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 	items, stats, err := collectItems(context.Background(), []Repository{
 		{Dir: "repo-a", Name: "repo-a", GitDir: "repo-a/.git"},
 		{Dir: "repo-b", Name: "repo-b", GitDir: "repo-b/.git"},
-	}, gitClient, true, func(ProgressEvent) {})
+	}, gitClient, true, false, func(ProgressEvent) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +578,7 @@ func TestCollectItemsSelectedHashesSkipUnselectedContext(t *testing.T) {
 		Name:           "repo",
 		GitDir:         "repo/.git",
 		SelectedHashes: map[string]bool{"a2": true},
-	}}, gitClient, true, func(ProgressEvent) {})
+	}}, gitClient, true, false, func(ProgressEvent) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,6 +587,41 @@ func TestCollectItemsSelectedHashesSkipUnselectedContext(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Hash != "a2" {
 		t.Fatalf("items = %#v, want only a2", items)
+	}
+}
+
+func TestCollectItemsRequireScopeSkipsOnlyScopedConventionalCommits(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git rev-parse HEAD":
+			return "head\n", "", nil
+		case "git log --reverse --all --format=%H%x1f%B%x1e":
+			return "a1\x1ffeat(cli): scoped\n\x1ea2\x1ffeat: scopeless\n\x1ea3\x1fplain message\n\x1e", "", nil
+		case "git diff-tree --root --no-commit-id --name-status -r a2",
+			"git diff-tree --root --no-commit-id --name-status -r a3":
+			return "M\tmain.go\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r a2",
+			"git diff-tree --root --no-commit-id --numstat -r a3":
+			return "1\t0\tmain.go\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 a2 -- main.go",
+			"git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 a3 -- main.go":
+			return "diff --git a/main.go b/main.go\n+change\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+	items, stats, err := collectItems(context.Background(), []Repository{
+		{Dir: "repo", Name: "repo", GitDir: "repo/.git"},
+	}, gitClient, true, true, func(ProgressEvent) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TotalCommits != 3 || stats.SkippedFormatted != 1 {
+		t.Fatalf("stats = %#v, want 1 skipped scoped commit", stats)
+	}
+	if len(items) != 2 || items[0].Hash != "a2" || items[1].Hash != "a3" {
+		t.Fatalf("items = %#v, want scopeless and plain commits", items)
 	}
 }
 
