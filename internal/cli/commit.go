@@ -24,12 +24,21 @@ type commitAICommitResult struct {
 
 func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	rpm, _ := cmd.Flags().GetInt("rpm")
+	concurrency, _ := cmd.Flags().GetInt("concurrency")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	body, _ := cmd.Flags().GetBool("body")
 	yes := yesFlag(cmd)
 
 	if rpm <= 0 {
 		a.plainErrorf("--rpm must be a positive integer.")
+		return 1
+	}
+	if concurrency <= 0 {
+		a.plainErrorf("--concurrency must be a positive integer.")
+		return 1
+	}
+	if concurrency > 64 {
+		a.plainErrorf("--concurrency must be 64 or less.")
 		return 1
 	}
 	if timeoutInt <= 0 {
@@ -106,15 +115,16 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	}
 	apiProgress := (*progress)(nil)
 	messages, generationFailures := ai.GenerateMessages(a.ctx, inputs, ai.Config{
-		BaseURL:   settings.Config.AI.BaseURL,
-		Model:     settings.Config.AI.Model,
-		APIKey:    settings.APIKey,
-		Headers:   settings.Headers,
-		BatchSize: 4,
-		RPM:       rpm,
-		Timeout:   time.Duration(timeoutInt) * time.Second,
-		Body:      body,
-		Git:       a.git,
+		BaseURL:     settings.Config.AI.BaseURL,
+		Model:       settings.Config.AI.Model,
+		APIKey:      settings.APIKey,
+		Headers:     settings.Headers,
+		BatchSize:   4,
+		RPM:         rpm,
+		Concurrency: concurrency,
+		Timeout:     time.Duration(timeoutInt) * time.Second,
+		Body:        body,
+		Git:         a.git,
 		Progress: func(event ai.ProgressEvent) {
 			if event.Phase != "Sending API requests" {
 				return

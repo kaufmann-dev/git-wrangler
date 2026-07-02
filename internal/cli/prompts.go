@@ -467,7 +467,7 @@ var guidedPrompts = map[string][]guidedPrompt{
 	"pull":              {guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")},
 	"fetch":             {guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")},
 	"push":              {},
-	"commit":            {guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
+	"commit":            {guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
 	"fix-gitignore":     {guidedString("repo", "Repository")},
 	"license":           {guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
 	"rename-branch":     {guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")},
