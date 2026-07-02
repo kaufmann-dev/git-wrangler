@@ -1084,7 +1084,7 @@ func (p *requestPacer) wait(ctx context.Context) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.last.IsZero() {
-		delay := p.last.Add(p.interval).Sub(time.Now())
+		delay := time.Until(p.last.Add(p.interval))
 		if delay > 0 && !sleepContext(ctx, delay) {
 			return false
 		}

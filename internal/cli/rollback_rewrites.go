@@ -45,9 +45,8 @@ type rollbackRewriteApply struct {
 }
 
 type rollbackRewriteResult struct {
-	apply  rollbackRewriteApply
-	err    error
-	output string
+	apply rollbackRewriteApply
+	err   error
 }
 
 func rollbackRewritesOptionsFromCommand(cmd *cobra.Command) rollbackRewritesOptions {
