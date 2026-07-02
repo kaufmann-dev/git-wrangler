@@ -54,7 +54,7 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 			progress.advance(r.display)
 			continue
 		}
-		if out, err := a.git.Capture(a.ctx, r.dir, nil, "fetch", "origin", branch); err != nil {
+		if out, err := captureRemoteGitWithRetry(a, r.dir, nil, "fetch", "origin", branch); err != nil {
 			failures = append(failures, resetFailure{subject: r.display + ": fetch failed", output: outputOrError(out, err)})
 			status = 1
 			progress.advance(r.display)

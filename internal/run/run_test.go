@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeRunner struct {
@@ -105,5 +107,22 @@ func TestStreamStdoutFallsBackToBufferedRunner(t *testing.T) {
 	}
 	if output.String() != "streamed output" {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestRealRunnerTimeoutStopsChildProcessTree(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX shell process semantics")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, _, err := RealRunner{}.Run(ctx, "", nil, "sh", "-c", "(sleep 10) & wait")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("timeout waited for child process tree: %s", elapsed)
 	}
 }
