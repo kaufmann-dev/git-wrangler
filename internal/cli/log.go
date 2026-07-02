@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/conventional"
+	"github.com/kaufmann-dev/git-wrangler/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -239,6 +240,11 @@ func logEntryMatches(entry logEntry, opts logOptions) bool {
 	return true
 }
 
+type namedCount struct {
+	name  string
+	count int
+}
+
 func renderLogSummary(a *app, entries []logEntry, repos, failed int) {
 	typeCounts := map[string]int{}
 	scopeCounts := map[string]int{}
@@ -252,58 +258,94 @@ func renderLogSummary(a *app, entries []logEntry, repos, failed int) {
 			breaking++
 		}
 	}
-	fmt.Fprintf(a.stdout, "Summary: %d commits, %d repositories, %d failed\n", len(entries), repos, failed)
-	fmt.Fprintf(a.stdout, "Types: %s\n", formatNamedCounts(typeCounts, conventional.AllowedTypes(), []string{"other"}, 0))
-	fmt.Fprintf(a.stdout, "Scopes: %s\n", formatNamedCounts(scopeCounts, nil, nil, 5))
-	fmt.Fprintf(a.stdout, "Breaking: %d\n", breaking)
+	breakingColor := a.ui.Muted
+	if breaking > 0 {
+		breakingColor = a.ui.Red
+	}
+	separator := ", "
+	if ui.UnicodeEnabled(a.stdout) {
+		separator = " · "
+	}
+	parts := []string{
+		fmt.Sprintf("%s%d%s %s", a.ui.Green, len(entries), a.ui.Reset, plural(len(entries), "commit", "commits")),
+		fmt.Sprintf("%s%d%s %s", a.ui.Cyan, repos, a.ui.Reset, plural(repos, "repository", "repositories")),
+		fmt.Sprintf("%s%d%s failed", a.ui.Red, failed, a.ui.Reset),
+		fmt.Sprintf("%s%d%s breaking", breakingColor, breaking, a.ui.Reset),
+	}
+	fmt.Fprintf(a.stdout, "Summary: %s\n", strings.Join(parts, separator))
+	if types := orderedNamedCounts(typeCounts, 0); len(types) > 0 {
+		fmt.Fprintln(a.stdout)
+		renderCountBars(a, "Types", types, func(name string) string { return logTypeColor(a, name) })
+	}
+	if scopes := orderedNamedCounts(scopeCounts, 5); len(scopes) > 0 {
+		fmt.Fprintln(a.stdout)
+		renderCountBars(a, "Top scopes", scopes, func(string) string { return a.ui.Cyan })
+	}
 	fmt.Fprintln(a.stdout)
 }
 
-func formatNamedCounts(counts map[string]int, preferred []string, suffix []string, limit int) string {
-	parts := []string{}
-	seen := map[string]struct{}{}
-	appendPart := func(name string) {
-		if counts[name] == 0 {
-			return
-		}
-		seen[name] = struct{}{}
-		parts = append(parts, fmt.Sprintf("%s %d", name, counts[name]))
+func plural(count int, singular, pluralForm string) string {
+	if count == 1 {
+		return singular
 	}
-	for _, name := range preferred {
-		appendPart(name)
-	}
-	names := []string{}
+	return pluralForm
+}
+
+func orderedNamedCounts(counts map[string]int, limit int) []namedCount {
+	rows := []namedCount{}
 	for name, count := range counts {
 		if count == 0 {
 			continue
 		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		if containsString(suffix, name) {
-			continue
-		}
-		names = append(names, name)
+		rows = append(rows, namedCount{name: name, count: count})
 	}
-	sort.Slice(names, func(i, j int) bool {
-		if counts[names[i]] != counts[names[j]] {
-			return counts[names[i]] > counts[names[j]]
+	sort.Slice(rows, func(i, j int) bool {
+		if (rows[i].name == "other") != (rows[j].name == "other") {
+			return rows[j].name == "other"
 		}
-		return names[i] < names[j]
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
+		}
+		return rows[i].name < rows[j].name
 	})
-	if limit > 0 && len(names) > limit {
-		names = names[:limit]
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
 	}
-	for _, name := range names {
-		appendPart(name)
+	return rows
+}
+
+func renderCountBars(a *app, title string, rows []namedCount, colorFor func(string) string) {
+	const maxBarWidth = 30
+	barChar := "#"
+	if ui.UnicodeEnabled(a.stdout) {
+		barChar = "█"
 	}
-	for _, name := range suffix {
-		appendPart(name)
+	labelWidth := 0
+	countWidth := 0
+	maxCount := 0
+	for _, row := range rows {
+		if len(row.name) > labelWidth {
+			labelWidth = len(row.name)
+		}
+		if width := len(fmt.Sprintf("%d", row.count)); width > countWidth {
+			countWidth = width
+		}
+		if row.count > maxCount {
+			maxCount = row.count
+		}
 	}
-	if len(parts) == 0 {
-		return "none"
+	fmt.Fprintf(a.stdout, "%s%s%s\n", a.ui.Bold, title, a.ui.Reset)
+	for _, row := range rows {
+		barWidth := row.count * maxBarWidth / maxCount
+		if barWidth < 1 {
+			barWidth = 1
+		}
+		color := colorFor(row.name)
+		fmt.Fprintf(a.stdout, "  %s%-*s%s  %s%*d%s  %s%s%s\n",
+			color, labelWidth, row.name, a.ui.Reset,
+			a.ui.Bold, countWidth, row.count, a.ui.Reset,
+			color, strings.Repeat(barChar, barWidth), a.ui.Reset)
 	}
-	return strings.Join(parts, ", ")
 }
 
 func renderLogTable(a *app, entries []logEntry, multiRepo bool) {
