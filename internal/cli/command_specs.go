@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -30,8 +29,6 @@ type guidedSpec struct {
 }
 
 type guidedSetupFunc func(*app, *cobra.Command) error
-
-type guidedContextKey struct{}
 
 func rootCommands(a *app) []*cobra.Command {
 	specs := commandSpecs()
@@ -311,6 +308,9 @@ func commandSpecs() []commandSpec {
 						if len(args) < 1 {
 							return errors.New("set requires a key")
 						}
+						if len(args) > 2 {
+							return errors.New("set accepts at most one value")
+						}
 						return nil
 					},
 					run: runConfigSetCommand,
@@ -354,7 +354,7 @@ func command(a *app, spec commandSpec) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.json = jsonFlagValue(cmd)
 			a.promptFailed = false
-			if err := runGuidedSetup(a, cmd); err != nil {
+			if err := runGuidedSetup(a, cmd, spec.guided); err != nil {
 				if errors.Is(err, errPromptCancelled) {
 					return commandExitError(a, 1)
 				}
@@ -390,11 +390,6 @@ func command(a *app, spec commandSpec) *cobra.Command {
 	}
 	if spec.guided.enabled() {
 		cmd.Flags().Bool("guided", false, "Interactively configure command options.")
-		ctx := cmd.Context()
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		cmd.SetContext(context.WithValue(ctx, guidedContextKey{}, spec.guided))
 	}
 	for _, child := range spec.children {
 		cmd.AddCommand(command(a, child))

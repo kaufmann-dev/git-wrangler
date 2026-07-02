@@ -230,8 +230,9 @@ func TestGuidedCancellationStopsPromptsAndSummary(t *testing.T) {
 	makeInteractive(a)
 	cmd := commandByName(t, newRootCommand(a), "activity")
 	_ = cmd.Flags().Set("guided", "true")
+	spec := guidedSpecForCommandName(t, "activity")
 	result := make(chan error, 1)
-	go func() { result <- runGuidedSetup(a, cmd) }()
+	go func() { result <- runGuidedSetup(a, cmd, spec) }()
 	<-reader.started
 	cancel()
 	if err := <-result; !errors.Is(err, errPromptCancelled) {
@@ -428,7 +429,7 @@ func TestGuidedSchemasCoverEveryBehaviorFlagAndExcludeMetaFlags(t *testing.T) {
 			}
 		})
 		got := []string{}
-		for _, prompt := range guidedSummaryPrompts(cmd) {
+		for _, prompt := range guidedSummaryPrompts(guidedSpecForCommandName(t, cmd.Name())) {
 			got = append(got, prompt.flag)
 		}
 		sort.Strings(want)
@@ -442,7 +443,7 @@ func TestGuidedSchemasCoverEveryBehaviorFlagAndExcludeMetaFlags(t *testing.T) {
 func TestRepresentativeGuidedFlows(t *testing.T) {
 	t.Run("clone", func(t *testing.T) {
 		cmd, a, stderr := guidedTestCommand(t, "clone", "octo\n2\n\n\n")
-		if err := runGuidedSetup(a, cmd); err != nil {
+		if err := runGuidedSetupForTest(t, a, cmd); err != nil {
 			t.Fatal(err)
 		}
 		assertFlagValue(t, cmd, "user", "octo")
@@ -456,7 +457,7 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 
 	t.Run("push mode", func(t *testing.T) {
 		cmd, a, _ := guidedTestCommand(t, "push", "\n3\n")
-		if err := runGuidedSetup(a, cmd); err != nil {
+		if err := runGuidedSetupForTest(t, a, cmd); err != nil {
 			t.Fatal(err)
 		}
 		assertFlagValue(t, cmd, "force", "false")
@@ -465,7 +466,7 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 
 	t.Run("activity keeps optional zero year unset", func(t *testing.T) {
 		cmd, a, _ := guidedTestCommand(t, "activity", "\n\n\n\n\n")
-		if err := runGuidedSetup(a, cmd); err != nil {
+		if err := runGuidedSetupForTest(t, a, cmd); err != nil {
 			t.Fatal(err)
 		}
 		if cmd.Flags().Changed("year") {
@@ -475,7 +476,7 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 
 	t.Run("rewrite dates rewrite", func(t *testing.T) {
 		cmd, a, stderr := guidedTestCommand(t, "rewrite-dates", "\n\n\n\n\n2024-01-01\n2024-01-31\nseed\n3\n1\n\n")
-		if err := runGuidedSetup(a, cmd); err != nil {
+		if err := runGuidedSetupForTest(t, a, cmd); err != nil {
 			t.Fatal(err)
 		}
 		assertFlagValue(t, cmd, "start-date", "2024-01-01")
@@ -490,7 +491,7 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 
 	t.Run("rollback rewrites", func(t *testing.T) {
 		cmd, a, stderr := guidedTestCommand(t, "rollback-rewrites", "\n")
-		if err := runGuidedSetup(a, cmd); err != nil {
+		if err := runGuidedSetupForTest(t, a, cmd); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(stderr.String(), "Target range mode") {
@@ -501,7 +502,7 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 	t.Run("json rejected", func(t *testing.T) {
 		cmd, a, _ := guidedTestCommand(t, "status", "")
 		_ = cmd.Flags().Set("json", "true")
-		err := runGuidedSetup(a, cmd)
+		err := runGuidedSetupForTest(t, a, cmd)
 		if err == nil || !strings.Contains(err.Error(), "--guided cannot be combined with --json") {
 			t.Fatalf("error = %v", err)
 		}
@@ -528,6 +529,22 @@ func guidedTestCommand(t *testing.T, name, input string) (*cobra.Command, *app, 
 		t.Fatal(err)
 	}
 	return cmd, a, &stderr
+}
+
+func runGuidedSetupForTest(t *testing.T, a *app, cmd *cobra.Command) error {
+	t.Helper()
+	return runGuidedSetup(a, cmd, guidedSpecForCommandName(t, cmd.Name()))
+}
+
+func guidedSpecForCommandName(t *testing.T, name string) guidedSpec {
+	t.Helper()
+	for _, spec := range commandSpecs() {
+		if commandUseName(spec.use) == name {
+			return spec.guided
+		}
+	}
+	t.Fatalf("command spec %q not found", name)
+	return guidedSpec{}
 }
 
 func commandByName(t *testing.T, root *cobra.Command, name string) *cobra.Command {

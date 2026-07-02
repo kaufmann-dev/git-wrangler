@@ -1,7 +1,5 @@
 package cli
 
-import "github.com/spf13/cobra"
-
 type originRefreshResult struct {
 	repo repo
 	out  string
@@ -27,10 +25,6 @@ func refreshFailuresByDir(results []originRefreshResult) map[string]originRefres
 
 func fetchFailureMessage(result originRefreshResult) string {
 	return remoteGitFailureMessage("fetch", result.out, result.err)
-}
-
-func refreshOriginForRewrite(a *app, cmd *cobra.Command, repos []repo) bool {
-	return refreshOriginForRewriteOptions(a, fetchOptionsFromCommand(cmd), repos)
 }
 
 func refreshOriginForRewriteOptions(a *app, opts fetchOptions, repos []repo) bool {

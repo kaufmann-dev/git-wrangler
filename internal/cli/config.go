@@ -92,7 +92,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 	}
 	switch opts.key {
 	case "github.auth":
-		token, ok := secretValue(a, opts.args, "GitHub token: ")
+		token, ok := secretValue(a, opts.key, opts.hasValue, "GitHub token: ")
 		if !ok {
 			return 1
 		}
@@ -101,7 +101,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 			return 1
 		}
 	case "github.host":
-		value, ok := configValue(a, opts.args, opts.key)
+		value, ok := configValue(a, opts.key, opts.value, opts.hasValue)
 		if !ok {
 			return 1
 		}
@@ -115,7 +115,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 			return 1
 		}
 	case "ai.provider":
-		value, ok := configValue(a, opts.args, opts.key)
+		value, ok := configValue(a, opts.key, opts.value, opts.hasValue)
 		if !ok {
 			return 1
 		}
@@ -130,7 +130,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 			return 1
 		}
 	case "ai.base-url":
-		value, ok := configValue(a, opts.args, opts.key)
+		value, ok := configValue(a, opts.key, opts.value, opts.hasValue)
 		if !ok {
 			return 1
 		}
@@ -140,7 +140,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 			return 1
 		}
 	case "ai.model":
-		value, ok := configValue(a, opts.args, opts.key)
+		value, ok := configValue(a, opts.key, opts.value, opts.hasValue)
 		if !ok {
 			return 1
 		}
@@ -150,7 +150,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 			return 1
 		}
 	case "ai.api-key":
-		token, ok := secretValue(a, opts.args, "AI API key: ")
+		token, ok := secretValue(a, opts.key, opts.hasValue, "AI API key: ")
 		if !ok {
 			return 1
 		}
@@ -160,7 +160,7 @@ func runConfigSet(a *app, opts configSetOptions) int {
 		}
 	default:
 		if strings.HasPrefix(opts.key, "ai.headers.") {
-			return runConfigSetAIHeader(a, cfg, opts.key, opts.args)
+			return runConfigSetAIHeader(a, cfg, opts)
 		}
 		a.plainErrorf("unknown config key %q.", opts.key)
 		return 1
@@ -196,16 +196,16 @@ func runConfigUnset(a *app, opts configUnsetOptions) int {
 	return 0
 }
 
-func runConfigSetAIHeader(a *app, cfg config.Config, key string, args []string) int {
-	header, ok := configHeaderName(a, key)
+func runConfigSetAIHeader(a *app, cfg config.Config, opts configSetOptions) int {
+	header, ok := configHeaderName(a, opts.key)
 	if !ok {
 		return 1
 	}
-	if len(args) == 2 && args[1] != "" {
+	if opts.hasValue && opts.value != "" {
 		if cfg.AI.Headers == nil {
 			cfg.AI.Headers = map[string]string{}
 		}
-		cfg.AI.Headers[header] = args[1]
+		cfg.AI.Headers[header] = opts.value
 		cfg.AI.SecretHeaders = removeHeaderName(cfg.AI.SecretHeaders, header)
 		if err := a.creds.Delete(credentials.AIHeaderAccount(cfg.AI.Provider, header)); err != nil && !errors.Is(err, credentials.ErrNotFound) {
 			a.plainErrorf("%s", err.Error())
@@ -218,7 +218,7 @@ func runConfigSetAIHeader(a *app, cfg config.Config, key string, args []string) 
 		a.ok("Updated ai.headers." + header)
 		return 0
 	}
-	token, ok := secretValue(a, args, header+": ")
+	token, ok := secretValue(a, opts.key, opts.hasValue, header+": ")
 	if !ok {
 		return 1
 	}
@@ -340,17 +340,17 @@ func containsHeaderName(headers []string, header string) bool {
 	return false
 }
 
-func configValue(a *app, args []string, key string) (string, bool) {
-	if len(args) != 2 || args[1] == "" {
+func configValue(a *app, key, value string, hasValue bool) (string, bool) {
+	if !hasValue || value == "" {
 		a.plainErrorf("%s requires a value.", key)
 		return "", false
 	}
-	return args[1], true
+	return value, true
 }
 
-func secretValue(a *app, args []string, prompt string) (string, bool) {
-	if len(args) > 1 {
-		a.plainErrorf("%s does not accept a plaintext value.", args[0])
+func secretValue(a *app, key string, hasValue bool, prompt string) (string, bool) {
+	if hasValue {
+		a.plainErrorf("%s does not accept a plaintext value.", key)
 		return "", false
 	}
 	if !requireInteractive(a, "secret config values") {

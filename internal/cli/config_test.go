@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -196,6 +197,51 @@ func TestConfigSetAIHeadersUsesConfigAndKeyring(t *testing.T) {
 	}
 	if !foundSecretHeader {
 		t.Fatalf("config show --json missing header metadata:\n%s", stdout.String())
+	}
+}
+
+func TestConfigSetRejectsExtraValuesBeforeMutation(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, args := range [][]string{
+		{"config", "set", "ai.model", "gpt-test", "extra"},
+		{"config", "set", "ai.headers.X-Project-ID", "corp-dev-99", "extra"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		if err == nil || !strings.Contains(stderr.String(), "set accepts at most one value") {
+			t.Fatalf("%v error = %v, stderr:\n%s", args, err, stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("%v wrote stdout:\n%s", args, stdout.String())
+		}
+	}
+	path, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("invalid config set wrote config file %q: %v", path, err)
+	}
+}
+
+func TestConfigSetSecretPlaintextValueIsRejected(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithIO([]string{"config", "set", "ai.api-key", "super-secret"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(stderr.String(), "ai.api-key does not accept a plaintext value") {
+		t.Fatalf("config set ai.api-key plaintext error = %v, stderr:\n%s", err, stderr.String())
+	}
+	if strings.Contains(stdout.String()+stderr.String(), "super-secret") {
+		t.Fatalf("plaintext secret leaked:\nstdout=%s\nstderr=%s", stdout.String(), stderr.String())
+	}
+	path, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("plaintext secret set wrote config file %q: %v", path, err)
 	}
 }
 

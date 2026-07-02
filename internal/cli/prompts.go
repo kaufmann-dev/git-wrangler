@@ -206,7 +206,7 @@ func guidedEnum(flag, label string, choices ...string) guidedPrompt {
 	return guidedPrompt{flag: flag, label: label, kind: "enum", choices: choices}
 }
 
-func runGuidedSetup(a *app, cmd *cobra.Command) error {
+func runGuidedSetup(a *app, cmd *cobra.Command, spec guidedSpec) error {
 	if !boolFlagValue(cmd, "guided") {
 		return nil
 	}
@@ -216,8 +216,7 @@ func runGuidedSetup(a *app, cmd *cobra.Command) error {
 	if !a.prompts.available() {
 		return fmt.Errorf("--guided requires an interactive terminal for stdin and stderr")
 	}
-	spec, ok := guidedSpecFromCommand(cmd)
-	if !ok {
+	if !spec.enabled() {
 		return fmt.Errorf("--guided is not configured for %s", cmd.Name())
 	}
 
@@ -234,7 +233,7 @@ func runGuidedSetup(a *app, cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	renderGuidedSummary(a, cmd)
+	renderGuidedSummary(a, cmd, spec)
 	return nil
 }
 
@@ -416,10 +415,10 @@ func guidedEnumValue(a *app, label, current string, choices []string) (string, e
 	}
 }
 
-func renderGuidedSummary(a *app, cmd *cobra.Command) {
+func renderGuidedSummary(a *app, cmd *cobra.Command, spec guidedSpec) {
 	fmt.Fprintln(a.stderr)
 	fmt.Fprintln(a.stderr, "Selected configuration")
-	for _, prompt := range guidedSummaryPrompts(cmd) {
+	for _, prompt := range guidedSummaryPrompts(spec) {
 		flag := cmd.Flags().Lookup(prompt.flag)
 		if flag != nil {
 			fmt.Fprintf(a.stderr, "  %s: %s\n", prompt.label, displayGuidedValue(flag.Value.String()))
@@ -435,23 +434,11 @@ func displayGuidedValue(value string) string {
 	return value
 }
 
-func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
-	spec, ok := guidedSpecFromCommand(cmd)
-	if !ok {
-		return nil
-	}
+func guidedSummaryPrompts(spec guidedSpec) []guidedPrompt {
 	if len(spec.summary) > 0 {
 		return spec.summary
 	}
 	return spec.prompts
-}
-
-func guidedSpecFromCommand(cmd *cobra.Command) (guidedSpec, bool) {
-	if cmd == nil {
-		return guidedSpec{}, false
-	}
-	spec, ok := cmd.Context().Value(guidedContextKey{}).(guidedSpec)
-	return spec, ok && spec.enabled()
 }
 
 func rewriteDatesGuidedSummaryPrompts() []guidedPrompt {
