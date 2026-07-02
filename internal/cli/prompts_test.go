@@ -393,7 +393,7 @@ func TestRequiredValuePromptsWithYesAndFailsOutsideTTY(t *testing.T) {
 
 	var stdout bytes.Buffer
 	stderr.Reset()
-	err := ExecuteWithIO([]string{"license", "--yes"}, strings.NewReader("Ada\n"), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"license", "--yes"}, strings.NewReader("Ada\n"), &stdout, &stderr)
 	if err == nil || !strings.Contains(stderr.String(), "--name is required") {
 		t.Fatalf("license --yes error = %v, stderr:\n%s", err, stderr.String())
 	}
@@ -512,7 +512,7 @@ func TestRepresentativeGuidedFlows(t *testing.T) {
 func TestInteractiveOnlyCommandsFailOutsideTTY(t *testing.T) {
 	for _, args := range [][]string{{"init"}, {"rename-repo"}, {"config", "set", "ai.api-key"}} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(args, strings.NewReader("ignored\n"), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, args, strings.NewReader("ignored\n"), &stdout, &stderr)
 		if err == nil || !strings.Contains(stderr.String(), "requires an interactive terminal") {
 			t.Fatalf("%v error = %v, stderr:\n%s", args, err, stderr.String())
 		}

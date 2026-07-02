@@ -37,10 +37,6 @@ func New() Runner {
 	return RealRunner{}
 }
 
-func LookPath(name string) (string, error) {
-	return RealRunner{}.LookPath(name)
-}
-
 func Capture(ctx context.Context, r Runner, dir string, env []string, name string, args ...string) (string, error) {
 	if r == nil {
 		r = RealRunner{}

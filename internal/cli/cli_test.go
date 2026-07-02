@@ -16,7 +16,7 @@ import (
 func TestRootCommandShowsLanding(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("root command returned error: %v", err)
 	}
 	out := stdout.String()
@@ -45,7 +45,7 @@ func TestRootCommandUsesGradientWhenColorEnabled(t *testing.T) {
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("root command returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "\033[38;2;0;245;255m") {
@@ -59,7 +59,7 @@ func TestRootCommandUsesGradientWhenColorEnabled(t *testing.T) {
 func TestRootHelpUsesCobraGroups(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{"--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("--help returned error: %v", err)
 	}
 	out := stdout.String()
@@ -248,7 +248,7 @@ func TestRemovedAICommandNamesAreUnknown(t *testing.T) {
 		{"rewrite-commits-ai"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, args, strings.NewReader(""), &stdout, &stderr)
 		if err == nil {
 			t.Fatalf("%v returned nil error", args)
 		}
@@ -261,7 +261,7 @@ func TestRemovedAICommandNamesAreUnknown(t *testing.T) {
 func TestRemovedCommandsDoNotAppearInHelp(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{"--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("--help returned error: %v", err)
 	}
 	out := stdout.String()
@@ -273,7 +273,7 @@ func TestRemovedCommandsDoNotAppearInHelp(t *testing.T) {
 func TestHelpCommandUsesCobraGeneratedHelp(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{"help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("help returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Help about any command") || !strings.Contains(stdout.String(), "Utility:") {
@@ -282,7 +282,7 @@ func TestHelpCommandUsesCobraGeneratedHelp(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := ExecuteWithIO([]string{"help", "status"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"help", "status"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("help status returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Show clean, dirty, and tracking state.") {
@@ -293,7 +293,7 @@ func TestHelpCommandUsesCobraGeneratedHelp(t *testing.T) {
 func TestVersionCommand(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("version returned error: %v", err)
 	}
 	out := stdout.String()
@@ -313,7 +313,7 @@ func TestCommandsRejectPositionalArgs(t *testing.T) {
 		{"commit", "extra"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, args, strings.NewReader(""), &stdout, &stderr)
 		if err == nil {
 			t.Fatalf("%v returned nil error", args)
 		}
@@ -326,7 +326,7 @@ func TestCommandsRejectPositionalArgs(t *testing.T) {
 func TestCompletionCommandIsPresent(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithIO([]string{"completion", "--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"completion", "--help"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("completion help returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Available Commands:") || !strings.Contains(stdout.String(), "bash") {
@@ -346,7 +346,7 @@ func TestRewriteCommitsFlagValidation(t *testing.T) {
 		{[]string{"rewrite-commits", "--concurrency", "65"}, "--concurrency must be 64 or less"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, tc.args, strings.NewReader(""), &stdout, &stderr)
 		if err == nil {
 			t.Fatalf("%v returned nil error", tc.args)
 		}
@@ -367,7 +367,7 @@ func TestRemovedAIContextFlagIsRejected(t *testing.T) {
 		{"rewrite-commits", "--max-chars-per-commit", "3000"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, args, strings.NewReader(""), &stdout, &stderr)
 		if err == nil {
 			t.Fatalf("%v returned nil error", args)
 		}
@@ -389,7 +389,7 @@ func TestCommitFlagValidation(t *testing.T) {
 		{[]string{"commit", "--timeout", "0"}, "--timeout must be a positive integer"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, tc.args, strings.NewReader(""), &stdout, &stderr)
 		if err == nil {
 			t.Fatalf("%v returned nil error", tc.args)
 		}

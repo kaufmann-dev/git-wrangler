@@ -35,7 +35,7 @@ func TestRewriteDatesFlagValidation(t *testing.T) {
 		{[]string{"rewrite-dates", "--window", "18:00-09:00"}, "--window window start must be before window end"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, tc.args, strings.NewReader(""), &stdout, &stderr)
 		assertExitCode(t, err, 1)
 		if !strings.Contains(stderr.String(), tc.want) {
 			t.Fatalf("%v stderr:\n%s", tc.args, stderr.String())
@@ -57,7 +57,7 @@ func TestCurrentRewriteDateBoundsValidationForRewriteCommands(t *testing.T) {
 		{[]string{"rewrite-hours", "--rewrite-after", "2024-02-01", "--rewrite-before", "2024-02-01"}, "--rewrite-after must be before --rewrite-before"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, tc.args, strings.NewReader(""), &stdout, &stderr)
 		assertExitCode(t, err, 1)
 		if !strings.Contains(stderr.String(), tc.want) {
 			t.Fatalf("%v stderr:\n%s", tc.args, stderr.String())
@@ -68,7 +68,7 @@ func TestCurrentRewriteDateBoundsValidationForRewriteCommands(t *testing.T) {
 func TestRewriteDatesRollbackFlagRemoved(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-dates", "--rollback"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--rollback"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil || !strings.Contains(stderr.String(), "unknown flag: --rollback") {
 		t.Fatalf("rewrite-dates --rollback error = %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -77,7 +77,7 @@ func TestRewriteDatesRollbackFlagRemoved(t *testing.T) {
 func TestRewriteHoursRequiresWindow(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-hours"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-hours"}, strings.NewReader(""), &stdout, &stderr)
 	assertExitCode(t, err, 1)
 	if !strings.Contains(stderr.String(), "--window is required") {
 		t.Fatalf("missing window error:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
@@ -1196,7 +1196,7 @@ func TestRewriteDatesDirtyRepoFailsBeforeMutation(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "test-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "test-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	assertExitCode(t, err, 1)
 	if !strings.Contains(stderr.String(), "working tree must be clean before rewriting dates") {
 		t.Fatalf("missing dirty working tree error:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
@@ -1223,7 +1223,7 @@ func TestRewriteHoursTempRepoWindowPreservesCalendarDates(t *testing.T) {
 	before := commitAuthorDatesBySubject(t, repoDir)
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-hours", "--repo", repoDir, "--no-fetch", "--window", "09:00-10:00", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-hours", "--repo", repoDir, "--no-fetch", "--window", "09:00-10:00", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rewrite-hours failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1259,7 +1259,7 @@ func TestRewriteHoursTempRepoScheduleLeavesUnscheduledDates(t *testing.T) {
 	before := commitAuthorDatesBySubject(t, repoDir)
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-hours", "--repo", repoDir, "--no-fetch", "--window", "mon-fri=09:00-10:00", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-hours", "--repo", repoDir, "--no-fetch", "--window", "mon-fri=09:00-10:00", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rewrite-hours failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1294,7 +1294,7 @@ func TestRewriteAuthorsDateBoundsRewriteAndBaselineOnlySelected(t *testing.T) {
 	commitEmptyForTest(t, repoDir, "third", "2024-02-03T10:00:00 +0000")
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-authors", "--repo", repoDir, "--no-fetch", "--rewrite-after", "2024-02-02", "--rewrite-before", "2024-02-03", "--name", "New Name", "--email", "new@example.test", "--force", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-authors", "--repo", repoDir, "--no-fetch", "--rewrite-after", "2024-02-02", "--rewrite-before", "2024-02-03", "--name", "New Name", "--email", "new@example.test", "--force", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rewrite-authors failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1334,7 +1334,7 @@ func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	originalSHAs := commitSHAsBySubject(t, repoDir)
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "test-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "test-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rewrite-dates failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1355,7 +1355,7 @@ func TestRewriteDatesTempRepoRewriteAndRollback(t *testing.T) {
 	newBeforeRollback := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rewrite-dates rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1401,13 +1401,13 @@ func TestRewriteDatesTempRepoRepeatedRewriteRollbackRestoresOriginalBaseline(t *
 	originalHead := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "first-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "first-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("first rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2025-01-01", "--end-date", "2025-01-10", "--seed", "second-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2025-01-01", "--end-date", "2025-01-10", "--seed", "second-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("second rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1417,7 +1417,7 @@ func TestRewriteDatesTempRepoRepeatedRewriteRollbackRestoresOriginalBaseline(t *
 
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1442,7 +1442,7 @@ func TestRewriteDatesTempRepoRepeatedRewriteRollbackRestoresOriginalBaseline(t *
 	headAfterRollback := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("second rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1465,7 +1465,7 @@ func TestRewriteDatesTempRepoRollbackReplaysCommitIncludedInSecondRewrite(t *tes
 	originalSHAs := commitSHAsBySubject(t, repoDir)
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "first-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2024-01-01", "--end-date", "2024-01-10", "--seed", "first-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("first rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1474,14 +1474,14 @@ func TestRewriteDatesTempRepoRollbackReplaysCommitIncludedInSecondRewrite(t *tes
 
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2026-01-01", "--end-date", "2026-01-10", "--seed", "second-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rewrite-dates", "--repo", repoDir, "--no-fetch", "--start-date", "2026-01-01", "--end-date", "2026-01-10", "--seed", "second-seed", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("second rewrite failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
 
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1514,7 +1514,7 @@ func TestRewriteDatesTempRepoRollbackReplaysCommitIncludedInSecondRewrite(t *tes
 	headAfterRollback := strings.TrimSpace(runGitForTest(t, repoDir, "rev-parse", "HEAD"))
 	stdout.Reset()
 	stderr.Reset()
-	err = ExecuteWithIO([]string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err = ExecuteWithRunner(context.Background(), nil, []string{"rollback-rewrites", "--repo", repoDir, "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("second rollback failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}
@@ -1872,4 +1872,39 @@ func testRewriteDateCandidate(name string, commits []rewriteDateCommit, selected
 		selected: selected,
 		tzOffset: "+0000",
 	}
+}
+
+func enforceRewriteDateTopology(candidates []dateCandidate, targetStart, targetEnd int64) error {
+	selected := selectedDateCommits(candidates)
+	sortSelectedDateCommits(candidates, selected)
+	return enforceRewriteDateTopologyWithSelected(candidates, selected, targetStart, targetEnd)
+}
+
+func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, profile rewriteDateProfile, tzOffset string) []int64 {
+	if n <= 0 {
+		return nil
+	}
+	if startEpoch > endEpoch {
+		startEpoch, endEpoch = endEpoch, startEpoch
+	}
+	calendar := buildRewriteDateCalendarPlan(n, startEpoch, endEpoch, seed, profile, tzOffset)
+	return plannedEpochsForCalendar(calendar, n, seed, profile, nil)
+}
+
+func buildRewriteDateCalendarPlan(selectedCount int, startEpoch, endEpoch int64, seed string, profile rewriteDateProfile, tzOffset string) rewriteDateCalendarPlan {
+	return buildRewriteDateCalendarPlanForRepos(selectedCount, startEpoch, endEpoch, seed, profile, tzOffset, 1)
+}
+
+func calendarQuotaTotal(calendar rewriteDateCalendarPlan) int {
+	total := 0
+	for _, day := range calendar.days {
+		if calendarDayHasSlots(day.state) {
+			total += maxInt(1, day.quota)
+		}
+	}
+	return total
+}
+
+func formatEpochLocal(epoch int64) string {
+	return time.Unix(epoch, 0).In(time.Local).Format("2006-01-02 15:04:05 -0700")
 }

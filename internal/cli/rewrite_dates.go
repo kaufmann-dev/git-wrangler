@@ -1000,11 +1000,6 @@ func fixedDateConstraints(candidate dateCandidate, commitIndex int) (int64, int6
 	return minFixed, maxFixed
 }
 
-func enforceRewriteDateTopology(candidates []dateCandidate, targetStart, targetEnd int64) error {
-	selected := selectedDateCommits(candidates)
-	sortSelectedDateCommits(candidates, selected)
-	return enforceRewriteDateTopologyWithSelected(candidates, selected, targetStart, targetEnd)
-}
 
 func enforceRewriteDateTopologyWithSelected(candidates []dateCandidate, selectedRefs []selectedDateCommit, targetStart, targetEnd int64) error {
 	limit := totalRewriteDateCommits(candidates) + len(selectedRefs) + 2
@@ -1361,20 +1356,7 @@ func maxSelectedChainLength(candidates []dateCandidate) int {
 	return maxChain
 }
 
-func generatePlannedEpochs(n int, startEpoch, endEpoch int64, seed string, profile rewriteDateProfile, tzOffset string) []int64 {
-	if n <= 0 {
-		return nil
-	}
-	if startEpoch > endEpoch {
-		startEpoch, endEpoch = endEpoch, startEpoch
-	}
-	calendar := buildRewriteDateCalendarPlan(n, startEpoch, endEpoch, seed, profile, tzOffset)
-	return plannedEpochsForCalendar(calendar, n, seed, profile, nil)
-}
 
-func buildRewriteDateCalendarPlan(selectedCount int, startEpoch, endEpoch int64, seed string, profile rewriteDateProfile, tzOffset string) rewriteDateCalendarPlan {
-	return buildRewriteDateCalendarPlanForRepos(selectedCount, startEpoch, endEpoch, seed, profile, tzOffset, 1)
-}
 
 func buildRewriteDateCalendarPlanForRepos(selectedCount int, startEpoch, endEpoch int64, seed string, profile rewriteDateProfile, tzOffset string, effectiveRepos float64) rewriteDateCalendarPlan {
 	if startEpoch > endEpoch {
@@ -1913,15 +1895,6 @@ func calendarDayHasSlots(state rewriteDateCalendarDayState) bool {
 	return state == rewriteDateCalendarActive || state == rewriteDateCalendarForcedActive
 }
 
-func calendarQuotaTotal(calendar rewriteDateCalendarPlan) int {
-	total := 0
-	for _, day := range calendar.days {
-		if calendarDayHasSlots(day.state) {
-			total += maxInt(1, day.quota)
-		}
-	}
-	return total
-}
 
 func calendarActiveDayCount(calendar rewriteDateCalendarPlan) int {
 	count := 0
@@ -2622,9 +2595,6 @@ func formatEpoch(epoch int64, offset string) string {
 	return time.Unix(epoch, 0).In(loc).Format("2006-01-02 15:04:05 ") + offset
 }
 
-func formatEpochLocal(epoch int64) string {
-	return time.Unix(epoch, 0).In(time.Local).Format("2006-01-02 15:04:05 -0700")
-}
 
 func writeDateCallbackDates(mapping map[string]dateCallbackDates) (string, error) {
 	f, err := os.CreateTemp("", "git-wrangler-date-callback-*")

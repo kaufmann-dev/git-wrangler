@@ -206,10 +206,10 @@ func TestExtractMessagesAndValidate(t *testing.T) {
 	if messages["c000001"].Subject != "feat(cli): add thing" {
 		t.Fatalf("message = %q", messages["c000001"])
 	}
-	if !ValidateMessage(messages["c000001"].Subject) {
+	if !ValidateSubject(messages["c000001"].Subject) {
 		t.Fatal("expected valid Conventional Commit message")
 	}
-	if ValidateMessage("this is not conventional") {
+	if ValidateSubject("this is not conventional") {
 		t.Fatal("expected invalid message")
 	}
 }
@@ -438,7 +438,7 @@ func TestProcessBatchDoesNotRetryPermanentAuthFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	accepted, failures := processBatch(context.Background(), []item{{
+	accepted, failures := processBatchWithProgress(context.Background(), []item{{
 		ID:       "c000001",
 		RepoName: "repo",
 		Hash:     "abcdef123456",
@@ -449,7 +449,7 @@ func TestProcessBatchDoesNotRetryPermanentAuthFailure(t *testing.T) {
 		APIKey:    "bad-key",
 		BatchSize: 1,
 		Timeout:   time.Second,
-	}, io.Discard)
+	}, io.Discard, nil, nil, nil)
 	if len(accepted) != 0 || len(failures) != 1 {
 		t.Fatalf("accepted = %#v failures = %#v", accepted, failures)
 	}
@@ -866,13 +866,13 @@ func TestProcessBatchRetrySleepRespectsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Now()
-	_, failures := processBatch(ctx, []item{{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"}}, Config{
+	_, failures := processBatchWithProgress(ctx, []item{{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"}}, Config{
 		BaseURL:   "http://127.0.0.1:1/v1",
 		Model:     "test-model",
 		APIKey:    "test-key",
 		BatchSize: 1,
 		Timeout:   time.Second,
-	}, io.Discard)
+	}, io.Discard, nil, nil, nil)
 	if len(failures) != 1 {
 		t.Fatalf("failures = %d, want 1", len(failures))
 	}
@@ -912,7 +912,7 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 	defer server.Close()
 
 	var out bytes.Buffer
-	accepted, failures := processBatch(context.Background(), []item{
+	accepted, failures := processBatchWithProgress(context.Background(), []item{
 		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
 		{ID: "c000002", RepoName: "repo", Hash: "123456abcdef", Context: "context"},
 	}, Config{
@@ -920,7 +920,7 @@ func TestProcessBatchRetriesTruncatedBatchIndividually(t *testing.T) {
 		Model:   "test-model",
 		APIKey:  "test-key",
 		Timeout: time.Second,
-	}, &out)
+	}, &out, nil, nil, nil)
 	if len(failures) != 0 {
 		t.Fatalf("failures = %#v", failures)
 	}
@@ -1057,7 +1057,7 @@ func TestBuildStagedContextPreservesSummaryWhenDiffIsTruncated(t *testing.T) {
 		}
 	}})
 
-	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo")
+	contextText, err := BuildStagedContextWithEnv(context.Background(), gitClient, "repo", "repo", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1093,7 +1093,7 @@ func TestBuildStagedContextIsNotTruncatedAtLegacyDefault(t *testing.T) {
 		}
 	}})
 
-	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo")
+	contextText, err := BuildStagedContextWithEnv(context.Background(), gitClient, "repo", "repo", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1319,7 +1319,7 @@ func TestBuildStagedContextSkipsDiffForExcludedOnlyChanges(t *testing.T) {
 		}
 	}})
 
-	contextText, err := BuildStagedContext(context.Background(), gitClient, "repo", "repo")
+	contextText, err := BuildStagedContextWithEnv(context.Background(), gitClient, "repo", "repo", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1548,7 +1548,7 @@ func TestProcessBatchShrinksContextAfterIncompleteJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	results, failures := processBatch(context.Background(), []item{{
+	results, failures := processBatchWithProgress(context.Background(), []item{{
 		ID:       "c000001",
 		RepoName: "repo",
 		Hash:     "abcdef123456",
@@ -1560,7 +1560,7 @@ func TestProcessBatchShrinksContextAfterIncompleteJSON(t *testing.T) {
 		BatchSize: 1,
 		RPM:       60000,
 		Timeout:   time.Second,
-	}, io.Discard)
+	}, io.Discard, nil, nil, nil)
 	if len(failures) != 0 || len(results) != 1 {
 		t.Fatalf("results = %#v failures = %#v", results, failures)
 	}
@@ -1595,7 +1595,7 @@ func TestProviderContextLimitRetriesWithSmallerContext(t *testing.T) {
 	defer server.Close()
 
 	var out bytes.Buffer
-	results, failures := processBatch(context.Background(), []item{{
+	results, failures := processBatchWithProgress(context.Background(), []item{{
 		ID:       "c000001",
 		RepoName: "repo",
 		Hash:     "abcdef123456",
@@ -1607,7 +1607,7 @@ func TestProviderContextLimitRetriesWithSmallerContext(t *testing.T) {
 		BatchSize: 1,
 		RPM:       60000,
 		Timeout:   time.Second,
-	}, &out)
+	}, &out, nil, nil, nil)
 	if len(failures) != 0 || len(results) != 1 {
 		t.Fatalf("results = %#v failures = %#v", results, failures)
 	}

@@ -36,10 +36,6 @@ func parallelReposProgress[T any](ctx context.Context, repos []repo, progress *p
 	return parallelReposWithWorkersProgress(ctx, repos, readOnlyWorkerCount(len(repos)), progress, inspect)
 }
 
-func parallelGitMutations[T any](ctx context.Context, repos []repo, mutate func(repo) T) []T {
-	return parallelReposWithWorkers(ctx, repos, gitMutationWorkerCount(len(repos)), mutate)
-}
-
 func parallelGitMutationsProgress[T any](ctx context.Context, repos []repo, progress *progress, mutate func(repo) T) []T {
 	return parallelReposWithWorkersProgress(ctx, repos, gitMutationWorkerCount(len(repos)), progress, mutate)
 }

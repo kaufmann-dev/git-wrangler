@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -234,4 +235,24 @@ func containsStringForBaselineTest(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func captureRewriteBaselineForLocalBranches(a *app, r repo) error {
+	branches, err := localBranchRefs(a, r.dir)
+	if err != nil {
+		return fmt.Errorf("could not list local branches: %w", err)
+	}
+	if len(branches) == 0 {
+		_, _, err := loadRewriteBaseline(r.gitDir)
+		return err
+	}
+	commits, err := collectRewriteDateCommits(a, r.dir, branchRefNames(branches))
+	if err != nil {
+		return fmt.Errorf("could not read commit metadata: %w", err)
+	}
+	hashes := make([]string, 0, len(commits))
+	for _, commit := range commits {
+		hashes = append(hashes, commit.hash)
+	}
+	return captureRewriteBaselineForHashes(a, r, hashes)
 }
