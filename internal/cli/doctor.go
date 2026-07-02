@@ -13,7 +13,8 @@ import (
 )
 
 func runDoctor(a *app, cmd *cobra.Command, args []string) int {
-	if a.json {
+	opts := doctorOptionsFromCommand(cmd)
+	if opts.json.enabled {
 		return runDoctorJSON(a)
 	}
 	fmt.Fprintln(a.stdout, "Git Wrangler Doctor")
@@ -157,21 +158,6 @@ func doctorVersion(a *app, name string, args ...string) string {
 		return ""
 	}
 	return firstLine(strings.TrimSpace(stdout + stderr))
-}
-
-func doctorOK(a *app, name, detail, versionText string) {
-	if versionText != "" {
-		detail = fmt.Sprintf("%s (%s)", detail, versionText)
-	}
-	fmt.Fprintf(a.stdout, "  OK    %-16s %s\n", name, detail)
-}
-
-func doctorMissing(a *app, name, neededFor string, critical bool) {
-	label := "WARN"
-	if critical {
-		label = "ERROR"
-	}
-	fmt.Fprintf(a.stdout, "  %-5s %-16s not found; needed for %s\n", label, name, neededFor)
 }
 
 func doctorDetail(detail, versionText string) string {

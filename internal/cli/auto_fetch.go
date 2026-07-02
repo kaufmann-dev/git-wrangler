@@ -8,10 +8,6 @@ type originRefreshResult struct {
 	err  error
 }
 
-func noFetchFlagValue(cmd *cobra.Command) bool {
-	return fetchOptionsFromCommand(cmd).noFetch
-}
-
 func refreshOrigin(a *app, repos []repo) []originRefreshResult {
 	return parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Fetching repositories", len(repos)), func(r repo) originRefreshResult {
 		out, err := captureRemoteGitWithRetry(a, r.dir, nil, "fetch", "--prune", "origin")

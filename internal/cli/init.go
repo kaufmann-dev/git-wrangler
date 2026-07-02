@@ -10,22 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func initCommand(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:     "init",
-		Short:   "Set up GitHub and AI credentials.",
-		GroupID: "utility",
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if code := runInit(a); code != 0 {
-				return commandExitError(a, code)
-			}
-			return nil
-		},
-	}
+func runInitCommand(a *app, cmd *cobra.Command, args []string) int {
+	return runInit(a, initOptionsFromCommand(cmd))
 }
 
-func runInit(a *app) int {
+func runInit(a *app, opts initOptions) int {
 	if !requireInteractive(a, "init") {
 		return 1
 	}

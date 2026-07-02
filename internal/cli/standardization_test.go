@@ -207,3 +207,25 @@ func TestConfirmationsAreNotInsideRangeLoops(t *testing.T) {
 		})
 	}
 }
+
+func TestDirectFlagReadsStayInOptionsOrGuidedPlumbing(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") || file == "options.go" || file == "prompts.go" {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, forbidden := range []string{".Flags().Get", ".PersistentFlags().Get"} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("%s reads Cobra flags directly with %q; use an options parser", file, forbidden)
+			}
+		}
+	}
+}

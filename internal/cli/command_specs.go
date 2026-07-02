@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -11,29 +12,37 @@ import (
 type commandRunFunc func(*app, *cobra.Command, []string) int
 
 type commandSpec struct {
-	use   string
-	short string
-	group string
-	run   commandRunFunc
-	flags flags
+	use      string
+	short    string
+	group    string
+	args     cobra.PositionalArgs
+	run      commandRunFunc
+	flags    flags
+	guided   guidedSpec
+	children []commandSpec
+	helpOnly bool
 }
 
+type guidedSpec struct {
+	prompts []guidedPrompt
+	summary []guidedPrompt
+	setup   guidedSetupFunc
+}
+
+type guidedSetupFunc func(*app, *cobra.Command) error
+
+type guidedContextKey struct{}
+
 func rootCommands(a *app) []*cobra.Command {
-	specs := leadingCommandSpecs()
-	commands := make([]*cobra.Command, 0, len(specs)+4)
+	specs := commandSpecs()
+	commands := make([]*cobra.Command, 0, len(specs))
 	for _, spec := range specs {
 		commands = append(commands, command(a, spec))
 	}
-	commands = append(commands,
-		initCommand(a),
-		configCommand(a),
-		command(a, statusCommandSpec()),
-		versionCommand(a),
-	)
 	return commands
 }
 
-func leadingCommandSpecs() []commandSpec {
+func commandSpecs() []commandSpec {
 	return []commandSpec{
 		{
 			use:   "activity",
@@ -46,6 +55,7 @@ func leadingCommandSpecs() []commandSpec {
 				boolFlag("all", "Include commits reachable from all normal refs."),
 				boolFlag("global-scale", "Use one activity scale across all rendered years."),
 			}),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedString("year", "Year"), guidedRepeatable("user", "Author filters"), guidedBool("all", "Include all refs"), guidedBool("global-scale", "Use global scale")}},
 		},
 		{
 			use:   "log",
@@ -60,6 +70,7 @@ func leadingCommandSpecs() []commandSpec {
 				stringArrayFlag("scope", "Only include an exact Conventional Commit scope. Repeatable."),
 				boolFlag("summary", "Print compact history counts before entries."),
 			}),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedNonNegativeInt("limit", "Commit limit"), guidedString("since", "Author date on or after"), guidedString("until", "Author date on or before"), guidedRepeatable("type", "Types"), guidedRepeatable("scope", "Scopes"), guidedBool("summary", "Print summary")}},
 		},
 		{
 			use:   "clone",
@@ -72,6 +83,10 @@ func leadingCommandSpecs() []commandSpec {
 				intFlag("limit", 100, "Maximum repositories to list."),
 				stringFlag("into", "", "Directory to clone repositories into."),
 			},
+			guided: guidedSpec{
+				prompts: []guidedPrompt{guidedString("user", "GitHub user or organization"), guidedEnum("visibility", "Visibility", "all", "public", "private"), guidedPositiveInt("limit", "Repository limit"), guidedString("into", "Destination directory")},
+				setup:   guideClone,
+			},
 		},
 		{
 			use:   "pull",
@@ -82,6 +97,7 @@ func leadingCommandSpecs() []commandSpec {
 				boolFlag("rebase", "Rebase local commits while pulling."),
 				boolFlag("force", "Pass --force to git pull."),
 			}),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")}},
 		},
 		{
 			use:   "fetch",
@@ -91,6 +107,7 @@ func leadingCommandSpecs() []commandSpec {
 			flags: joinFlags(targetFlags(), flags{
 				boolFlag("prune", "Prune remote-tracking branches that no longer exist on origin."),
 			}),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")}},
 		},
 		{
 			use:   "push",
@@ -101,6 +118,10 @@ func leadingCommandSpecs() []commandSpec {
 				boolFlag("force", "Use --force-with-lease."),
 				boolFlag("force-unsafe", "Use raw --force after confirmation."),
 			}, confirmationFlags()),
+			guided: guidedSpec{
+				prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("force", "Force with lease"), guidedBool("force-unsafe", "Raw force")},
+				setup:   guidePush,
+			},
 		},
 		{
 			use:   "rename-repo",
@@ -119,13 +140,15 @@ func leadingCommandSpecs() []commandSpec {
 			flags: joinFlags(targetFlags(), aiRequestFlags(), flags{
 				boolFlag("body", "Generate commit message bodies."),
 			}, confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")}},
 		},
 		{
-			use:   "fix-gitignore",
-			short: "Add missing common generated-file patterns to .gitignore.",
-			group: "local",
-			run:   runFixGitignore,
-			flags: joinFlags(targetFlags(), confirmationFlags()),
+			use:    "fix-gitignore",
+			short:  "Add missing common generated-file patterns to .gitignore.",
+			group:  "local",
+			run:    runFixGitignore,
+			flags:  joinFlags(targetFlags(), confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository")}},
 		},
 		{
 			use:   "license",
@@ -136,6 +159,7 @@ func leadingCommandSpecs() []commandSpec {
 				stringFlag("name", "", "Copyright holder name."),
 				boolFlag("overwrite", "Replace an existing LICENSE file."),
 			}, confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")}},
 		},
 		{
 			use:   "rename-branch",
@@ -146,34 +170,39 @@ func leadingCommandSpecs() []commandSpec {
 				stringFlag("oldbranch", "", "Existing branch name."),
 				stringFlag("newbranch", "", "New branch name."),
 			}),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")}},
 		},
 		{
-			use:   "reset",
-			short: "Reset current branches to their origin counterparts.",
-			group: "local",
-			run:   runReset,
-			flags: joinFlags(targetFlags(), confirmationFlags()),
+			use:    "reset",
+			short:  "Reset current branches to their origin counterparts.",
+			group:  "local",
+			run:    runReset,
+			flags:  joinFlags(targetFlags(), confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository")}},
 		},
 		{
-			use:   "review",
-			short: "Review unpushed changes across repositories.",
-			group: "local",
-			run:   runReview,
-			flags: joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+			use:    "review",
+			short:  "Review unpushed changes across repositories.",
+			group:  "local",
+			run:    runReview,
+			flags:  joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")}},
 		},
 		{
-			use:   "untrack",
-			short: "Stop tracking files already covered by .gitignore.",
-			group: "local",
-			run:   runUntrack,
-			flags: joinFlags(targetFlags(), confirmationFlags()),
+			use:    "untrack",
+			short:  "Stop tracking files already covered by .gitignore.",
+			group:  "local",
+			run:    runUntrack,
+			flags:  joinFlags(targetFlags(), confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository")}},
 		},
 		{
-			use:   "remove-secrets",
-			short: "Purge sensitive files from Git history.",
-			group: "history",
-			run:   runRemoveSecrets,
-			flags: joinFlags(targetFlags(), fetchControlFlags(), confirmationFlags()),
+			use:    "remove-secrets",
+			short:  "Purge sensitive files from Git history.",
+			group:  "history",
+			run:    runRemoveSecrets,
+			flags:  joinFlags(targetFlags(), fetchControlFlags(), confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")}},
 		},
 		{
 			use:   "rewrite-authors",
@@ -186,6 +215,7 @@ func leadingCommandSpecs() []commandSpec {
 			}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), flags{
 				boolFlag("force", "Pass --force to git-filter-repo."),
 			}, confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedBool("force", "Force filter-repo")}},
 		},
 		{
 			use:   "rewrite-commits",
@@ -199,6 +229,7 @@ func leadingCommandSpecs() []commandSpec {
 				boolFlag("require-scope", "Skip only Conventional Commits that also have a scope; implies --skip-conventional."),
 				boolFlag("body", "Generate commit message bodies."),
 			}, confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("require-scope", "Skip only scoped conventional commits"), guidedBool("body", "Generate message bodies")}},
 		},
 		{
 			use:   "rewrite-hours",
@@ -208,6 +239,7 @@ func leadingCommandSpecs() []commandSpec {
 			flags: joinFlags(targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), flags{
 				stringFlag("window", "", "Required same-day time window or day-of-week schedule."),
 			}, confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedRequiredString("window", "Time window")}},
 		},
 		{
 			use:   "rewrite-dates",
@@ -226,20 +258,26 @@ func leadingCommandSpecs() []commandSpec {
 				stringFlag("spread", "medium", "Planning spread: low, medium, or high."),
 				stringFlag("window", "", "Use one same-day time window or day-of-week schedule."),
 			}, confirmationFlags()),
+			guided: guidedSpec{
+				prompts: rewriteDatesGuidedSummaryPrompts(),
+				setup:   guideRewriteDates,
+			},
 		},
 		{
-			use:   "rollback-rewrites",
-			short: "Roll back Git Wrangler history rewrites from the shared baseline.",
-			group: "history",
-			run:   runRollbackRewrites,
-			flags: joinFlags(targetFlags(), confirmationFlags()),
+			use:    "rollback-rewrites",
+			short:  "Roll back Git Wrangler history rewrites from the shared baseline.",
+			group:  "history",
+			run:    runRollbackRewrites,
+			flags:  joinFlags(targetFlags(), confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository")}},
 		},
 		{
-			use:   "info",
-			short: "Show detailed repository information.",
-			group: "utility",
-			run:   runInfo,
-			flags: joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+			use:    "info",
+			short:  "Show detailed repository information.",
+			group:  "utility",
+			run:    runInfo,
+			flags:  joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")}},
 		},
 		{
 			use:   "doctor",
@@ -248,25 +286,71 @@ func leadingCommandSpecs() []commandSpec {
 			run:   runDoctor,
 			flags: jsonFlags(),
 		},
-	}
-}
-
-func statusCommandSpec() commandSpec {
-	return commandSpec{
-		use:   "status",
-		short: "Show clean, dirty, and tracking state.",
-		group: "utility",
-		run:   runStatus,
-		flags: joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+		{
+			use:   "init",
+			short: "Set up GitHub and AI credentials.",
+			group: "utility",
+			run:   runInitCommand,
+		},
+		{
+			use:      "config",
+			short:    "Show and edit Git Wrangler setup.",
+			group:    "utility",
+			helpOnly: true,
+			children: []commandSpec{
+				{
+					use:   "show",
+					short: "Show non-secret configuration and credential sources.",
+					run:   runConfigShowCommand,
+					flags: jsonFlags(),
+				},
+				{
+					use:   "set <key> [value]",
+					short: "Set a configuration value.",
+					args: func(cmd *cobra.Command, args []string) error {
+						if len(args) < 1 {
+							return errors.New("set requires a key")
+						}
+						return nil
+					},
+					run: runConfigSetCommand,
+				},
+				{
+					use:   "unset <key>",
+					short: "Unset a stored credential.",
+					args:  cobra.ExactArgs(1),
+					run:   runConfigUnsetCommand,
+				},
+			},
+		},
+		{
+			use:    "status",
+			short:  "Show clean, dirty, and tracking state.",
+			group:  "utility",
+			run:    runStatus,
+			flags:  joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")}},
+		},
+		{
+			use:   "version",
+			short: "Print version metadata.",
+			group: "utility",
+			run:   runVersion,
+			flags: jsonFlags(),
+		},
 	}
 }
 
 func command(a *app, spec commandSpec) *cobra.Command {
+	args := spec.args
+	if args == nil {
+		args = cobra.NoArgs
+	}
 	cmd := &cobra.Command{
 		Use:     spec.use,
 		Short:   spec.short,
 		GroupID: spec.group,
-		Args:    cobra.NoArgs,
+		Args:    args,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.json = jsonFlagValue(cmd)
 			a.promptFailed = false
@@ -275,6 +359,9 @@ func command(a *app, spec commandSpec) *cobra.Command {
 					return commandExitError(a, 1)
 				}
 				return err
+			}
+			if spec.helpOnly {
+				return cmd.Help()
 			}
 			if code := spec.run(a, cmd, args); code != 0 {
 				return commandExitError(a, code)
@@ -301,33 +388,35 @@ func command(a *app, spec commandSpec) *cobra.Command {
 			cmd.Flags().String(flag.name, flag.stringValue, flag.description)
 		}
 	}
-	if _, ok := guidedPrompts[cmd.Name()]; ok || cmd.Name() == "rewrite-dates" {
+	if spec.guided.enabled() {
 		cmd.Flags().Bool("guided", false, "Interactively configure command options.")
+		ctx := cmd.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		cmd.SetContext(context.WithValue(ctx, guidedContextKey{}, spec.guided))
+	}
+	for _, child := range spec.children {
+		cmd.AddCommand(command(a, child))
 	}
 	return cmd
 }
 
-func versionCommand(a *app) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "version",
-		Short:   "Print version metadata.",
-		GroupID: "utility",
-		Args:    cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			a.json = jsonFlagValue(cmd)
-			if a.json {
-				_ = writeJSON(a, map[string]any{
-					"ok":      true,
-					"summary": map[string]any{"version": version.Version},
-					"version": version.Version,
-					"commit":  version.Commit,
-					"date":    version.Date,
-				})
-				return
-			}
-			fmt.Fprintln(a.stdout, version.Full())
-		},
+func (spec guidedSpec) enabled() bool {
+	return len(spec.prompts) > 0 || len(spec.summary) > 0 || spec.setup != nil
+}
+
+func runVersion(a *app, cmd *cobra.Command, args []string) int {
+	opts := versionOptionsFromCommand(cmd)
+	if opts.json.enabled {
+		return writeJSON(a, map[string]any{
+			"ok":      true,
+			"summary": map[string]any{"version": version.Version},
+			"version": version.Version,
+			"commit":  version.Commit,
+			"date":    version.Date,
+		})
 	}
-	cmd.Flags().Bool("json", false, "Emit one JSON document.")
-	return cmd
+	fmt.Fprintln(a.stdout, version.Full())
+	return 0
 }

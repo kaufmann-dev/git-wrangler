@@ -57,14 +57,6 @@ func (a *app) plainErrorf(format string, args ...any) {
 	fmt.Fprintf(a.stderr, "%sError: %s%s\n", a.ui.Red, fmt.Sprintf(format, args...), a.ui.Reset)
 }
 
-func requireValue(a *app, option string, args []string) (string, bool) {
-	if len(args) < 2 || args[1] == "" || strings.HasPrefix(args[1], "--") {
-		a.errorf("%s requires a value.", option)
-		return "", false
-	}
-	return args[1], true
-}
-
 func requireCommand(a *app, name, context string) bool {
 	if _, err := a.runner.LookPath(name); err != nil {
 		a.errorf("'%s' is required for %s. Install it and make sure it is on PATH.", name, context)
@@ -89,10 +81,6 @@ func (a *app) runCapture(dir string, env []string, name string, args ...string) 
 	return run.Capture(a.ctx, a.runner, dir, env, name, args...)
 }
 
-func (a *app) runStdout(dir string, env []string, name string, args ...string) (string, error) {
-	return run.Stdout(a.ctx, a.runner, dir, env, name, args...)
-}
-
 func findGitRepositories(root string) ([]repo, error) {
 	discovered, err := repos.Discover(root)
 	if err != nil {
@@ -114,14 +102,6 @@ func resolveRepositoryTargets(repoName string) ([]repo, error) {
 		return nil, err
 	}
 	return []repo{{gitDir: r.GitDir, dir: r.Dir, display: r.Display}}, nil
-}
-
-func repoDirFromGitDir(gitDir string) string {
-	return repos.DirFromGitDir(gitDir)
-}
-
-func repoDisplayName(repoDir string) string {
-	return repos.DisplayName(repoDir)
 }
 
 func noRepos(a *app) int {
@@ -165,12 +145,8 @@ func requireInteractive(a *app, command string) bool {
 	return false
 }
 
-func jsonFlagValue(cmd *cobra.Command) bool {
-	return jsonOptionsFromCommand(cmd).enabled
-}
-
 func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string, bool) {
-	value, _ := cmd.Flags().GetString(name)
+	value := stringFlagValue(cmd, name)
 	if value != "" {
 		return value, true
 	}

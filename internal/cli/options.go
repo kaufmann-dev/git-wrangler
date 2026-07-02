@@ -29,6 +29,29 @@ type rewriteBoundOptions struct {
 	bounds currentRewriteDateBounds
 }
 
+type initOptions struct{}
+
+type doctorOptions struct {
+	json jsonOptions
+}
+
+type versionOptions struct {
+	json jsonOptions
+}
+
+type configShowOptions struct {
+	json jsonOptions
+}
+
+type configSetOptions struct {
+	key  string
+	args []string
+}
+
+type configUnsetOptions struct {
+	key string
+}
+
 func targetOptionsFromCommand(cmd *cobra.Command) targetOptions {
 	return targetOptions{repo: stringFlagValue(cmd, "repo")}
 }
@@ -61,6 +84,42 @@ func aiRequestOptionsFromCommand(cmd *cobra.Command) aiRequestOptions {
 func rewriteBoundOptionsFromCommand(cmd *cobra.Command) (rewriteBoundOptions, error) {
 	bounds, err := parseCurrentRewriteDateBounds(stringFlagValue(cmd, "rewrite-after"), stringFlagValue(cmd, "rewrite-before"))
 	return rewriteBoundOptions{bounds: bounds}, err
+}
+
+func initOptionsFromCommand(cmd *cobra.Command) initOptions {
+	return initOptions{}
+}
+
+func doctorOptionsFromCommand(cmd *cobra.Command) doctorOptions {
+	return doctorOptions{json: jsonOptionsFromCommand(cmd)}
+}
+
+func versionOptionsFromCommand(cmd *cobra.Command) versionOptions {
+	return versionOptions{json: jsonOptionsFromCommand(cmd)}
+}
+
+func configShowOptionsFromCommand(cmd *cobra.Command) configShowOptions {
+	return configShowOptions{json: jsonOptionsFromCommand(cmd)}
+}
+
+func configSetOptionsFromCommand(cmd *cobra.Command, args []string) configSetOptions {
+	opts := configSetOptions{args: args}
+	if len(args) > 0 {
+		opts.key = args[0]
+	}
+	return opts
+}
+
+func configUnsetOptionsFromCommand(cmd *cobra.Command, args []string) configUnsetOptions {
+	opts := configUnsetOptions{}
+	if len(args) > 0 {
+		opts.key = args[0]
+	}
+	return opts
+}
+
+func jsonFlagValue(cmd *cobra.Command) bool {
+	return jsonOptionsFromCommand(cmd).enabled
 }
 
 func stringFlagValue(cmd *cobra.Command, name string) string {
