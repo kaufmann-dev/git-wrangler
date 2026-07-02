@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -138,6 +139,72 @@ func TestCommandSurfaceMatchesExpected(t *testing.T) {
 	}
 }
 
+func TestRootAndConfigCommandsComeFromSpecs(t *testing.T) {
+	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
+	wantTop := map[string]commandSpec{}
+	for _, spec := range commandSpecs() {
+		wantTop[commandUseName(spec.use)] = spec
+	}
+	gotTop := map[string]bool{}
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "completion" || cmd.Name() == "help" {
+			continue
+		}
+		gotTop[cmd.Name()] = true
+		if _, ok := wantTop[cmd.Name()]; !ok {
+			t.Fatalf("root command %q is not in commandSpecs", cmd.Name())
+		}
+	}
+	for name := range wantTop {
+		if !gotTop[name] {
+			t.Fatalf("commandSpecs command %q was not built on the root command", name)
+		}
+	}
+
+	configSpec := wantTop["config"]
+	configCmd := commandByName(t, root, "config")
+	wantChildren := map[string]bool{}
+	for _, child := range configSpec.children {
+		wantChildren[commandUseName(child.use)] = true
+	}
+	gotChildren := map[string]bool{}
+	for _, child := range configCmd.Commands() {
+		gotChildren[child.Name()] = true
+		if !wantChildren[child.Name()] {
+			t.Fatalf("config subcommand %q is not in commandSpecs", child.Name())
+		}
+	}
+	for name := range wantChildren {
+		if !gotChildren[name] {
+			t.Fatalf("commandSpecs config subcommand %q was not built", name)
+		}
+	}
+}
+
+func TestConfigSubcommandSurfaceMatchesExpected(t *testing.T) {
+	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
+	config := commandByName(t, root, "config")
+	for _, tc := range []struct {
+		name  string
+		flags []string
+	}{
+		{name: "show", flags: strings.Fields("json")},
+		{name: "set"},
+		{name: "unset"},
+	} {
+		cmd := childCommandByName(t, config, tc.name)
+		got := localFlagNames(cmd)
+		sort.Strings(tc.flags)
+		if strings.Join(got, " ") != strings.Join(tc.flags, " ") {
+			t.Fatalf("config %s flags = %q, want %q", tc.name, got, tc.flags)
+		}
+	}
+}
+
+func commandUseName(use string) string {
+	return strings.Fields(use)[0]
+}
+
 func localFlagNames(cmd interface{ Flags() *pflag.FlagSet }) []string {
 	names := []string{}
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
@@ -145,6 +212,17 @@ func localFlagNames(cmd interface{ Flags() *pflag.FlagSet }) []string {
 	})
 	sort.Strings(names)
 	return names
+}
+
+func childCommandByName(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
+	t.Helper()
+	for _, cmd := range parent.Commands() {
+		if cmd.Name() == name {
+			return cmd
+		}
+	}
+	t.Fatalf("command %q not found below %q", name, parent.Name())
+	return nil
 }
 
 func TestRollbackRewritesCommandSurface(t *testing.T) {

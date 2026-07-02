@@ -23,10 +23,6 @@ func reviewOptionsFromCommand(cmd *cobra.Command) reviewOptions {
 }
 
 func runReview(a *app, cmd *cobra.Command, args []string) int {
-	if len(args) > 0 {
-		a.errorf("Unknown option: %s", args[0])
-		return 1
-	}
 	opts := reviewOptionsFromCommand(cmd)
 	if opts.json.enabled {
 		return runReviewJSON(a, opts)

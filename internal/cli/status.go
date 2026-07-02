@@ -23,10 +23,6 @@ func statusOptionsFromCommand(cmd *cobra.Command) statusOptions {
 }
 
 func runStatus(a *app, cmd *cobra.Command, args []string) int {
-	if len(args) > 0 {
-		a.errorf("Unknown option: %s", args[0])
-		return 1
-	}
 	opts := statusOptionsFromCommand(cmd)
 	if opts.json.enabled {
 		return runStatusJSON(a, opts)

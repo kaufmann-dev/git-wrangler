@@ -207,26 +207,25 @@ func guidedEnum(flag, label string, choices ...string) guidedPrompt {
 }
 
 func runGuidedSetup(a *app, cmd *cobra.Command) error {
-	guided, _ := cmd.Flags().GetBool("guided")
-	if !guided {
+	if !boolFlagValue(cmd, "guided") {
 		return nil
 	}
-	if jsonFlagValue(cmd) {
+	if jsonOptionsFromCommand(cmd).enabled {
 		return fmt.Errorf("--guided cannot be combined with --json")
 	}
 	if !a.prompts.available() {
 		return fmt.Errorf("--guided requires an interactive terminal for stdin and stderr")
 	}
+	spec, ok := guidedSpecFromCommand(cmd)
+	if !ok {
+		return fmt.Errorf("--guided is not configured for %s", cmd.Name())
+	}
 
 	var err error
-	if cmd.Name() == "rewrite-dates" {
-		err = guideRewriteDates(a, cmd)
-	} else if cmd.Name() == "push" {
-		err = guidePush(a, cmd)
-	} else if cmd.Name() == "clone" {
-		err = guideClone(a, cmd)
+	if spec.setup != nil {
+		err = spec.setup(a, cmd)
 	} else {
-		for _, prompt := range guidedPrompts[cmd.Name()] {
+		for _, prompt := range spec.prompts {
 			if err = applyGuidedPrompt(a, cmd, prompt); err != nil {
 				break
 			}
@@ -437,13 +436,26 @@ func displayGuidedValue(value string) string {
 }
 
 func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
-	if cmd.Name() != "rewrite-dates" {
-		if cmd.Name() == "push" {
-			return []guidedPrompt{guidedString("repo", "Repository"), guidedBool("force", "Force with lease"), guidedBool("force-unsafe", "Raw force")}
-		}
-		return guidedPrompts[cmd.Name()]
+	spec, ok := guidedSpecFromCommand(cmd)
+	if !ok {
+		return nil
 	}
-	result := []guidedPrompt{
+	if len(spec.summary) > 0 {
+		return spec.summary
+	}
+	return spec.prompts
+}
+
+func guidedSpecFromCommand(cmd *cobra.Command) (guidedSpec, bool) {
+	if cmd == nil {
+		return guidedSpec{}, false
+	}
+	spec, ok := cmd.Context().Value(guidedContextKey{}).(guidedSpec)
+	return spec, ok && spec.enabled()
+}
+
+func rewriteDatesGuidedSummaryPrompts() []guidedPrompt {
+	return []guidedPrompt{
 		guidedString("repo", "Repository"),
 		guidedBool("no-fetch", "Skip origin fetch"),
 		guidedString("rewrite-after", "Current author date on or after"),
@@ -457,30 +469,6 @@ func guidedSummaryPrompts(cmd *cobra.Command) []guidedPrompt {
 		guidedEnum("spread", "Spread", "low", "medium", "high"),
 		guidedString("window", "Time window"),
 	}
-	return result
-}
-
-var guidedPrompts = map[string][]guidedPrompt{
-	"activity":          {guidedString("repo", "Repository"), guidedString("year", "Year"), guidedRepeatable("user", "Author filters"), guidedBool("all", "Include all refs"), guidedBool("global-scale", "Use global scale")},
-	"log":               {guidedString("repo", "Repository"), guidedNonNegativeInt("limit", "Commit limit"), guidedString("since", "Author date on or after"), guidedString("until", "Author date on or before"), guidedRepeatable("type", "Types"), guidedRepeatable("scope", "Scopes"), guidedBool("summary", "Print summary")},
-	"clone":             {guidedString("user", "GitHub user or organization"), guidedEnum("visibility", "Visibility", "all", "public", "private"), guidedPositiveInt("limit", "Repository limit"), guidedString("into", "Destination directory")},
-	"pull":              {guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")},
-	"fetch":             {guidedString("repo", "Repository"), guidedBool("prune", "Prune removed origin branches")},
-	"push":              {},
-	"commit":            {guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")},
-	"fix-gitignore":     {guidedString("repo", "Repository")},
-	"license":           {guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
-	"rename-branch":     {guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")},
-	"reset":             {guidedString("repo", "Repository")},
-	"review":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"untrack":           {guidedString("repo", "Repository")},
-	"remove-secrets":    {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"rewrite-authors":   {guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedBool("force", "Force filter-repo")},
-	"rewrite-commits":   {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("require-scope", "Skip only scoped conventional commits"), guidedBool("body", "Generate message bodies")},
-	"rewrite-hours":     {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedRequiredString("window", "Time window")},
-	"rollback-rewrites": {guidedString("repo", "Repository")},
-	"info":              {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
-	"status":            {guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch")},
 }
 
 func guidePush(a *app, cmd *cobra.Command) error {
@@ -488,8 +476,8 @@ func guidePush(a *app, cmd *cobra.Command) error {
 		return err
 	}
 	current := "normal"
-	force, _ := cmd.Flags().GetBool("force")
-	forceUnsafe, _ := cmd.Flags().GetBool("force-unsafe")
+	force := boolFlagValue(cmd, "force")
+	forceUnsafe := boolFlagValue(cmd, "force-unsafe")
 	if force {
 		current = "force-with-lease"
 	}
@@ -516,9 +504,9 @@ func guideClone(a *app, cmd *cobra.Command) error {
 			return err
 		}
 	}
-	into, _ := cmd.Flags().GetString("into")
+	into := stringFlagValue(cmd, "into")
 	if into == "" {
-		into, _ = cmd.Flags().GetString("user")
+		into = stringFlagValue(cmd, "user")
 		if err := cmd.Flags().Set("into", into); err != nil {
 			return err
 		}
@@ -593,7 +581,7 @@ func guideRewriteDates(a *app, cmd *cobra.Command) error {
 
 func rewriteDatesPlanningFlagsChanged(cmd *cobra.Command) bool {
 	for _, name := range []string{"start-date", "end-date", "rewrite-before", "rewrite-after", "days", "until", "seed", "frequency", "spread", "window"} {
-		if cmd.Flags().Changed(name) {
+		if flagChanged(cmd, name) {
 			return true
 		}
 	}
@@ -601,7 +589,7 @@ func rewriteDatesPlanningFlagsChanged(cmd *cobra.Command) bool {
 }
 
 func rewriteDatesRangeMode(cmd *cobra.Command) string {
-	days, _ := cmd.Flags().GetInt("days")
+	days := intFlagValue(cmd, "days")
 	if days > 0 {
 		return "last N days"
 	}

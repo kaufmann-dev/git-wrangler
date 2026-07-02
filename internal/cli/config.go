@@ -11,74 +11,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func configCommand(a *app) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "config",
-		Short:   "Show and edit Git Wrangler setup.",
-		GroupID: "utility",
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
-		},
-	}
-	show := &cobra.Command{
-		Use:   "show",
-		Short: "Show non-secret configuration and credential sources.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			a.json = jsonFlagValue(cmd)
-			if code := runConfigShow(a); code != 0 {
-				return commandExitError(a, code)
-			}
-			return nil
-		},
-	}
-	show.Flags().Bool("json", false, "Emit one JSON document.")
-	cmd.AddCommand(
-		show,
-		configSetCommand(a),
-		configUnsetCommand(a),
-	)
-	return cmd
+func runConfigShowCommand(a *app, cmd *cobra.Command, args []string) int {
+	return runConfigShow(a, configShowOptionsFromCommand(cmd))
 }
 
-func configSetCommand(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "set <key> [value]",
-		Short: "Set a configuration value.",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) < 1 {
-				return errors.New("set requires a key")
-			}
-			return nil
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if code := runConfigSet(a, args); code != 0 {
-				return commandExitError(a, code)
-			}
-			return nil
-		},
-	}
+func runConfigSetCommand(a *app, cmd *cobra.Command, args []string) int {
+	return runConfigSet(a, configSetOptionsFromCommand(cmd, args))
 }
 
-func configUnsetCommand(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "unset <key>",
-		Short: "Unset a stored credential.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if code := runConfigUnset(a, args[0]); code != 0 {
-				return commandExitError(a, code)
-			}
-			return nil
-		},
-	}
+func runConfigUnsetCommand(a *app, cmd *cobra.Command, args []string) int {
+	return runConfigUnset(a, configUnsetOptionsFromCommand(cmd, args))
 }
 
-func runConfigShow(a *app) int {
+func runConfigShow(a *app, opts configShowOptions) int {
 	cfg, err := config.Load()
 	if err != nil {
-		if a.json {
+		if opts.json.enabled {
 			return writeJSONStatus(a, map[string]any{
 				"ok":      false,
 				"summary": map[string]any{},
@@ -93,7 +41,7 @@ func runConfigShow(a *app) int {
 	aiKey := credentials.ResolveAIKey(a.creds, cfg.AI.Provider)
 	aiHeaders := aiHeaderSummaries(a, cfg)
 
-	if a.json {
+	if opts.json.enabled {
 		return writeJSON(a, map[string]any{
 			"ok":      true,
 			"summary": map[string]any{"path": path},
@@ -136,16 +84,15 @@ func runConfigShow(a *app) int {
 	return 0
 }
 
-func runConfigSet(a *app, args []string) int {
+func runConfigSet(a *app, opts configSetOptions) int {
 	cfg, err := config.Load()
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
-	key := args[0]
-	switch key {
+	switch opts.key {
 	case "github.auth":
-		token, ok := secretValue(a, args, "GitHub token: ")
+		token, ok := secretValue(a, opts.args, "GitHub token: ")
 		if !ok {
 			return 1
 		}
@@ -154,7 +101,7 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	case "github.host":
-		value, ok := configValue(a, args, key)
+		value, ok := configValue(a, opts.args, opts.key)
 		if !ok {
 			return 1
 		}
@@ -168,7 +115,7 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	case "ai.provider":
-		value, ok := configValue(a, args, key)
+		value, ok := configValue(a, opts.args, opts.key)
 		if !ok {
 			return 1
 		}
@@ -183,7 +130,7 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	case "ai.base-url":
-		value, ok := configValue(a, args, key)
+		value, ok := configValue(a, opts.args, opts.key)
 		if !ok {
 			return 1
 		}
@@ -193,7 +140,7 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	case "ai.model":
-		value, ok := configValue(a, args, key)
+		value, ok := configValue(a, opts.args, opts.key)
 		if !ok {
 			return 1
 		}
@@ -203,7 +150,7 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	case "ai.api-key":
-		token, ok := secretValue(a, args, "AI API key: ")
+		token, ok := secretValue(a, opts.args, "AI API key: ")
 		if !ok {
 			return 1
 		}
@@ -212,40 +159,40 @@ func runConfigSet(a *app, args []string) int {
 			return 1
 		}
 	default:
-		if strings.HasPrefix(key, "ai.headers.") {
-			return runConfigSetAIHeader(a, cfg, key, args)
+		if strings.HasPrefix(opts.key, "ai.headers.") {
+			return runConfigSetAIHeader(a, cfg, opts.key, opts.args)
 		}
-		a.plainErrorf("unknown config key %q.", key)
+		a.plainErrorf("unknown config key %q.", opts.key)
 		return 1
 	}
-	a.ok("Updated " + key)
+	a.ok("Updated " + opts.key)
 	return 0
 }
 
-func runConfigUnset(a *app, key string) int {
+func runConfigUnset(a *app, opts configUnsetOptions) int {
 	cfg, err := config.Load()
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
 	var account string
-	switch key {
+	switch opts.key {
 	case "github.auth":
 		account = credentials.GitHubAccount(cfg.GitHub.Host)
 	case "ai.api-key":
 		account = credentials.AIAccount(cfg.AI.Provider)
 	default:
-		if strings.HasPrefix(key, "ai.headers.") {
-			return runConfigUnsetAIHeader(a, cfg, key)
+		if strings.HasPrefix(opts.key, "ai.headers.") {
+			return runConfigUnsetAIHeader(a, cfg, opts.key)
 		}
-		a.plainErrorf("unknown config key %q.", key)
+		a.plainErrorf("unknown config key %q.", opts.key)
 		return 1
 	}
 	if err := a.creds.Delete(account); err != nil && !errors.Is(err, credentials.ErrNotFound) {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
-	a.ok("Unset " + key)
+	a.ok("Unset " + opts.key)
 	return 0
 }
 
