@@ -208,7 +208,7 @@ func TestConfigSetRejectsExtraValuesBeforeMutation(t *testing.T) {
 		{"config", "set", "ai.headers.X-Project-ID", "corp-dev-99", "extra"},
 	} {
 		var stdout, stderr bytes.Buffer
-		err := ExecuteWithIO(args, strings.NewReader(""), &stdout, &stderr)
+		err := ExecuteWithRunner(context.Background(), nil, args, strings.NewReader(""), &stdout, &stderr)
 		if err == nil || !strings.Contains(stderr.String(), "set accepts at most one value") {
 			t.Fatalf("%v error = %v, stderr:\n%s", args, err, stderr.String())
 		}
@@ -229,7 +229,7 @@ func TestConfigSetSecretPlaintextValueIsRejected(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithIO([]string{"config", "set", "ai.api-key", "super-secret"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"config", "set", "ai.api-key", "super-secret"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil || !strings.Contains(stderr.String(), "ai.api-key does not accept a plaintext value") {
 		t.Fatalf("config set ai.api-key plaintext error = %v, stderr:\n%s", err, stderr.String())
 	}

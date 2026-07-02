@@ -73,10 +73,6 @@ func Execute() error {
 	return execute(ctx, run.New(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 }
 
-func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return execute(context.Background(), run.New(), args, stdin, stdout, stderr)
-}
-
 func ExecuteWithRunner(ctx context.Context, runner run.Runner, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	return execute(ctx, runner, args, stdin, stdout, stderr)
 }

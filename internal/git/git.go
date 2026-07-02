@@ -62,11 +62,6 @@ func (c Client) StreamStdout(ctx context.Context, dir string, env []string, cons
 	return run.StreamStdout(ctx, c.runner, dir, env, "git", args, consume)
 }
 
-func (c Client) Installed() bool {
-	_, err := c.runner.LookPath("git")
-	return err == nil
-}
-
 func (c Client) FilterRepoCommand(ctx context.Context) ([]string, bool) {
 	if path, err := c.runner.LookPath("git-filter-repo"); err == nil {
 		return []string{path}, true
@@ -75,11 +70,6 @@ func (c Client) FilterRepoCommand(ctx context.Context) ([]string, bool) {
 		return []string{"git", "filter-repo"}, true
 	}
 	return nil, false
-}
-
-func (c Client) CatFileBatchCheck(ctx context.Context, dir, input string) (string, error) {
-	ctx = run.WithStdin(ctx, input)
-	return c.Capture(ctx, dir, nil, "cat-file", "--batch-check=%(objectsize) %(objectname) %(rest)")
 }
 
 func (c Client) CatFileBatchCheckAllObjects(ctx context.Context, dir string, consume func(io.Reader) error) error {

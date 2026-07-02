@@ -526,10 +526,6 @@ func pathGroupSafety(paths []string) (sensitive bool, excluded bool) {
 	return sensitive, excluded
 }
 
-func BuildStagedContext(ctx context.Context, gitClient git.Client, repoDir, repoName string) (string, error) {
-	return BuildStagedContextWithEnv(ctx, gitClient, repoDir, repoName, nil)
-}
-
 func BuildStagedContextWithEnv(ctx context.Context, gitClient git.Client, repoDir, repoName string, env []string) (string, error) {
 	nameStatus, err := gitClient.Stdout(ctx, repoDir, env, "diff", "--cached", "--name-status")
 	if err != nil {
@@ -1109,10 +1105,6 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.writer.Write(p)
-}
-
-func processBatch(ctx context.Context, batch []item, cfg Config, out io.Writer) (map[string]Message, []failure) {
-	return processBatchWithProgress(ctx, batch, cfg, out, nil, nil, nil)
 }
 
 func processBatchWithProgress(ctx context.Context, batch []item, cfg Config, out io.Writer, reportRetry func(string), pacer *requestPacer, stats *retryStats) (map[string]Message, []failure) {
@@ -1775,10 +1767,6 @@ func responseJSONError(err error) error {
 	return fmt.Errorf("AI response was not valid JSON: %w", err)
 }
 
-func ValidateMessage(message string) bool {
-	return ValidateSubject(message)
-}
-
 func ValidateSubject(subject string) bool {
 	return conventional.ValidSubject(subject)
 }
@@ -2023,13 +2011,6 @@ func splitLines(s string) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
-}
-
-func firstLine(s string) string {
-	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
-		return s[:idx]
-	}
-	return s
 }
 
 func shortHash(hash string, n int) string {
