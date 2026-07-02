@@ -123,10 +123,6 @@ func configUnsetOptionsFromCommand(cmd *cobra.Command, args []string) configUnse
 	return opts
 }
 
-func jsonFlagValue(cmd *cobra.Command) bool {
-	return jsonOptionsFromCommand(cmd).enabled
-}
-
 func stringFlagValue(cmd *cobra.Command, name string) string {
 	if cmd == nil || cmd.Flags().Lookup(name) == nil {
 		return ""

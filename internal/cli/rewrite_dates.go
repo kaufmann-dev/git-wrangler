@@ -196,7 +196,7 @@ type dateApplyResult struct {
 }
 
 func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
-	opts, ok := rewriteDatesOptionsFromFlags(a, cmd)
+	opts, ok := rewriteDatesOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
@@ -221,7 +221,7 @@ func runRewriteDates(a *app, cmd *cobra.Command, args []string) int {
 	return runRewriteDatesRewrite(a, repos, filterCmd, opts)
 }
 
-func rewriteDatesOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteDatesOptions, bool) {
+func rewriteDatesOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteDatesOptions, bool) {
 	opts := rewriteDatesOptions{
 		target:       targetOptionsFromCommand(cmd),
 		fetch:        fetchOptionsFromCommand(cmd),

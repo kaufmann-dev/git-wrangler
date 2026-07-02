@@ -23,6 +23,16 @@ func runConfigUnsetCommand(a *app, cmd *cobra.Command, args []string) int {
 	return runConfigUnset(a, configUnsetOptionsFromCommand(cmd, args))
 }
 
+func configSetArgs(cmd *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return errors.New("set requires a key")
+	}
+	if len(args) > 2 {
+		return errors.New("set accepts at most one value")
+	}
+	return nil
+}
+
 func runConfigShow(a *app, opts configShowOptions) int {
 	cfg, err := config.Load()
 	if err != nil {

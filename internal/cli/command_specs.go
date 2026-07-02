@@ -304,16 +304,8 @@ func commandSpecs() []commandSpec {
 				{
 					use:   "set <key> [value]",
 					short: "Set a configuration value.",
-					args: func(cmd *cobra.Command, args []string) error {
-						if len(args) < 1 {
-							return errors.New("set requires a key")
-						}
-						if len(args) > 2 {
-							return errors.New("set accepts at most one value")
-						}
-						return nil
-					},
-					run: runConfigSetCommand,
+					args:  configSetArgs,
+					run:   runConfigSetCommand,
 				},
 				{
 					use:   "unset <key>",
@@ -352,7 +344,7 @@ func command(a *app, spec commandSpec) *cobra.Command {
 		GroupID: spec.group,
 		Args:    args,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a.json = jsonFlagValue(cmd)
+			a.json = jsonOptionsFromCommand(cmd).enabled
 			a.promptFailed = false
 			if err := runGuidedSetup(a, cmd, spec.guided); err != nil {
 				if errors.Is(err, errPromptCancelled) {

@@ -51,11 +51,15 @@ type rollbackRewriteResult struct {
 	output string
 }
 
-func runRollbackRewrites(a *app, cmd *cobra.Command, args []string) int {
-	opts := rollbackRewritesOptions{
+func rollbackRewritesOptionsFromCommand(cmd *cobra.Command) rollbackRewritesOptions {
+	return rollbackRewritesOptions{
 		target:       targetOptionsFromCommand(cmd),
 		confirmation: confirmationOptionsFromCommand(cmd),
 	}
+}
+
+func runRollbackRewrites(a *app, cmd *cobra.Command, args []string) int {
+	opts := rollbackRewritesOptionsFromCommand(cmd)
 	if !requireGit(a, "rollback-rewrites") {
 		return 1
 	}
