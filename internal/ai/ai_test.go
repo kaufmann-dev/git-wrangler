@@ -242,7 +242,7 @@ func TestValidateSubjectRejectsMultilineAndLongSubjects(t *testing.T) {
 
 func TestValidateGeneratedMessageRequiresBodyWhenEnabled(t *testing.T) {
 	valid := Message{Subject: "feat(cli): add thing", Body: "Explain why this change was made."}
-	if !ValidateGeneratedMessage(valid, true) {
+	if !ValidateGeneratedMessage(valid, true, false) {
 		t.Fatal("expected valid message with body")
 	}
 	for _, message := range []Message{
@@ -252,12 +252,24 @@ func TestValidateGeneratedMessageRequiresBodyWhenEnabled(t *testing.T) {
 		{Subject: "feat(cli): add thing", Body: "bad\x00body"},
 		{Subject: "not conventional", Body: "Body"},
 	} {
-		if ValidateGeneratedMessage(message, true) {
+		if ValidateGeneratedMessage(message, true, false) {
 			t.Fatalf("expected invalid message %#v", message)
 		}
 	}
-	if !ValidateGeneratedMessage(Message{Subject: "feat(cli): add thing"}, false) {
+	if !ValidateGeneratedMessage(Message{Subject: "feat(cli): add thing"}, false, false) {
 		t.Fatal("body should be optional in subject-only mode")
+	}
+}
+
+func TestValidateGeneratedMessageRequiresScopeWhenEnabled(t *testing.T) {
+	if !ValidateGeneratedMessage(Message{Subject: "feat(cli): add thing"}, false, true) {
+		t.Fatal("expected scoped subject to be valid with requireScope")
+	}
+	if ValidateGeneratedMessage(Message{Subject: "feat: add thing"}, false, true) {
+		t.Fatal("expected scopeless subject to be invalid with requireScope")
+	}
+	if !ValidateGeneratedMessage(Message{Subject: "feat: add thing"}, false, false) {
+		t.Fatal("expected scopeless subject to stay valid without requireScope")
 	}
 }
 
@@ -390,6 +402,9 @@ func TestRequestBatchPromptsForSemanticPurpose(t *testing.T) {
 				t.Fatalf("user prompt missing %q:\n%s", want, user)
 			}
 		}
+		if strings.Contains(user, "Never omit the scope") {
+			t.Fatalf("mandatory-scope instruction should require RequireScope:\n%s", user)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add capability\",\"body\":\"Explain the user-visible effect.\"}]}"}}]}`)
 	}))
@@ -515,8 +530,8 @@ func TestGenerateFailsBeforeConfirmationWhenContextCollectionFails(t *testing.T)
 		switch joined {
 		case "git rev-parse HEAD":
 			return "abc123\n", "", nil
-		case "git log --reverse --all --format=%H%x1f%B%x1e":
-			return "abc123\x1fold message\n\x1e", "", nil
+		case "git log --reverse --all --format=%H%x1f%P%x1f%B%x1e":
+			return "abc123\x1f\x1fold message\n\x1e", "", nil
 		case "git diff-tree --root --no-commit-id --name-status -r abc123":
 			return "", "diff failed", errors.New("diff failed")
 		default:
@@ -554,7 +569,7 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 		switch joined {
 		case "git rev-parse HEAD":
 			return "head\n", "", nil
-		case "git log --reverse --all --format=%H%x1f%B%x1e":
+		case "git log --reverse --all --format=%H%x1f%P%x1f%B%x1e":
 			mu.Lock()
 			activeLogs++
 			if activeLogs > maxActiveLogs {
@@ -566,9 +581,9 @@ func TestCollectItemsScansReposConcurrentlyWithStableIDsAndStats(t *testing.T) {
 			activeLogs--
 			mu.Unlock()
 			if dir == "repo-a" {
-				return "a1\x1ffeat(cli): existing\n\x1ea2\x1fold a\n\x1e", "", nil
+				return "a1\x1f\x1ffeat(cli): existing\n\x1ea2\x1fa1\x1fold a\n\x1e", "", nil
 			}
-			return "b1\x1fold b\n\x1e", "", nil
+			return "b1\x1f\x1fold b\n\x1e", "", nil
 		case "git diff-tree --root --no-commit-id --name-status -r a2",
 			"git diff-tree --root --no-commit-id --name-status -r b1":
 			return "M\tmain.go\n", "", nil
@@ -632,8 +647,8 @@ func TestCollectItemsSelectedHashesSkipUnselectedContext(t *testing.T) {
 		switch joined {
 		case "git rev-parse HEAD":
 			return "head\n", "", nil
-		case "git log --reverse --all --format=%H%x1f%B%x1e":
-			return "a1\x1ffeat(cli): existing\n\x1ea2\x1fold selected\n\x1ea3\x1fold unselected\n\x1e", "", nil
+		case "git log --reverse --all --format=%H%x1f%P%x1f%B%x1e":
+			return "a1\x1f\x1ffeat(cli): existing\n\x1ea2\x1fa1\x1fold selected\n\x1ea3\x1fa2\x1fold unselected\n\x1e", "", nil
 		case "git diff-tree --root --no-commit-id --name-status -r a2":
 			return "M\tmain.go\n", "", nil
 		case "git diff-tree --root --no-commit-id --numstat -r a2":
@@ -667,8 +682,8 @@ func TestCollectItemsRequireScopeSkipsOnlyScopedConventionalCommits(t *testing.T
 		switch joined {
 		case "git rev-parse HEAD":
 			return "head\n", "", nil
-		case "git log --reverse --all --format=%H%x1f%B%x1e":
-			return "a1\x1ffeat(cli): scoped\n\x1ea2\x1ffeat: scopeless\n\x1ea3\x1fplain message\n\x1e", "", nil
+		case "git log --reverse --all --format=%H%x1f%P%x1f%B%x1e":
+			return "a1\x1f\x1ffeat(cli): scoped\n\x1ea2\x1fa1\x1ffeat: scopeless\n\x1ea3\x1fa2\x1fplain message\n\x1e", "", nil
 		case "git diff-tree --root --no-commit-id --name-status -r a2",
 			"git diff-tree --root --no-commit-id --name-status -r a3":
 			return "M\tmain.go\n", "", nil
@@ -693,6 +708,130 @@ func TestCollectItemsRequireScopeSkipsOnlyScopedConventionalCommits(t *testing.T
 	}
 	if len(items) != 2 || items[0].Hash != "a2" || items[1].Hash != "a3" {
 		t.Fatalf("items = %#v, want scopeless and plain commits", items)
+	}
+}
+
+func TestRequestBatchRequireScopePromptDemandsScope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		user := payload.Messages[1].Content
+		for _, want := range []string{
+			"Never omit the scope",
+			"use a broad scope such as repo for repository-wide changes",
+		} {
+			if !strings.Contains(user, want) {
+				t.Fatalf("user prompt missing %q:\n%s", want, user)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add capability\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	_, err := requestBatch(context.Background(), []item{{
+		ID:       "c000001",
+		RepoName: "repo",
+		Hash:     "abcdef123456",
+		Context:  "context",
+	}}, Config{
+		BaseURL:      server.URL,
+		Model:        "test-model",
+		APIKey:       "test-key",
+		Timeout:      time.Second,
+		RequireScope: true,
+	}, 1, maxRequestContextChars)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCollectItemsSkipsMergeCommits(t *testing.T) {
+	gitClient := git.New(fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		switch joined {
+		case "git rev-parse HEAD":
+			return "head\n", "", nil
+		case "git log --reverse --all --format=%H%x1f%P%x1f%B%x1e":
+			return "a1\x1f\x1fold message\n\x1ea2\x1fa1 f1\x1fMerge branch 'main' of https://github.com/sus-amogus/amogus.css into main\n\x1e", "", nil
+		case "git diff-tree --root --no-commit-id --name-status -r a1":
+			return "M\tmain.go\n", "", nil
+		case "git diff-tree --root --no-commit-id --numstat -r a1":
+			return "1\t0\tmain.go\n", "", nil
+		case "git show --format= --no-color --no-ext-diff --find-renames --find-copies --unified=3 a1 -- main.go":
+			return "diff --git a/main.go b/main.go\n+change\n", "", nil
+		default:
+			return "", "", errors.New("unexpected command: " + joined)
+		}
+	}})
+	items, stats, err := collectItems(context.Background(), []Repository{
+		{Dir: "repo", Name: "repo", GitDir: "repo/.git"},
+	}, gitClient, true, true, func(ProgressEvent) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TotalCommits != 2 || stats.SkippedMerges != 1 || stats.SkippedFormatted != 0 || stats.SkippedEmpty != 0 {
+		t.Fatalf("stats = %#v, want merge counted only as skipped merge", stats)
+	}
+	if len(items) != 1 || items[0].Hash != "a1" {
+		t.Fatalf("items = %#v, want only the non-merge commit", items)
+	}
+	plan, err := buildPlan(items, map[string]Message{
+		"c000001": {Subject: "feat(cli): rewrite"},
+	}, stats, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.Summary, "Skipped merge commits: 1") {
+		t.Fatalf("summary missing merge skip line:\n%s", plan.Summary)
+	}
+}
+
+func TestProcessItemsRequireScopeRetriesScopelessSubject(t *testing.T) {
+	shrinkRetryBackoff(t)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if requests == 1 {
+			_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat: add thing\"}]}"}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"messages\":[{\"id\":\"c000001\",\"subject\":\"feat(cli): add thing\"}]}"}}]}`)
+	}))
+	defer server.Close()
+
+	var retryDetails []string
+	results, failures, err := processItems(context.Background(), []item{
+		{ID: "c000001", RepoName: "repo", Hash: "abcdef123456", Context: "context"},
+	}, Config{
+		BaseURL:      server.URL,
+		Model:        "test-model",
+		APIKey:       "test-key",
+		BatchSize:    1,
+		RPM:          60000,
+		Timeout:      time.Second,
+		RequireScope: true,
+		Progress: func(event ProgressEvent) {
+			if event.Error {
+				retryDetails = append(retryDetails, event.Detail)
+			}
+		},
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 || results["c000001"].Subject != "feat(cli): add thing" {
+		t.Fatalf("results = %#v failures = %#v", results, failures)
+	}
+	if len(retryDetails) != 1 || !strings.Contains(retryDetails[0], "missing or invalid message") {
+		t.Fatalf("retry details = %#v, want scopeless subject retried as invalid", retryDetails)
 	}
 }
 
