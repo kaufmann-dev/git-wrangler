@@ -115,7 +115,7 @@ func configSetOptionsFromCommand(_ *cobra.Command, args []string) configSetOptio
 	return opts
 }
 
-func configUnsetOptionsFromCommand(cmd *cobra.Command, args []string) configUnsetOptions {
+func configUnsetOptionsFromCommand(args []string) configUnsetOptions {
 	opts := configUnsetOptions{}
 	if len(args) > 0 {
 		opts.key = args[0]

@@ -307,7 +307,7 @@ func applyRollbackRewriteCandidate(a *app, candidate rollbackRewriteCandidate) e
 		}
 		if newHead != branch.CurrentHead {
 			if _, err := a.git.Capture(a.ctx, candidate.repo.dir, nil, "update-ref", branch.Name, newHead, branch.CurrentHead); err != nil {
-				return fmt.Errorf("could not move %s to %s: %w", branch.Name, prefix(newHead, 8), err)
+				return fmt.Errorf("could not move %s to %s: %w", branch.Name, prefix(newHead), err)
 			}
 			movedRefs[branch.Name] = true
 		}

@@ -20,7 +20,7 @@ func runConfigSetCommand(a *app, cmd *cobra.Command, args []string) int {
 }
 
 func runConfigUnsetCommand(a *app, cmd *cobra.Command, args []string) int {
-	return runConfigUnset(a, configUnsetOptionsFromCommand(cmd, args))
+	return runConfigUnset(a, configUnsetOptionsFromCommand(args))
 }
 
 func configSetArgs(cmd *cobra.Command, args []string) error {
@@ -41,7 +41,7 @@ func runConfigShow(a *app, opts configShowOptions) int {
 				"ok":      false,
 				"summary": map[string]any{},
 				"error":   jsonError{Message: err.Error()},
-			}, 1)
+			})
 		}
 		a.plainErrorf("%s", err.Error())
 		return 1

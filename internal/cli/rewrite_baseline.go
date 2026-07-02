@@ -108,7 +108,7 @@ func captureRewriteBaselineForHashes(a *app, r repo, hashes []string) error {
 	for _, hash := range newHashes {
 		data, err := readRewriteBaselineCommit(a, r.dir, hash)
 		if err != nil {
-			return fmt.Errorf("could not read baseline commit %s: %w", prefix(hash, 8), err)
+			return fmt.Errorf("could not read baseline commit %s: %w", prefix(hash), err)
 		}
 		manifest.Entries = append(manifest.Entries, rewriteBaselineEntry{
 			FirstSHA:       data.SHA,
@@ -184,19 +184,19 @@ func validateRewriteBaseline(gitDir string, manifest rewriteBaselineManifest) er
 			return fmt.Errorf("rewrite baseline contains an incomplete commit entry")
 		}
 		if byFirst[entry.FirstSHA] {
-			return fmt.Errorf("rewrite baseline contains duplicate first SHA %s", prefix(entry.FirstSHA, 8))
+			return fmt.Errorf("rewrite baseline contains duplicate first SHA %s", prefix(entry.FirstSHA))
 		}
 		if byCurrent[entry.CurrentSHA] {
-			return fmt.Errorf("rewrite baseline contains duplicate current SHA %s", prefix(entry.CurrentSHA, 8))
+			return fmt.Errorf("rewrite baseline contains duplicate current SHA %s", prefix(entry.CurrentSHA))
 		}
 		byFirst[entry.FirstSHA] = true
 		byCurrent[entry.CurrentSHA] = true
 		if entry.AuthorDate == "" || entry.CommitterDate == "" || entry.BundlePath == "" || entry.CaptureID == "" {
-			return fmt.Errorf("rewrite baseline entry %s is missing required metadata", prefix(entry.FirstSHA, 8))
+			return fmt.Errorf("rewrite baseline entry %s is missing required metadata", prefix(entry.FirstSHA))
 		}
 		bundlePath := rewriteBaselineEntryBundlePath(gitDir, entry)
 		if _, err := os.Stat(bundlePath); err != nil {
-			return fmt.Errorf("rewrite baseline bundle for %s is unavailable: %w", prefix(entry.FirstSHA, 8), err)
+			return fmt.Errorf("rewrite baseline bundle for %s is unavailable: %w", prefix(entry.FirstSHA), err)
 		}
 	}
 	return nil
@@ -377,7 +377,7 @@ func readRewriteBaselineCommit(a *app, dir, sha string) (rewriteBaselineCommitDa
 		}
 	}
 	if commit.SHA == "" || commit.Tree == "" || commit.AuthorDate == "" || commit.CommitterDate == "" {
-		return rewriteBaselineCommitData{}, fmt.Errorf("commit %s is missing required metadata", prefix(sha, 8))
+		return rewriteBaselineCommitData{}, fmt.Errorf("commit %s is missing required metadata", prefix(sha))
 	}
 	return commit, nil
 }

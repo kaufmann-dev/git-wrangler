@@ -284,7 +284,7 @@ func rewriteDatesOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteDatesOpt
 		}
 		opts.timeSchedule = &parsed
 	}
-	profile, _ := buildRewriteDateProfile(opts.frequency, opts.spread)
+	profile := buildRewriteDateProfile(opts.frequency, opts.spread)
 	opts.frequency = profile.frequencyName
 	opts.spread = profile.spreadName
 	return opts, true
@@ -602,8 +602,8 @@ func rewriteDateCommitSelected(commit rewriteDateCommit, opts rewriteDatesOption
 }
 
 func planRewriteDateCandidates(candidates []dateCandidate, opts rewriteDatesOptions) (rewriteDatePlan, error) {
-	profile, _ := buildRewriteDateProfile(opts.frequency, opts.spread)
-	seed, seedSource := rewriteDateSeed(opts, candidates)
+	profile := buildRewriteDateProfile(opts.frequency, opts.spread)
+	seed, seedSource := rewriteDateSeed(opts)
 	selected := selectedDateCommits(candidates)
 	sortSelectedDateCommits(candidates, selected)
 	tzOffset := dominantPlanningTimezoneOffset(candidates, selected)
@@ -638,7 +638,7 @@ func planRewriteDateCandidates(candidates []dateCandidate, opts rewriteDatesOpti
 	}, nil
 }
 
-func buildRewriteDateProfile(frequency, spread string) (rewriteDateProfile, bool) {
+func buildRewriteDateProfile(frequency, spread string) rewriteDateProfile {
 	if frequency == "" {
 		frequency = "medium"
 	}
@@ -684,7 +684,7 @@ func buildRewriteDateProfile(frequency, spread string) (rewriteDateProfile, bool
 		profile.gapMinDays = 1
 		profile.gapMaxDays = 4
 	default:
-		return rewriteDateProfile{}, false
+		return rewriteDateProfile{}
 	}
 	switch spread {
 	case "low":
@@ -703,9 +703,9 @@ func buildRewriteDateProfile(frequency, spread string) (rewriteDateProfile, bool
 		profile.sessionSigma = 0.50
 		profile.persistence = 0.70
 	default:
-		return rewriteDateProfile{}, false
+		return rewriteDateProfile{}
 	}
-	return profile, true
+	return profile
 }
 
 func validRewriteDateProfileLevel(name string) bool {
@@ -717,7 +717,7 @@ func validRewriteDateProfileLevel(name string) bool {
 	}
 }
 
-func rewriteDateSeed(opts rewriteDatesOptions, candidates []dateCandidate) (string, string) {
+func rewriteDateSeed(opts rewriteDatesOptions) (string, string) {
 	if opts.seed != "" {
 		return opts.seed, "flag"
 	}
@@ -882,7 +882,7 @@ func dominantPlanningTimezoneOffset(candidates []dateCandidate, selected []selec
 			counts[offset]++
 		}
 	}
-	offset, _ := dominantTimezoneOffsetFromCounts(counts)
+	offset := dominantTimezoneOffsetFromCounts(counts)
 	return offset
 }
 
@@ -934,18 +934,18 @@ func extendRewriteDateTargetForConstraints(candidates []dateCandidate, selected 
 			minFixed, maxFixed := fixedDateConstraints(candidate, ref.commit)
 			commit := candidate.commits[ref.commit]
 			if minFixed > maxFixed {
-				return 0, 0, fmt.Errorf("%s %s has incompatible fixed parent/child dates", candidate.repo.display, prefix(commit.hash, 8))
+				return 0, 0, fmt.Errorf("%s %s has incompatible fixed parent/child dates", candidate.repo.display, prefix(commit.hash))
 			}
 			if minFixed > targetEnd {
 				if endFixed {
-					return 0, 0, fmt.Errorf("%s %s needs a target date after fixed parent %s", candidate.repo.display, prefix(commit.hash, 8), formatEpoch(minFixed-1, tzOffset))
+					return 0, 0, fmt.Errorf("%s %s needs a target date after fixed parent %s", candidate.repo.display, prefix(commit.hash), formatEpoch(minFixed-1, tzOffset))
 				}
 				targetEnd = minFixed
 				changed = true
 			}
 			if maxFixed < targetStart {
 				if startFixed {
-					return 0, 0, fmt.Errorf("%s %s needs a target date before fixed child %s", candidate.repo.display, prefix(commit.hash, 8), formatEpoch(maxFixed+1, tzOffset))
+					return 0, 0, fmt.Errorf("%s %s needs a target date before fixed child %s", candidate.repo.display, prefix(commit.hash), formatEpoch(maxFixed+1, tzOffset))
 				}
 				targetStart = maxFixed
 				changed = true
@@ -1037,7 +1037,7 @@ func enforceRewriteDateRepositoryTopology(candidates []dateCandidate, targetStar
 			mins[idx] = maxInt64(targetStart, minFixed)
 			maxes[idx] = minInt64(targetEnd, maxFixed)
 			if mins[idx] > maxes[idx] {
-				return fmt.Errorf("%s %s cannot fit between fixed neighboring commits", candidate.repo.display, prefix(candidate.commits[idx].hash, 8))
+				return fmt.Errorf("%s %s cannot fit between fixed neighboring commits", candidate.repo.display, prefix(candidate.commits[idx].hash))
 			}
 			if candidate.commits[idx].plannedEpoch < mins[idx] {
 				candidate.commits[idx].plannedEpoch = mins[idx]
@@ -1085,10 +1085,10 @@ func enforceRewriteDateRepositoryTopology(candidates []dateCandidate, targetStar
 		}
 		for _, idx := range candidate.selected {
 			if candidate.commits[idx].plannedEpoch < mins[idx] {
-				return fmt.Errorf("%s %s needs to be before its selected child but outside the target range", candidate.repo.display, prefix(candidate.commits[idx].hash, 8))
+				return fmt.Errorf("%s %s needs to be before its selected child but outside the target range", candidate.repo.display, prefix(candidate.commits[idx].hash))
 			}
 			if candidate.commits[idx].plannedEpoch > maxes[idx] {
-				return fmt.Errorf("%s %s needs to be after its selected parent but outside the target range", candidate.repo.display, prefix(candidate.commits[idx].hash, 8))
+				return fmt.Errorf("%s %s needs to be after its selected parent but outside the target range", candidate.repo.display, prefix(candidate.commits[idx].hash))
 			}
 		}
 		if err := verifySelectedTopology(*candidate); err != nil {
@@ -1107,7 +1107,7 @@ func enforceGlobalSelectedDateOrder(candidates []dateCandidate, selectedRefs []s
 		minAllowed := maxInt64(targetStart, minFixed)
 		maxAllowed := minInt64(targetEnd, maxFixed)
 		if minAllowed > maxAllowed {
-			return fmt.Errorf("%s %s cannot fit between fixed neighboring commits", candidate.repo.display, prefix(commit.hash, 8))
+			return fmt.Errorf("%s %s cannot fit between fixed neighboring commits", candidate.repo.display, prefix(commit.hash))
 		}
 		if commit.plannedEpoch < minAllowed {
 			commit.plannedEpoch = minAllowed
@@ -1116,7 +1116,7 @@ func enforceGlobalSelectedDateOrder(candidates []dateCandidate, selectedRefs []s
 			commit.plannedEpoch = previous
 		}
 		if commit.plannedEpoch > maxAllowed {
-			return fmt.Errorf("%s %s needs to preserve global commit order but is outside the target range", candidate.repo.display, prefix(commit.hash, 8))
+			return fmt.Errorf("%s %s needs to preserve global commit order but is outside the target range", candidate.repo.display, prefix(commit.hash))
 		}
 		previous = commit.plannedEpoch
 	}
@@ -1128,7 +1128,7 @@ func verifyGlobalSelectedDateOrder(candidates []dateCandidate, selectedRefs []se
 		left := candidates[selectedRefs[i-1].candidate].commits[selectedRefs[i-1].commit]
 		right := candidates[selectedRefs[i].candidate].commits[selectedRefs[i].commit]
 		if right.plannedEpoch < left.plannedEpoch {
-			return fmt.Errorf("%s is planned before globally earlier commit %s", prefix(right.hash, 8), prefix(left.hash, 8))
+			return fmt.Errorf("%s is planned before globally earlier commit %s", prefix(right.hash), prefix(left.hash))
 		}
 	}
 	return nil
@@ -1144,7 +1144,7 @@ func verifySelectedDateSchedule(candidates []dateCandidate, selectedRefs []selec
 			continue
 		}
 		if !epochInCommitTimeWindow(commit.plannedEpoch, candidate.tzOffset, window) {
-			return fmt.Errorf("%s %s cannot fit inside --window %s while preserving topology", candidate.repo.display, prefix(commit.hash, 8), schedule.Text)
+			return fmt.Errorf("%s %s cannot fit inside --window %s while preserving topology", candidate.repo.display, prefix(commit.hash), schedule.Text)
 		}
 	}
 	return nil
@@ -1186,12 +1186,12 @@ func verifySelectedTopology(candidate dateCandidate) error {
 		commit := candidate.commits[idx]
 		for _, parent := range commit.parents {
 			if parentIndex, ok := byHash[parent]; ok && selected[parentIndex] && candidate.commits[parentIndex].plannedEpoch+1 > commit.plannedEpoch {
-				return fmt.Errorf("%s %s is not at least one second after selected parent %s", candidate.repo.display, prefix(commit.hash, 8), prefix(parent, 8))
+				return fmt.Errorf("%s %s is not at least one second after selected parent %s", candidate.repo.display, prefix(commit.hash), prefix(parent))
 			}
 		}
 		for _, childIndex := range children[idx] {
 			if selected[childIndex] && commit.plannedEpoch+1 > candidate.commits[childIndex].plannedEpoch {
-				return fmt.Errorf("%s %s is not at least one second before selected child %s", candidate.repo.display, prefix(commit.hash, 8), prefix(candidate.commits[childIndex].hash, 8))
+				return fmt.Errorf("%s %s is not at least one second before selected child %s", candidate.repo.display, prefix(commit.hash), prefix(candidate.commits[childIndex].hash))
 			}
 		}
 	}
@@ -1760,14 +1760,14 @@ func assignCalendarDailyQuotas(calendar *rewriteDateCalendarPlan, selectedCount 
 	if len(activeIndexes) == 0 || selectedCount <= 0 {
 		return
 	}
-	weights := workloadWeights(*calendar, activeIndexes, profile, effectiveRepos, rng)
+	weights := workloadWeights(activeIndexes, profile, effectiveRepos, rng)
 	quotas := proportionalDailyQuotas(selectedCount, weights, rng)
 	for i, idx := range activeIndexes {
 		calendar.days[idx].quota = quotas[i]
 	}
 }
 
-func workloadWeights(calendar rewriteDateCalendarPlan, activeIndexes []int, profile rewriteDateProfile, effectiveRepos float64, rng *rand.Rand) []float64 {
+func workloadWeights(activeIndexes []int, profile rewriteDateProfile, effectiveRepos float64, rng *rand.Rand) []float64 {
 	if effectiveRepos < 1 {
 		effectiveRepos = 1
 	}
@@ -2347,7 +2347,7 @@ func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOption
 				break
 			}
 			commit := candidate.commits[commitIndex]
-			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(commit.hash, 8), formatEpoch(commit.authorEpoch, commit.authorTZ), formatEpoch(commit.plannedEpoch, candidate.tzOffset))
+			fmt.Fprintf(a.stdout, "  %s  %s -> %s\n", prefix(commit.hash), formatEpoch(commit.authorEpoch, commit.authorTZ), formatEpoch(commit.plannedEpoch, candidate.tzOffset))
 		}
 		fmt.Fprintln(a.stdout)
 	}
@@ -2561,11 +2561,11 @@ func dominantTimezoneOffsetFromCommits(commits []rewriteDateCommit) string {
 			counts[commit.originalAuthorTZ]++
 		}
 	}
-	offset, _ := dominantTimezoneOffsetFromCounts(counts)
+	offset := dominantTimezoneOffsetFromCounts(counts)
 	return offset
 }
 
-func dominantTimezoneOffsetFromCounts(counts map[string]int) (string, error) {
+func dominantTimezoneOffsetFromCounts(counts map[string]int) string {
 	best := ""
 	bestCount := 0
 	offsets := make([]string, 0, len(counts))
@@ -2581,9 +2581,9 @@ func dominantTimezoneOffsetFromCounts(counts map[string]int) (string, error) {
 		}
 	}
 	if best != "" {
-		return best, nil
+		return best
 	}
-	return time.Now().Format("-0700"), nil
+	return time.Now().Format("-0700")
 }
 
 func formatEpoch(epoch int64, offset string) string {

@@ -152,7 +152,8 @@ func truncate(s string, n int) string {
 	return s[:n-3] + "..."
 }
 
-func prefix(s string, n int) string {
+func prefix(s string) string {
+	const n = 8
 	if len(s) <= n {
 		return s
 	}
