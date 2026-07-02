@@ -42,7 +42,7 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 `internal/ui` owns output streams, colors, plain output behavior, status vocabulary, prompts, and terminal detection.
 
-`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, RPM pacing, response validation, retry behavior, and callback generation. AI batch requests are paced by `--rpm`; do not add a separate in-flight concurrency cap unless explicitly requested.
+`internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, request pacing and concurrency, response validation, retry behavior, and callback generation. AI batch request starts are paced by `--rpm` while in-flight requests are bounded by `--concurrency` (default 8, worker pool); keep these knobs orthogonal. All API calls share one pooled HTTP/1.1 client (HTTP/2 disabled); do not create per-request clients. Batch retries use up to four attempts with jittered exponential backoff, then per-commit retries and a final single-commit recovery pass. Transient retry attempts are aggregated into one end-of-run summary progress event instead of per-attempt output.
 
 `internal/version` owns `Version`, `Commit`, and `Date`, defaulting to `dev`, `unknown`, and `unknown`. GoReleaser injects release values with ldflags.
 

@@ -206,6 +206,8 @@ func TestRewriteCommitsFlagValidation(t *testing.T) {
 	}{
 		{[]string{"rewrite-commits", "--batch-size", "51"}, "--batch-size must be 50 or less"},
 		{[]string{"rewrite-commits", "--rpm", "0"}, "--rpm must be a positive integer"},
+		{[]string{"rewrite-commits", "--concurrency", "0"}, "--concurrency must be a positive integer"},
+		{[]string{"rewrite-commits", "--concurrency", "65"}, "--concurrency must be 64 or less"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithIO(tc.args, strings.NewReader(""), &stdout, &stderr)

@@ -14,6 +14,7 @@ import (
 func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	batch, _ := cmd.Flags().GetInt("batch-size")
 	rpm, _ := cmd.Flags().GetInt("rpm")
+	concurrency, _ := cmd.Flags().GetInt("concurrency")
 	timeoutInt, _ := cmd.Flags().GetInt("timeout")
 	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
 	requireScope, _ := cmd.Flags().GetBool("require-scope")
@@ -38,6 +39,14 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	if rpm <= 0 {
 		a.plainErrorf("--rpm must be a positive integer.")
+		return 1
+	}
+	if concurrency <= 0 {
+		a.plainErrorf("--concurrency must be a positive integer.")
+		return 1
+	}
+	if concurrency > 64 {
+		a.plainErrorf("--concurrency must be 64 or less.")
 		return 1
 	}
 	if timeoutInt <= 0 {
@@ -92,6 +101,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		Headers:          settings.Headers,
 		BatchSize:        batch,
 		RPM:              rpm,
+		Concurrency:      concurrency,
 		Timeout:          time.Duration(timeoutInt) * time.Second,
 		SkipConventional: skipConventional,
 		RequireScope:     requireScope,

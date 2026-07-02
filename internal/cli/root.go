@@ -249,6 +249,7 @@ func newRootCommand(a *app) *cobra.Command {
 			stringFlag("rewrite-before", "", "Rewrite commits with current author dates before YYYY-MM-DD."),
 			intFlag("batch-size", 10, "Maximum commits per API request."),
 			intFlag("rpm", 300, "Maximum API requests to start per minute."),
+			intFlag("concurrency", 8, "Maximum in-flight API requests."),
 			intFlag("timeout", 90, "API timeout in seconds."),
 			boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
 			boolFlag("require-scope", "Skip only Conventional Commits that also have a scope; implies --skip-conventional."),
