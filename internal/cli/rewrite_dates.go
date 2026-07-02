@@ -2280,19 +2280,6 @@ func restDaySet(blocks []rewriteDateRestBlock) map[int64]bool {
 	return days
 }
 
-func daysInRange(startEpoch, endEpoch int64) []int64 {
-	startDay := floorDay(startEpoch)
-	endDay := floorDay(endEpoch)
-	days := []int64{}
-	for day := startDay; day <= endDay; day += 86400 {
-		days = append(days, day)
-	}
-	if len(days) == 0 {
-		days = append(days, startDay)
-	}
-	return days
-}
-
 func daysInRangeInOffset(startEpoch, endEpoch int64, tzOffset string) []int64 {
 	loc := locationForTimezoneOffset(tzOffset)
 	start := time.Unix(startEpoch, 0).In(loc)
@@ -2349,18 +2336,6 @@ func seedInt64(seed string) int64 {
 		value = -value
 	}
 	return value
-}
-
-func floorDay(epoch int64) int64 {
-	return epoch - positiveMod(epoch, 86400)
-}
-
-func positiveMod(value, mod int64) int64 {
-	result := value % mod
-	if result < 0 {
-		result += mod
-	}
-	return result
 }
 
 func renderRewriteDatePlan(a *app, plan rewriteDatePlan, opts rewriteDatesOptions) {
