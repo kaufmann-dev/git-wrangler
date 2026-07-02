@@ -9,19 +9,49 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
+type renameBranchOptions struct {
+	target    targetOptions
+	oldBranch string
+	newBranch string
+}
+
+type renameRepoOptions struct {
+	target          targetOptions
+	editDescription bool
+}
+
+func renameBranchOptionsFromCommand(a *app, cmd *cobra.Command) (renameBranchOptions, bool) {
 	oldBranch, ok := requiredStringFlag(a, cmd, "oldbranch", "Existing branch name: ")
 	if !ok {
-		return 1
+		return renameBranchOptions{}, false
 	}
 	newBranch, ok := requiredStringFlag(a, cmd, "newbranch", "New branch name: ")
+	if !ok {
+		return renameBranchOptions{}, false
+	}
+	return renameBranchOptions{
+		target:    targetOptionsFromCommand(cmd),
+		oldBranch: oldBranch,
+		newBranch: newBranch,
+	}, true
+}
+
+func renameRepoOptionsFromCommand(cmd *cobra.Command) renameRepoOptions {
+	return renameRepoOptions{
+		target:          targetOptionsFromCommand(cmd),
+		editDescription: boolFlagValue(cmd, "description"),
+	}
+}
+
+func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
+	opts, ok := renameBranchOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
 	if !requireGit(a, "rename-branch") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -49,14 +79,14 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true}
 		}
-		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+oldBranch) {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("old branch '%s' does not exist", oldBranch), accessible: true, validRepo: true}
+		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+opts.oldBranch) {
+			return renameBranchResult{repo: r, message: fmt.Sprintf("old branch '%s' does not exist", opts.oldBranch), accessible: true, validRepo: true}
 		}
-		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+newBranch) {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("new branch '%s' already exists", newBranch), accessible: true, validRepo: true}
+		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+opts.newBranch) {
+			return renameBranchResult{repo: r, message: fmt.Sprintf("new branch '%s' already exists", opts.newBranch), accessible: true, validRepo: true}
 		}
-		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", oldBranch, newBranch); err == nil {
-			return renameBranchResult{repo: r, message: fmt.Sprintf("Branch renamed from '%s' to '%s' for %s", oldBranch, newBranch, r.display), accessible: true, validRepo: true}
+		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", opts.oldBranch, opts.newBranch); err == nil {
+			return renameBranchResult{repo: r, message: fmt.Sprintf("Branch renamed from '%s' to '%s' for %s", opts.oldBranch, opts.newBranch, r.display), accessible: true, validRepo: true}
 		} else {
 			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true, validRepo: true}
 		}
@@ -97,7 +127,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 	if !requireInteractive(a, "rename-repo") {
 		return 1
 	}
-	editDescription, _ := cmd.Flags().GetBool("description")
+	opts := renameRepoOptionsFromCommand(cmd)
 	if !requireGit(a, "rename-repo") || !requireCommand(a, "gh", "rename-repo") {
 		return 1
 	}
@@ -119,7 +149,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	renderStatusLine(a, a.stdout, statusInfo, "GitHub auth", string(authSource))
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -150,7 +180,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			return 1
 		}
 		newDesc := ""
-		if editDescription {
+		if opts.editDescription {
 			oldDesc, _ := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "description", "-q", ".description")
 			oldDesc = strings.TrimSpace(oldDesc)
 			if oldDesc == "" {
@@ -163,7 +193,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 				return 1
 			}
 		}
-		if editDescription && newDesc != "" {
+		if opts.editDescription && newDesc != "" {
 			if out, err := a.gh.CaptureEnv(a.ctx, r.dir, ghEnv, "repo", "edit", "--description", newDesc); err == nil {
 				renderStatusLine(a, a.stdout, statusOK, oldName, "description updated")
 				descriptionUpdated++
@@ -183,7 +213,7 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 				failed++
 			}
 		}
-		if newName == "" && (!editDescription || newDesc == "") {
+		if newName == "" && (!opts.editDescription || newDesc == "") {
 			skipped++
 		}
 	}

@@ -15,6 +15,7 @@ import (
 )
 
 type logOptions struct {
+	target    targetOptions
 	limit     int
 	since     string
 	until     string
@@ -43,14 +44,14 @@ type logResult struct {
 }
 
 func runLog(a *app, cmd *cobra.Command, args []string) int {
-	opts, ok := logOptionsFromFlags(a, cmd)
+	opts, ok := logOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
 	if !requireGit(a, "log") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -58,7 +59,10 @@ func runLog(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	return runLogForRepos(a, repos, opts)
+}
 
+func runLogForRepos(a *app, repos []repo, opts logOptions) int {
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Scanning log", len(repos)), func(r repo) logResult {
 		return collectLog(a, r, opts)
 	})
@@ -106,50 +110,51 @@ func runLog(a *app, cmd *cobra.Command, args []string) int {
 	return 0
 }
 
-func logOptionsFromFlags(a *app, cmd *cobra.Command) (logOptions, bool) {
-	limit, _ := cmd.Flags().GetInt("limit")
-	if limit < 0 {
-		a.plainErrorf("--limit must be 0 or greater.")
+func logOptionsFromCommand(a *app, cmd *cobra.Command) (logOptions, bool) {
+	limit := intFlagValue(cmd, "limit")
+	if err := validateNonNegativeIntFlag("limit", limit); err != nil {
+		a.plainErrorf("%s", err.Error())
 		return logOptions{}, false
 	}
-	since, _ := cmd.Flags().GetString("since")
-	until, _ := cmd.Flags().GetString("until")
-	opts := logOptions{limit: limit, since: since, until: until}
-	if since != "" {
-		if !validDate(since) {
-			a.plainErrorf("--since must be in YYYY-MM-DD format.")
-			return logOptions{}, false
-		}
-		opts.hasSince = true
-		opts.sinceUnix = parseDateStart(since)
+	opts := logOptions{
+		target: targetOptionsFromCommand(cmd),
+		limit:  limit,
+		since:  stringFlagValue(cmd, "since"),
+		until:  stringFlagValue(cmd, "until"),
 	}
-	if until != "" {
-		if !validDate(until) {
-			a.plainErrorf("--until must be in YYYY-MM-DD format.")
-			return logOptions{}, false
-		}
+	if err := validateDateFlag("since", opts.since); err != nil {
+		a.plainErrorf("%s", err.Error())
+		return logOptions{}, false
+	}
+	if err := validateDateFlag("until", opts.until); err != nil {
+		a.plainErrorf("%s", err.Error())
+		return logOptions{}, false
+	}
+	if opts.since != "" {
+		opts.hasSince = true
+		opts.sinceUnix = parseDateStart(opts.since)
+	}
+	if opts.until != "" {
 		opts.hasUntil = true
-		opts.untilUnix = parseDateEnd(until)
+		opts.untilUnix = parseDateEnd(opts.until)
 	}
 	if opts.hasSince && opts.hasUntil && opts.sinceUnix > opts.untilUnix {
 		a.plainErrorf("--since must be on or before --until.")
 		return logOptions{}, false
 	}
-	types, _ := cmd.Flags().GetStringArray("type")
 	opts.types = map[string]struct{}{}
-	for _, typ := range types {
+	for _, typ := range stringArrayFlagValues(cmd, "type") {
 		if typ != "other" && !conventional.IsAllowedType(typ) {
 			a.plainErrorf("--type must be a standard Conventional Commit type or other.")
 			return logOptions{}, false
 		}
 		opts.types[typ] = struct{}{}
 	}
-	scopes, _ := cmd.Flags().GetStringArray("scope")
 	opts.scopes = map[string]struct{}{}
-	for _, scope := range scopes {
+	for _, scope := range stringArrayFlagValues(cmd, "scope") {
 		opts.scopes[scope] = struct{}{}
 	}
-	opts.summary, _ = cmd.Flags().GetBool("summary")
+	opts.summary = boolFlagValue(cmd, "summary")
 	return opts, true
 }
 

@@ -7,13 +7,54 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type pullOptions struct {
+	target targetOptions
+	rebase bool
+	force  bool
+}
+
+type fetchCommandOptions struct {
+	target targetOptions
+	prune  bool
+}
+
+type pushOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+	force        bool
+	forceUnsafe  bool
+}
+
+func pullOptionsFromCommand(cmd *cobra.Command) pullOptions {
+	return pullOptions{
+		target: targetOptionsFromCommand(cmd),
+		rebase: boolFlagValue(cmd, "rebase"),
+		force:  boolFlagValue(cmd, "force"),
+	}
+}
+
+func fetchCommandOptionsFromCommand(cmd *cobra.Command) fetchCommandOptions {
+	return fetchCommandOptions{
+		target: targetOptionsFromCommand(cmd),
+		prune:  boolFlagValue(cmd, "prune"),
+	}
+}
+
+func pushOptionsFromCommand(cmd *cobra.Command) pushOptions {
+	return pushOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		force:        boolFlagValue(cmd, "force"),
+		forceUnsafe:  boolFlagValue(cmd, "force-unsafe"),
+	}
+}
+
 func runPull(a *app, cmd *cobra.Command, args []string) int {
-	rebase, _ := cmd.Flags().GetBool("rebase")
-	force, _ := cmd.Flags().GetBool("force")
+	opts := pullOptionsFromCommand(cmd)
 	if !requireGit(a, "pull") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -33,10 +74,10 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 	failed := 0
 	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Pulling repositories", len(repos)), func(r repo) pullResult {
 		pullArgs := []string{"pull"}
-		if rebase {
+		if opts.rebase {
 			pullArgs = append(pullArgs, "--rebase")
 		}
-		if force {
+		if opts.force {
 			pullArgs = append(pullArgs, "--force")
 		}
 		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pullArgs...)
@@ -66,11 +107,11 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 }
 
 func runFetch(a *app, cmd *cobra.Command, args []string) int {
-	prune, _ := cmd.Flags().GetBool("prune")
+	opts := fetchCommandOptionsFromCommand(cmd)
 	if !requireGit(a, "fetch") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -88,7 +129,7 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 	failed := 0
 	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Fetching repositories", len(repos)), func(r repo) fetchResult {
 		fetchArgs := []string{"fetch", "origin"}
-		if prune {
+		if opts.prune {
 			fetchArgs = []string{"fetch", "--prune", "origin"}
 		}
 		out, err := captureRemoteGitWithRetry(a, r.dir, nil, fetchArgs...)
@@ -114,16 +155,15 @@ func runFetch(a *app, cmd *cobra.Command, args []string) int {
 }
 
 func runPush(a *app, cmd *cobra.Command, args []string) int {
-	force, _ := cmd.Flags().GetBool("force")
-	forceUnsafe, _ := cmd.Flags().GetBool("force-unsafe")
-	if force && forceUnsafe {
+	opts := pushOptionsFromCommand(cmd)
+	if opts.force && opts.forceUnsafe {
 		a.error("Use either --force or --force-unsafe, not both.")
 		return 1
 	}
 	if !requireGit(a, "push") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -141,10 +181,10 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 	pushed := 0
 	skipped := 0
 	failed := 0
-	if !forceUnsafe {
+	if !opts.forceUnsafe {
 		results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Pushing repositories", len(repos)), func(r repo) pushResult {
 			pushArgs := []string{"push", "origin", "HEAD"}
-			if force {
+			if opts.force {
 				pushArgs = []string{"push", "--force-with-lease", "origin", "HEAD"}
 			}
 			out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pushArgs...)
@@ -172,7 +212,7 @@ func runPush(a *app, cmd *cobra.Command, args []string) int {
 		)
 		return status
 	}
-	confirmation := confirmOrSkip(a, yesFlag(cmd), fmt.Sprintf("Raw force push %d repositories with --force?", len(repos)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Raw force push %d repositories with --force?", len(repos)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

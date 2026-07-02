@@ -14,14 +14,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type infoOptions struct {
+	target targetOptions
+	json   jsonOptions
+	fetch  fetchOptions
+}
+
+func infoOptionsFromCommand(cmd *cobra.Command) infoOptions {
+	return infoOptions{
+		target: targetOptionsFromCommand(cmd),
+		json:   jsonOptionsFromCommand(cmd),
+		fetch:  fetchOptionsFromCommand(cmd),
+	}
+}
+
 func runInfo(a *app, cmd *cobra.Command, args []string) int {
-	if a.json {
-		return runInfoJSON(a, cmd)
+	opts := infoOptionsFromCommand(cmd)
+	if opts.json.enabled {
+		return runInfoJSON(a, opts)
 	}
 	if !requireGit(a, "info") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -30,7 +45,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 		return noRepos(a)
 	}
 	fetchFailures := map[string]originRefreshResult{}
-	if !noFetchFlagValue(cmd) {
+	if !opts.fetch.noFetch {
 		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
 		if interrupted(a) {
 			return 1
@@ -66,7 +81,7 @@ func runInfo(a *app, cmd *cobra.Command, args []string) int {
 	return statusCode
 }
 
-func runInfoJSON(a *app, cmd *cobra.Command) int {
+func runInfoJSON(a *app, opts infoOptions) int {
 	if _, err := a.runner.LookPath("git"); err != nil {
 		return writeJSONStatus(a, map[string]any{
 			"ok":      false,
@@ -74,7 +89,7 @@ func runInfoJSON(a *app, cmd *cobra.Command) int {
 			"error":   jsonError{Message: "'git' is required for info. Install it and make sure it is on PATH."},
 		}, 1)
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		return writeJSONStatus(a, map[string]any{
 			"ok":      false,
@@ -83,7 +98,7 @@ func runInfoJSON(a *app, cmd *cobra.Command) int {
 		}, 1)
 	}
 	fetchFailures := map[string]originRefreshResult{}
-	if !noFetchFlagValue(cmd) {
+	if !opts.fetch.noFetch {
 		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
 		if a.ctx.Err() != nil {
 			return writeJSONStatus(a, map[string]any{

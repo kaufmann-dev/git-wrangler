@@ -22,23 +22,43 @@ type activityResult struct {
 	err             error
 }
 
-func runActivity(a *app, cmd *cobra.Command, args []string) int {
-	year, _ := cmd.Flags().GetInt("year")
-	if cmd.Flags().Changed("year") && (year < 1 || year > 9999) {
+type activityOptions struct {
+	target      targetOptions
+	year        int
+	users       []string
+	userSet     map[string]struct{}
+	all         bool
+	globalScale bool
+}
+
+func activityOptionsFromCommand(a *app, cmd *cobra.Command) (activityOptions, bool) {
+	opts := activityOptions{
+		target:      targetOptionsFromCommand(cmd),
+		year:        intFlagValue(cmd, "year"),
+		users:       stringArrayFlagValues(cmd, "user"),
+		all:         boolFlagValue(cmd, "all"),
+		globalScale: boolFlagValue(cmd, "global-scale"),
+	}
+	if flagChanged(cmd, "year") && (opts.year < 1 || opts.year > 9999) {
 		a.error("--year must be from 1 through 9999.")
+		return activityOptions{}, false
+	}
+	opts.userSet = make(map[string]struct{}, len(opts.users))
+	for _, user := range opts.users {
+		opts.userSet[strings.ToLower(user)] = struct{}{}
+	}
+	return opts, true
+}
+
+func runActivity(a *app, cmd *cobra.Command, args []string) int {
+	opts, ok := activityOptionsFromCommand(a, cmd)
+	if !ok {
 		return 1
 	}
 	if !requireGit(a, "activity") {
 		return 1
 	}
-	users, _ := cmd.Flags().GetStringArray("user")
-	userSet := make(map[string]struct{}, len(users))
-	for _, user := range users {
-		userSet[strings.ToLower(user)] = struct{}{}
-	}
-	all, _ := cmd.Flags().GetBool("all")
-	globalScale, _ := cmd.Flags().GetBool("global-scale")
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -46,9 +66,12 @@ func runActivity(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
+	return runActivityForRepos(a, repos, opts)
+}
 
+func runActivityForRepos(a *app, repos []repo, opts activityOptions) int {
 	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Scanning activity", len(repos)), func(r repo) activityResult {
-		return collectActivity(a, r, all, year, userSet)
+		return collectActivity(a, r, opts)
 	})
 	if interrupted(a) {
 		return 1
@@ -75,7 +98,7 @@ func runActivity(a *app, cmd *cobra.Command, args []string) int {
 		}
 	}
 
-	if len(days) == 0 && year == 0 {
+	if len(days) == 0 && opts.year == 0 {
 		fmt.Fprintln(a.stdout, "No activity found.")
 		fmt.Fprintln(a.stdout)
 		renderActivitySummary(a, 0, len(repos), failed)
@@ -84,7 +107,7 @@ func runActivity(a *app, cmd *cobra.Command, args []string) int {
 		}
 		return 0
 	}
-	renderActivity(a, days, year, all, users, globalScale)
+	renderActivity(a, days, opts.year, opts.all, opts.users, opts.globalScale)
 	fmt.Fprintln(a.stdout)
 	renderActivitySummary(a, len(seen), len(repos), failed)
 	if failed > 0 {
@@ -93,10 +116,10 @@ func runActivity(a *app, cmd *cobra.Command, args []string) int {
 	return 0
 }
 
-func collectActivity(a *app, r repo, all bool, year int, users map[string]struct{}) activityResult {
+func collectActivity(a *app, r repo, opts activityOptions) activityResult {
 	result := activityResult{repo: r, commits: map[string]activityDay{}}
 	logArgs := []string{"log", "-z", "--format=%H%x00%aI%x00%an%x00%ae"}
-	if all {
+	if opts.all {
 		logArgs = append(logArgs, "--exclude=refs/git-wrangler/*", "--all")
 	} else {
 		refs, fallback := activityDefaultRefs(a, r)
@@ -104,7 +127,7 @@ func collectActivity(a *app, r repo, all bool, year int, users map[string]struct
 		logArgs = append(logArgs, refs...)
 	}
 	result.err = a.git.StreamStdout(a.ctx, r.dir, nil, func(output io.Reader) error {
-		return parseActivityLog(output, year, users, result.commits)
+		return parseActivityLog(output, opts.year, opts.userSet, result.commits)
 	}, logArgs...)
 	if result.err != nil {
 		result.commits = nil

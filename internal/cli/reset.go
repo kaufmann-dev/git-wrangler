@@ -7,12 +7,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type resetOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+}
+
+func resetOptionsFromCommand(cmd *cobra.Command) resetOptions {
+	return resetOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+	}
+}
+
 func runReset(a *app, cmd *cobra.Command, args []string) int {
-	yes := yesFlag(cmd)
+	opts := resetOptionsFromCommand(cmd)
 	if !requireGit(a, "reset") {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -122,7 +134,7 @@ func runReset(a *app, cmd *cobra.Command, args []string) int {
 	renderTable(a, []tableColumn{{header: "Repository"}, {header: "Branch"}, {header: "Ahead"}, {header: "Behind"}, {header: "Dirty"}}, tableRows)
 	fmt.Fprintln(a.stdout)
 	renderWarning(a, fmt.Sprintf("This will hard reset %d repositories and discard local commits or working tree changes.", len(applies)))
-	confirmation := confirmOrSkip(a, yes, fmt.Sprintf("Proceed with reset for %d repositories?", len(applies)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Proceed with reset for %d repositories?", len(applies)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

@@ -3,8 +3,6 @@ package cli
 import (
 	"fmt"
 	"strings"
-
-	"github.com/spf13/cobra"
 )
 
 type currentRewriteDateBounds struct {
@@ -26,12 +24,6 @@ type currentRewriteDateSelectionScan struct {
 	branches   []dateBranchRef
 	commits    []rewriteDateCommit
 	selected   []int
-}
-
-func currentRewriteDateBoundsFromFlags(cmd *cobra.Command) (currentRewriteDateBounds, error) {
-	after, _ := cmd.Flags().GetString("rewrite-after")
-	before, _ := cmd.Flags().GetString("rewrite-before")
-	return parseCurrentRewriteDateBounds(after, before)
 }
 
 func parseCurrentRewriteDateBounds(afterDate, beforeDate string) (currentRewriteDateBounds, error) {

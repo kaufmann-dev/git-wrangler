@@ -11,54 +11,62 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
-	batch, _ := cmd.Flags().GetInt("batch-size")
-	rpm, _ := cmd.Flags().GetInt("rpm")
-	concurrency, _ := cmd.Flags().GetInt("concurrency")
-	timeoutInt, _ := cmd.Flags().GetInt("timeout")
-	skipConventional, _ := cmd.Flags().GetBool("skip-conventional")
-	requireScope, _ := cmd.Flags().GetBool("require-scope")
-	if requireScope {
-		skipConventional = true
-	}
-	body, _ := cmd.Flags().GetBool("body")
-	yes := yesFlag(cmd)
-	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+type rewriteCommitsOptions struct {
+	target           targetOptions
+	fetch            fetchOptions
+	confirmation     confirmationOptions
+	ai               aiRequestOptions
+	bounds           currentRewriteDateBounds
+	batchSize        int
+	skipConventional bool
+	requireScope     bool
+}
+
+func rewriteCommitsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteCommitsOptions, bool) {
+	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
 		a.error(err.Error())
-		return 1
+		return rewriteCommitsOptions{}, false
 	}
+	opts := rewriteCommitsOptions{
+		target:           targetOptionsFromCommand(cmd),
+		fetch:            fetchOptionsFromCommand(cmd),
+		confirmation:     confirmationOptionsFromCommand(cmd),
+		ai:               aiRequestOptionsFromCommand(cmd),
+		bounds:           boundOpts.bounds,
+		batchSize:        intFlagValue(cmd, "batch-size"),
+		skipConventional: boolFlagValue(cmd, "skip-conventional"),
+		requireScope:     boolFlagValue(cmd, "require-scope"),
+	}
+	if opts.requireScope {
+		opts.skipConventional = true
+	}
+	for _, check := range []error{
+		validatePositiveIntFlag("batch-size", opts.batchSize),
+		validateMaxIntFlag("batch-size", opts.batchSize, 50),
+		validatePositiveIntFlag("rpm", opts.ai.rpm),
+		validatePositiveIntFlag("concurrency", opts.ai.concurrency),
+		validateMaxIntFlag("concurrency", opts.ai.concurrency, 64),
+		validatePositiveIntFlag("timeout", opts.ai.timeout),
+	} {
+		if check != nil {
+			a.plainErrorf("%s", check.Error())
+			return rewriteCommitsOptions{}, false
+		}
+	}
+	return opts, true
+}
 
-	if batch <= 0 {
-		a.plainErrorf("--batch-size must be a positive integer.")
+func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
+	opts, ok := rewriteCommitsOptionsFromCommand(a, cmd)
+	if !ok {
 		return 1
 	}
-	if batch > 50 {
-		a.plainErrorf("--batch-size must be 50 or less.")
-		return 1
-	}
-	if rpm <= 0 {
-		a.plainErrorf("--rpm must be a positive integer.")
-		return 1
-	}
-	if concurrency <= 0 {
-		a.plainErrorf("--concurrency must be a positive integer.")
-		return 1
-	}
-	if concurrency > 64 {
-		a.plainErrorf("--concurrency must be 64 or less.")
-		return 1
-	}
-	if timeoutInt <= 0 {
-		a.plainErrorf("--timeout must be a positive integer.")
-		return 1
-	}
-
 	settings, ok := loadAISettings(a)
 	if !ok {
 		return 1
 	}
-	if !preflightAI(a, settings, time.Duration(timeoutInt)*time.Second) {
+	if !preflightAI(a, settings, time.Duration(opts.ai.timeout)*time.Second) {
 		return 1
 	}
 
@@ -70,7 +78,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -78,10 +86,10 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	if !refreshOriginForRewrite(a, cmd, repos) {
+	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
 		return 1
 	}
-	aiRepos, ok := rewriteCommitAIRepositories(a, repos, bounds)
+	aiRepos, ok := rewriteCommitAIRepositories(a, repos, opts.bounds)
 	if !ok {
 		return 1
 	}
@@ -99,13 +107,13 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		Model:            settings.Config.AI.Model,
 		APIKey:           settings.APIKey,
 		Headers:          settings.Headers,
-		BatchSize:        batch,
-		RPM:              rpm,
-		Concurrency:      concurrency,
-		Timeout:          time.Duration(timeoutInt) * time.Second,
-		SkipConventional: skipConventional,
-		RequireScope:     requireScope,
-		Body:             body,
+		BatchSize:        opts.batchSize,
+		RPM:              opts.ai.rpm,
+		Concurrency:      opts.ai.concurrency,
+		Timeout:          time.Duration(opts.ai.timeout) * time.Second,
+		SkipConventional: opts.skipConventional,
+		RequireScope:     opts.requireScope,
+		Body:             opts.ai.body,
 		WorkDir:          workDir,
 		Git:              a.git,
 		Progress: func(event ai.ProgressEvent) {
@@ -140,7 +148,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 			}
 		},
 	}, a.stderr, func(question string) bool {
-		if yes {
+		if opts.confirmation.yes {
 			return true
 		}
 		return confirm(a, question) == confirmationAccepted
@@ -168,7 +176,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 	}
 	fmt.Fprintln(a.stderr)
 	renderWarning(a, "This operation rewrites Git history. A force push will be required to update remotes.")
-	confirmation := confirmOrSkip(a, yes, "Apply these generated commit messages to all listed repositories?")
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, "Apply these generated commit messages to all listed repositories?")
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

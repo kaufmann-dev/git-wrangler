@@ -9,9 +9,11 @@ import (
 )
 
 type rewriteHoursOptions struct {
+	target       targetOptions
+	fetch        fetchOptions
+	confirmation confirmationOptions
 	window       string
 	timeSchedule commitTimeSchedule
-	yes          bool
 	bounds       currentRewriteDateBounds
 }
 
@@ -60,7 +62,7 @@ type hourApplyResult struct {
 }
 
 func runRewriteHours(a *app, cmd *cobra.Command, args []string) int {
-	opts, ok := rewriteHoursOptionsFromFlags(a, cmd)
+	opts, ok := rewriteHoursOptionsFromCommand(a, cmd)
 	if !ok {
 		return 1
 	}
@@ -71,7 +73,7 @@ func runRewriteHours(a *app, cmd *cobra.Command, args []string) int {
 	if !ok {
 		return 1
 	}
-	repos, err := commandRepositoryTargets(cmd)
+	repos, err := opts.target.repositories()
 	if err != nil {
 		a.error(err.Error())
 		return 1
@@ -79,21 +81,25 @@ func runRewriteHours(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	if !refreshOriginForRewrite(a, cmd, repos) {
+	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
 		return 1
 	}
 	return runRewriteHoursRewrite(a, repos, filterCmd, opts)
 }
 
-func rewriteHoursOptionsFromFlags(a *app, cmd *cobra.Command) (rewriteHoursOptions, bool) {
-	opts := rewriteHoursOptions{yes: yesFlag(cmd)}
-	bounds, err := currentRewriteDateBoundsFromFlags(cmd)
+func rewriteHoursOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteHoursOptions, bool) {
+	boundOpts, err := rewriteBoundOptionsFromCommand(cmd)
 	if err != nil {
 		a.error(err.Error())
 		return rewriteHoursOptions{}, false
 	}
-	opts.bounds = bounds
-	opts.window, _ = cmd.Flags().GetString("window")
+	opts := rewriteHoursOptions{
+		target:       targetOptionsFromCommand(cmd),
+		fetch:        fetchOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		bounds:       boundOpts.bounds,
+		window:       stringFlagValue(cmd, "window"),
+	}
 	if strings.TrimSpace(opts.window) == "" {
 		a.error("--window is required.")
 		return rewriteHoursOptions{}, false
@@ -178,7 +184,7 @@ func runRewriteHoursRewrite(a *app, repos []repo, filterCmd []string, opts rewri
 		summaryCount{label: "failed", value: failed, color: a.ui.Red},
 	)
 	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote. Tags may still point at old history, and commit or tag signatures may become invalid.", len(plan.candidates)))
-	confirmation := confirmOrSkip(a, opts.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Proceed with rewrite for %d repositories?", len(plan.candidates)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}

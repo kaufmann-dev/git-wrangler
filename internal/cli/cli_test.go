@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 func TestRootCommandShowsLanding(t *testing.T) {
@@ -87,6 +90,61 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 			t.Fatalf("removed command %q appeared in help:\n%s", removed, out)
 		}
 	}
+}
+
+func TestCommandSurfaceMatchesExpected(t *testing.T) {
+	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
+	for _, tc := range []struct {
+		name  string
+		group string
+		flags []string
+	}{
+		{name: "activity", group: "utility", flags: strings.Fields("all global-scale guided repo user year")},
+		{name: "clone", group: "remote", flags: strings.Fields("guided into limit user visibility")},
+		{name: "commit", group: "local", flags: strings.Fields("body concurrency guided repo rpm timeout yes")},
+		{name: "config", group: "utility"},
+		{name: "doctor", group: "utility", flags: strings.Fields("json")},
+		{name: "fetch", group: "remote", flags: strings.Fields("guided prune repo")},
+		{name: "fix-gitignore", group: "local", flags: strings.Fields("guided repo yes")},
+		{name: "info", group: "utility", flags: strings.Fields("guided json no-fetch repo")},
+		{name: "init", group: "utility"},
+		{name: "license", group: "local", flags: strings.Fields("guided name overwrite repo yes")},
+		{name: "log", group: "utility", flags: strings.Fields("guided limit repo scope since summary type until")},
+		{name: "pull", group: "remote", flags: strings.Fields("force guided rebase repo")},
+		{name: "push", group: "remote", flags: strings.Fields("force force-unsafe guided repo yes")},
+		{name: "remove-secrets", group: "history", flags: strings.Fields("guided no-fetch repo yes")},
+		{name: "rename-branch", group: "local", flags: strings.Fields("guided newbranch oldbranch repo")},
+		{name: "rename-repo", group: "remote", flags: strings.Fields("description repo")},
+		{name: "reset", group: "local", flags: strings.Fields("guided repo yes")},
+		{name: "review", group: "local", flags: strings.Fields("guided json no-fetch repo")},
+		{name: "rewrite-authors", group: "history", flags: strings.Fields("email force guided name no-fetch repo rewrite-after rewrite-before yes")},
+		{name: "rewrite-commits", group: "history", flags: strings.Fields("batch-size body concurrency guided no-fetch repo require-scope rewrite-after rewrite-before rpm skip-conventional timeout yes")},
+		{name: "rewrite-dates", group: "history", flags: strings.Fields("days end-date frequency guided no-fetch repo rewrite-after rewrite-before seed spread start-date until window yes")},
+		{name: "rewrite-hours", group: "history", flags: strings.Fields("guided no-fetch repo rewrite-after rewrite-before window yes")},
+		{name: "rollback-rewrites", group: "history", flags: strings.Fields("guided repo yes")},
+		{name: "status", group: "utility", flags: strings.Fields("guided json no-fetch repo")},
+		{name: "untrack", group: "local", flags: strings.Fields("guided repo yes")},
+		{name: "version", group: "utility", flags: strings.Fields("json")},
+	} {
+		cmd := commandByName(t, root, tc.name)
+		if cmd.GroupID != tc.group {
+			t.Fatalf("%s group = %q, want %q", tc.name, cmd.GroupID, tc.group)
+		}
+		got := localFlagNames(cmd)
+		sort.Strings(tc.flags)
+		if strings.Join(got, " ") != strings.Join(tc.flags, " ") {
+			t.Fatalf("%s flags = %q, want %q", tc.name, got, tc.flags)
+		}
+	}
+}
+
+func localFlagNames(cmd interface{ Flags() *pflag.FlagSet }) []string {
+	names := []string{}
+	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+		names = append(names, flag.Name)
+	})
+	sort.Strings(names)
+	return names
 }
 
 func TestRollbackRewritesCommandSurface(t *testing.T) {
