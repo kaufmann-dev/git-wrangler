@@ -66,7 +66,6 @@ type rewriteBaselineCommitData struct {
 	Message        string
 }
 
-
 func captureRewriteBaselineForHashes(a *app, r repo, hashes []string) error {
 	hashes = sortedUniqueNonEmpty(hashes)
 	if len(hashes) == 0 {
