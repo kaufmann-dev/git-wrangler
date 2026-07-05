@@ -77,11 +77,16 @@ func runClone(a *app, cmd *cobra.Command, args []string) int {
 	}
 	if lineCount(out) == 0 {
 		if opts.visibility == "public" || opts.visibility == "private" {
-			a.errorf("No %s repositories found for '%s'.", opts.visibility, opts.user)
+			renderStatusLine(a, a.stdout, statusSkip, fmt.Sprintf("no %s repositories found for '%s'", opts.visibility, opts.user), "")
 		} else {
-			a.errorf("No repositories found for '%s'.", opts.user)
+			renderStatusLine(a, a.stdout, statusSkip, fmt.Sprintf("no repositories found for '%s'", opts.user), "")
 		}
-		return 1
+		renderSummary(a,
+			summaryCount{label: "cloned", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: 0, color: a.ui.Yellow},
+			summaryCount{label: "failed", value: 0, color: a.ui.Red},
+		)
+		return 0
 	}
 
 	if opts.into == "" {

@@ -82,8 +82,8 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 	if len(applies) == 0 {
 		return status
 	}
-	renderWarning(a, fmt.Sprintf("This operation will stop tracking ignored files and create commits in %d repositories.", len(applies)))
-	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Stop tracking ignored files and commit for %d repositories?", len(applies)))
+	renderWarning(a, fmt.Sprintf("This operation will stop tracking ignored files in %d repositories.", len(applies)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Stop tracking ignored files for %d repositories?", len(applies)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
@@ -130,13 +130,7 @@ func runUntrack(a *app, cmd *cobra.Command, args []string) int {
 			progress.advance(r.display)
 			continue
 		}
-		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-q", "-m", "Stop tracking files defined in .gitignore"); err == nil {
-			updated++
-		} else {
-			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit changes", output: outputOrError(out, err)})
-			status = 1
-			applyFailed++
-		}
+		updated++
 		progress.advance(r.display)
 	}
 	finishProgressBeforeOutput(progress)

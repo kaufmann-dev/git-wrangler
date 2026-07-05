@@ -166,7 +166,7 @@ func commandSpecs() []commandSpec {
 			flags: joinFlags(targetFlags(), flags{
 				stringFlag("oldbranch", "", "Existing branch name."),
 				stringFlag("newbranch", "", "New branch name."),
-			}),
+			}, confirmationFlags()),
 			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("oldbranch", "Existing branch name"), guidedRequiredString("newbranch", "New branch name")}},
 		},
 		{

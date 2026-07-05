@@ -10,9 +10,10 @@ import (
 )
 
 type renameBranchOptions struct {
-	target    targetOptions
-	oldBranch string
-	newBranch string
+	target       targetOptions
+	confirmation confirmationOptions
+	oldBranch    string
+	newBranch    string
 }
 
 type renameRepoOptions struct {
@@ -30,9 +31,10 @@ func renameBranchOptionsFromCommand(a *app, cmd *cobra.Command) (renameBranchOpt
 		return renameBranchOptions{}, false
 	}
 	return renameBranchOptions{
-		target:    targetOptionsFromCommand(cmd),
-		oldBranch: oldBranch,
-		newBranch: newBranch,
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+		oldBranch:    oldBranch,
+		newBranch:    newBranch,
 	}, true
 }
 
@@ -59,43 +61,44 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	type renameBranchResult struct {
+	type renameBranchScan struct {
 		repo       repo
 		out        string
 		err        error
 		skipReason string
-		renamed    bool
 		failed     bool
 		accessible bool
 		validRepo  bool
+		candidate  bool
+	}
+	type renameBranchResult struct {
+		scan renameBranchScan
+		out  string
+		err  error
 	}
 	status := 0
-	renamed := 0
 	skipped := 0
 	failed := 0
-	results := parallelGitMutationsProgress(a.ctx, repos, newProgress(a, "Renaming branches", len(repos)), func(r repo) renameBranchResult {
+	candidates := []renameBranchScan{}
+	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Checking branches", len(repos)), func(r repo) renameBranchScan {
 		if _, err := os.Stat(r.dir); err != nil {
-			return renameBranchResult{repo: r, err: err, failed: true}
+			return renameBranchScan{repo: r, err: err, failed: true}
 		}
 		if out, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
-			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true}
+			return renameBranchScan{repo: r, out: out, err: err, failed: true, accessible: true}
 		}
 		if !a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+opts.oldBranch) {
-			return renameBranchResult{repo: r, skipReason: fmt.Sprintf("old branch '%s' does not exist", opts.oldBranch), accessible: true, validRepo: true}
+			return renameBranchScan{repo: r, skipReason: fmt.Sprintf("old branch '%s' does not exist", opts.oldBranch), accessible: true, validRepo: true}
 		}
 		if a.git.VerifyRef(a.ctx, r.dir, "refs/heads/"+opts.newBranch) {
-			return renameBranchResult{repo: r, skipReason: fmt.Sprintf("new branch '%s' already exists", opts.newBranch), accessible: true, validRepo: true}
+			return renameBranchScan{repo: r, skipReason: fmt.Sprintf("new branch '%s' already exists", opts.newBranch), accessible: true, validRepo: true}
 		}
-		if out, err := a.git.Capture(a.ctx, r.dir, nil, "branch", "-m", opts.oldBranch, opts.newBranch); err == nil {
-			return renameBranchResult{repo: r, renamed: true, accessible: true, validRepo: true}
-		} else {
-			return renameBranchResult{repo: r, out: out, err: err, failed: true, accessible: true, validRepo: true}
-		}
+		return renameBranchScan{repo: r, accessible: true, validRepo: true, candidate: true}
 	})
 	if interrupted(a) {
 		return 1
 	}
-	for _, result := range results {
+	for _, result := range scans {
 		switch {
 		case result.failed && !result.accessible:
 			renderErrorBlock(a, result.repo.display+": directory is inaccessible", result.err.Error())
@@ -109,17 +112,64 @@ func runRenameBranch(a *app, cmd *cobra.Command, args []string) int {
 			renderErrorBlock(a, result.repo.display+": failed to rename branch", outputOrError(result.out, result.err))
 			status = 1
 			failed++
-		case result.renamed:
-			renamed++
+		case result.candidate:
+			candidates = append(candidates, result)
 		default:
 			renderStatusLine(a, a.stdout, statusSkip, result.repo.display, result.skipReason)
 			skipped++
 		}
 	}
+	if len(candidates) == 0 {
+		renderSummary(a,
+			summaryCount{label: "renamed", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
+		return status
+	}
+	tableRows := make([][]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		tableRows = append(tableRows, []string{candidate.repo.display, opts.oldBranch, opts.newBranch})
+	}
+	renderTable(a, []tableColumn{{header: "Repository", max: 30}, {header: "Old branch"}, {header: "New branch"}}, tableRows)
+	fmt.Fprintln(a.stdout)
+	renderWarning(a, fmt.Sprintf("This operation will rename local branches in %d repositories.", len(candidates)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Rename branches in %d repositories?", len(candidates)))
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
+		renderSummary(a,
+			summaryCount{label: "renamed", value: 0, color: a.ui.Green},
+			summaryCount{label: "skipped", value: skipped + len(candidates), color: a.ui.Yellow},
+			summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		)
+		return status
+	}
+	results := parallelItemsWithWorkersProgress(a.ctx, candidates, gitMutationWorkerCount(len(candidates)), newProgress(a, "Renaming branches", len(candidates)), func(scan renameBranchScan) (string, string) {
+		return scan.repo.display, scan.repo.display
+	}, func(scan renameBranchScan) renameBranchResult {
+		out, err := a.git.Capture(a.ctx, scan.repo.dir, nil, "branch", "-m", opts.oldBranch, opts.newBranch)
+		return renameBranchResult{scan: scan, out: out, err: err}
+	})
+	if interrupted(a) {
+		return 1
+	}
+	renamed := 0
+	applyFailed := 0
+	for _, result := range results {
+		if result.err == nil {
+			renamed++
+			continue
+		}
+		renderErrorBlock(a, result.scan.repo.display+": failed to rename branch", outputOrError(result.out, result.err))
+		status = 1
+		applyFailed++
+	}
 	renderSummary(a,
 		summaryCount{label: "renamed", value: renamed, color: a.ui.Green},
 		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
-		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+		summaryCount{label: "failed", value: failed + applyFailed, color: a.ui.Red},
 	)
 	return status
 }

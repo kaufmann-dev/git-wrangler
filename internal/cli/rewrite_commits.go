@@ -175,7 +175,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		return 0
 	}
 	fmt.Fprintln(a.stderr)
-	renderWarning(a, "This operation rewrites Git history. A force push will be required to update remotes.")
+	renderWarning(a, fmt.Sprintf("This operation rewrites Git history in %d repositories. A force push will be required to update any remote. Tags may still point at old history, and commit or tag signatures may become invalid.", len(plan.Repos)))
 	confirmation := confirmOrSkip(a, opts.confirmation.yes, "Apply these generated commit messages to all listed repositories?")
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
