@@ -133,15 +133,16 @@ func TestConfigFileRemoveSecretsPathAndShow(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	showErr := ExecuteWithRunner(context.Background(), nil, []string{"config", "file", "remove-secrets", "show"}, strings.NewReader(""), &stdout, &stderr)
-	assertExitCode(t, showErr, 1)
-	if !strings.Contains(stderr.String(), "remove-secrets config file not found") {
-		t.Fatalf("missing not-found error:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"config", "file", "remove-secrets", "show"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("config file remove-secrets show returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Remove-secrets paths") || !strings.Contains(stdout.String(), ".env") {
+		t.Fatalf("show did not print auto-created defaults:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("show did not auto-create the config file: %v", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(wantPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(wantPath, []byte("paths = [\"private/*.json\", \".env.local\"]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

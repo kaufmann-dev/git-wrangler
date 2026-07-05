@@ -173,9 +173,6 @@ func TestRemoteAwareJSONFetchFailureRowsAreSilent(t *testing.T) {
 func TestRemoveSecretsFetchFailureStopsBeforeScan(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if _, err := config.EnsureRemoveSecretsStarter(); err != nil {
-		t.Fatal(err)
-	}
 	root := tempGitRepos(t, "repo")
 	t.Chdir(root)
 	scanned := false
