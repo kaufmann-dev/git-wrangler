@@ -16,6 +16,16 @@ func configureCommandCancellation(cmd *exec.Cmd) {
 	}
 }
 
+// configureInteractiveCommand configures a child that must own the terminal,
+// such as an editor. Windows has no controlling-terminal process-group issue, so
+// this mirrors the standard cancellation setup.
+func configureInteractiveCommand(cmd *exec.Cmd) {
+	cmd.WaitDelay = commandWaitDelay
+	cmd.Cancel = func() error {
+		return cancelCommand(cmd)
+	}
+}
+
 func cancelCommand(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
