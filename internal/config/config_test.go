@@ -141,7 +141,21 @@ func TestEnsureRemoveSecretsStarterCreatesPrivateFile(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
 	}
-	if _, err := LoadRemoveSecretsPaths(); err != nil {
+	paths, err := LoadRemoveSecretsPaths()
+	if err != nil {
 		t.Fatalf("starter TOML should validate: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("embedded default config produced no paths")
+	}
+	found := false
+	for _, p := range paths {
+		if p == ".env" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("embedded default config missing a known default path: %#v", paths)
 	}
 }

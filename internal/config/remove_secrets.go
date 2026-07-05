@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -12,20 +13,13 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// DefaultRemoveSecretsPaths is the built-in seed written into the config file
-// when it is first created. It only populates a new file; at scan time
-// remove-secrets reads its globs exclusively from the file on disk.
-func DefaultRemoveSecretsPaths() []string {
-	return []string{
-		".env", ".env.*", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
-		"*.pem", "*.key", "*.p12", "*.pfx", "*.asc", "*.gpg", "*.crt", "*.cer", "*.cert",
-		"id_rsa", "id_rsa.pub", "id_ed25519", "id_ed25519.pub", "*_rsa", "*_ed25519",
-		"secrets.json", "credentials.json", "*secret*.json", "*credential*.json", "*.secret",
-		"config/credentials.yml.enc", ".docker/config.json", ".kube/config", "kubeconfig",
-		".aws/credentials", ".aws/config", ".config/gcloud/*", "application_default_credentials.json",
-		"azureProfile.json", "accessTokens.json",
-	}
-}
+// defaultRemoveSecretsConfig is the built-in remove-secrets.toml written to seed
+// a user's config file when it is first created. The default globs live in this
+// data file, not in Go; at scan time remove-secrets reads them exclusively from
+// the file on disk.
+//
+//go:embed remove_secrets_default.toml
+var defaultRemoveSecretsConfig []byte
 
 type RemoveSecretsConfig struct {
 	Paths []string `toml:"paths"`
@@ -85,22 +79,7 @@ func EnsureRemoveSecretsStarter() (string, error) {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		return "", err
 	}
-	return configPath, os.WriteFile(configPath, []byte(removeSecretsStarter()), 0o600)
-}
-
-func removeSecretsStarter() string {
-	paths, _ := ValidateRemoveSecretsPaths(DefaultRemoveSecretsPaths())
-	var b strings.Builder
-	b.WriteString("# Path globs purged from Git history by git-wrangler remove-secrets.\n")
-	b.WriteString("# This file is the complete list: remove-secrets purges exactly these globs.\n")
-	b.WriteString("# It is seeded with the built-in defaults below. Add your own paths, or\n")
-	b.WriteString("# delete any you do not want purged.\n\n")
-	b.WriteString("paths = [\n")
-	for _, p := range paths {
-		fmt.Fprintf(&b, "  %q,\n", p)
-	}
-	b.WriteString("]\n")
-	return b.String()
+	return configPath, os.WriteFile(configPath, defaultRemoveSecretsConfig, 0o600)
 }
 
 func ValidateRemoveSecretsPaths(paths []string) ([]string, error) {
