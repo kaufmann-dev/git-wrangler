@@ -316,6 +316,35 @@ func commandSpecs() []commandSpec {
 					args:  cobra.ExactArgs(1),
 					run:   runConfigUnsetCommand,
 				},
+				{
+					use:      "file",
+					short:    "Show and edit file-backed configuration.",
+					helpOnly: true,
+					children: []commandSpec{
+						{
+							use:      "remove-secrets",
+							short:    "Show and edit extra remove-secrets path globs.",
+							helpOnly: true,
+							children: []commandSpec{
+								{
+									use:   "path",
+									short: "Print the remove-secrets config file path.",
+									run:   runConfigFileRemoveSecretsPathCommand,
+								},
+								{
+									use:   "show",
+									short: "Show configured extra remove-secrets path globs.",
+									run:   runConfigFileRemoveSecretsShowCommand,
+								},
+								{
+									use:   "edit",
+									short: "Edit configured extra remove-secrets path globs.",
+									run:   runConfigFileRemoveSecretsEditCommand,
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 		{

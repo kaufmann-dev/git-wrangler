@@ -1,0 +1,3 @@
+source = "https://github.com/github/gitignore"
+commit = "dcc0fc7bc2b5ba480cf117ad1be31bafceeaff46"
+contents = "root *.gitignore templates and Global/*.gitignore templates"

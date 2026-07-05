@@ -71,3 +71,76 @@ func TestLoadMalformedConfigFails(t *testing.T) {
 		t.Fatal("expected malformed config error")
 	}
 }
+
+func TestLoadRemoveSecretsPathsMissingFile(t *testing.T) {
+	paths, err := LoadRemoveSecretsPathsPath(filepath.Join(t.TempDir(), "remove-secrets.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 0 {
+		t.Fatalf("paths = %#v, want none", paths)
+	}
+}
+
+func TestLoadRemoveSecretsPathsValidatesNormalizesAndSorts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remove-secrets.toml")
+	data := []byte("paths = [\"private\\\\*.json\", \".env.local\", \".env.local\"]\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := LoadRemoveSecretsPathsPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".env.local", "private/*.json"}
+	if len(paths) != len(want) {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("paths = %#v, want %#v", paths, want)
+		}
+	}
+}
+
+func TestLoadRemoveSecretsPathsRejectsInvalidConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		toml string
+	}{
+		{name: "unknown field", toml: "paths = [\"ok\"]\nregexes = [\"no\"]\n"},
+		{name: "empty path", toml: "paths = [\"\"]\n"},
+		{name: "absolute path", toml: "paths = [\"/tmp/secret\"]\n"},
+		{name: "windows absolute path", toml: "paths = [\"C:/tmp/secret\"]\n"},
+		{name: "traversal path", toml: "paths = [\"../secret\"]\n"},
+		{name: "invalid glob", toml: "paths = [\"secret[\"]\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "remove-secrets.toml")
+			if err := os.WriteFile(path, []byte(tc.toml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadRemoveSecretsPathsPath(path); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestEnsureRemoveSecretsStarterCreatesPrivateFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := EnsureRemoveSecretsStarter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
+	}
+	if _, err := LoadRemoveSecretsPaths(); err != nil {
+		t.Fatalf("starter TOML should validate: %v", err)
+	}
+}

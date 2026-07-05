@@ -3,11 +3,13 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/config"
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
+	"github.com/kaufmann-dev/git-wrangler/internal/run"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +25,52 @@ func runConfigUnsetCommand(a *app, cmd *cobra.Command, args []string) int {
 	return runConfigUnset(a, configUnsetOptionsFromCommand(args))
 }
 
+func runConfigFileRemoveSecretsPathCommand(a *app, cmd *cobra.Command, args []string) int {
+	configPath, err := config.RemoveSecretsPath()
+	if err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	fmt.Fprintln(a.stdout, configPath)
+	return 0
+}
+
+func runConfigFileRemoveSecretsShowCommand(a *app, cmd *cobra.Command, args []string) int {
+	paths, err := config.LoadRemoveSecretsPaths()
+	if err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	if len(paths) == 0 {
+		fmt.Fprintln(a.stdout, "No extra remove-secrets paths configured.")
+		return 0
+	}
+	fmt.Fprintln(a.stdout, "Extra remove-secrets paths")
+	for _, path := range paths {
+		fmt.Fprintf(a.stdout, "  %s\n", path)
+	}
+	return 0
+}
+
+func runConfigFileRemoveSecretsEditCommand(a *app, cmd *cobra.Command, args []string) int {
+	configPath, err := config.EnsureRemoveSecretsStarter()
+	if err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	editorName, editorArgs := editorCommand(configPath)
+	if err := run.Interactive(a.ctx, a.runner, "", nil, editorName, editorArgs, a.stdin, a.stdout, a.stderr); err != nil {
+		a.plainErrorf("editor failed: %s", err)
+		return 1
+	}
+	if _, err := config.LoadRemoveSecretsPaths(); err != nil {
+		a.plainErrorf("%s", err.Error())
+		return 1
+	}
+	a.ok("Validated " + configPath)
+	return 0
+}
+
 func configSetArgs(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		return errors.New("set requires a key")
@@ -31,6 +79,21 @@ func configSetArgs(cmd *cobra.Command, args []string) error {
 		return errors.New("set accepts at most one value")
 	}
 	return nil
+}
+
+func editorCommand(path string) (string, []string) {
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
+	}
+	if editor == "" {
+		editor = "nano"
+	}
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return "nano", []string{path}
+	}
+	return parts[0], append(parts[1:], path)
 }
 
 func runConfigShow(a *app, opts configShowOptions) int {
