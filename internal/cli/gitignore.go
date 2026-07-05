@@ -349,14 +349,6 @@ func pathMatch(pattern, name string) bool {
 	return false
 }
 
-func findExistingMatch(root, entry string) string {
-	inventory, err := gitignoreInventory(root)
-	if err != nil {
-		return ""
-	}
-	return findGitignoreRuleMatch(inventory, entry)
-}
-
 func fileContainsLine(path, line string) bool {
 	f, err := os.Open(path)
 	if err != nil {
