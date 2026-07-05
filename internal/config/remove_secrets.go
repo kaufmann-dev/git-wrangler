@@ -12,10 +12,9 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// DefaultRemoveSecretsPaths is the built-in seed of sensitive path globs that
-// git-wrangler remove-secrets purges when the config file does not exist yet.
-// Once the config file is created it fully defines the list; these defaults
-// only apply while no file is present.
+// DefaultRemoveSecretsPaths is the built-in seed written into the config file
+// when it is first created. It only populates a new file; at scan time
+// remove-secrets reads its globs exclusively from the file on disk.
 func DefaultRemoveSecretsPaths() []string {
 	return []string{
 		".env", ".env.*", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
@@ -40,39 +39,35 @@ func RemoveSecretsPath() (string, error) {
 	return filepath.Join(dir, "git-wrangler", "remove-secrets.toml"), nil
 }
 
-// LoadRemoveSecretsPaths returns the effective remove-secrets globs. When the
-// config file is absent it returns the built-in defaults and reports
-// usingDefaults=true; otherwise the file's paths are the complete list.
-func LoadRemoveSecretsPaths() (paths []string, usingDefaults bool, err error) {
+// LoadRemoveSecretsPaths returns the remove-secrets globs from the config file.
+// The file is the sole source of globs; when it does not exist it returns an
+// error rather than falling back to any built-in list.
+func LoadRemoveSecretsPaths() ([]string, error) {
 	configPath, err := RemoveSecretsPath()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	return LoadRemoveSecretsPathsPath(configPath)
 }
 
-func LoadRemoveSecretsPathsPath(configPath string) (paths []string, usingDefaults bool, err error) {
+func LoadRemoveSecretsPathsPath(configPath string) ([]string, error) {
 	data, err := os.ReadFile(configPath)
 	if errors.Is(err, os.ErrNotExist) {
-		defaults, err := ValidateRemoveSecretsPaths(DefaultRemoveSecretsPaths())
-		if err != nil {
-			return nil, false, err
-		}
-		return defaults, true, nil
+		return nil, fmt.Errorf("remove-secrets config file not found at %s; run \"config file remove-secrets edit\" to create it with the default secret paths", configPath)
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	var cfg RemoveSecretsConfig
 	decoder := toml.NewDecoder(strings.NewReader(string(data))).DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
-		return nil, false, fmt.Errorf("read remove-secrets config: %w", err)
+		return nil, fmt.Errorf("read remove-secrets config: %w", err)
 	}
-	paths, err = ValidateRemoveSecretsPaths(cfg.Paths)
+	paths, err := ValidateRemoveSecretsPaths(cfg.Paths)
 	if err != nil {
-		return nil, false, fmt.Errorf("read remove-secrets config: %w", err)
+		return nil, fmt.Errorf("read remove-secrets config: %w", err)
 	}
-	return paths, false, nil
+	return paths, nil
 }
 
 // EnsureRemoveSecretsStarter creates the config file seeded with the built-in

@@ -65,34 +65,25 @@ func TestRemoveSecretsUsesConfiguredPathGlobs(t *testing.T) {
 	}
 }
 
-func TestRemoveSecretsUsesDefaultsWhenNoConfig(t *testing.T) {
+func TestRemoveSecretsWithoutConfigFileErrors(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	root := tempGitRepos(t, "repo")
-	t.Chdir(root)
-	var scanArgs []string
+	lookedUp := false
 	runner := fakeRunner{
-		lookPath: fakeGitAndFilterRepoLookPath,
-		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
-			joined := name + " " + strings.Join(args, " ")
-			switch {
-			case joined == "git rev-parse --is-inside-work-tree":
-				return "true\n", "", nil
-			case strings.HasPrefix(joined, "git log --all --format= --name-only -- "):
-				scanArgs = append([]string{}, args...)
-				return "", "", nil
-			default:
-				return "", "", errors.New("unexpected command: " + joined)
-			}
+		lookPath: func(name string) (string, error) {
+			lookedUp = true
+			return "", errors.New("dependency lookup should not run")
 		},
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := ExecuteWithRunner(context.Background(), runner, []string{"remove-secrets", "--no-fetch", "--yes"}, strings.NewReader(""), &stdout, &stderr); err != nil {
-		t.Fatalf("remove-secrets returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	err := ExecuteWithRunner(context.Background(), runner, []string{"remove-secrets", "--no-fetch", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if lookedUp {
+		t.Fatal("dependency lookup ran before config load")
 	}
-	if !containsArgAfterSeparator(scanArgs, "--", ".env") {
-		t.Fatalf("scan args missing built-in default glob: %v", scanArgs)
+	if !strings.Contains(stderr.String(), "remove-secrets config file not found") {
+		t.Fatalf("missing not-found error:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
 	}
 }
 
