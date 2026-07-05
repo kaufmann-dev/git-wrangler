@@ -78,7 +78,11 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	if len(repos) == 0 {
 		return noRepos(a)
 	}
-	content := renderLicense(opts.template, opts.year, opts.holder)
+	content, err := renderLicense(opts.template, opts.year, opts.holder)
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
 	overwriteCount := 0
 	if opts.overwrite {
 		for _, r := range repos {
@@ -170,23 +174,26 @@ var licenseTemplates = []licenseTemplate{
 //go:embed license_templates/*.txt
 var licenseTextFS embed.FS
 
-func renderLicense(template licenseTemplate, year int, holder string) string {
-	body := embeddedLicenseText(template.textFile)
+func renderLicense(template licenseTemplate, year int, holder string) (string, error) {
+	body, err := embeddedLicenseText(template.textFile)
+	if err != nil {
+		return "", err
+	}
 	if template.requiresHolder {
 		body = replaceLicensePlaceholders(body, year, holder)
 		if !template.noticeInBody {
 			body = licenseCopyrightNotice(template, year, holder) + "\n\n" + body
 		}
 	}
-	return strings.TrimRight(body, "\n") + "\n"
+	return strings.TrimRight(body, "\n") + "\n", nil
 }
 
-func embeddedLicenseText(name string) string {
+func embeddedLicenseText(name string) (string, error) {
 	data, err := licenseTextFS.ReadFile("license_templates/" + name)
 	if err != nil {
-		panic("embedded license text missing: " + name)
+		return "", fmt.Errorf("embedded license text missing: %s", name)
 	}
-	return string(data)
+	return string(data), nil
 }
 
 func replaceLicensePlaceholders(body string, year int, holder string) string {

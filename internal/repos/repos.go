@@ -118,7 +118,7 @@ func DirFromGitDir(gitDir string) string {
 }
 
 func DisplayName(repoDir string) string {
-	trimmed := strings.TrimRight(repoDir, string(filepath.Separator)+"/")
+	trimmed := strings.TrimRight(repoDir, `/\`)
 	if trimmed == "." {
 		if cwd, err := os.Getwd(); err == nil {
 			return filepath.Base(cwd)
