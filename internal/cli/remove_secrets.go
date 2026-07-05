@@ -28,7 +28,7 @@ func removeSecretsOptionsFromCommand(cmd *cobra.Command) removeSecretsOptions {
 
 func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	opts := removeSecretsOptionsFromCommand(cmd)
-	patterns, _, err := configpkg.LoadRemoveSecretsPaths()
+	patterns, err := configpkg.LoadRemoveSecretsPaths()
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
 		return 1

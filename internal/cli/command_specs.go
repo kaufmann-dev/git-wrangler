@@ -333,7 +333,7 @@ func commandSpecs() []commandSpec {
 								},
 								{
 									use:   "show",
-									short: "Show the effective remove-secrets path globs.",
+									short: "Show the configured remove-secrets path globs.",
 									run:   runConfigFileRemoveSecretsShowCommand,
 								},
 								{
