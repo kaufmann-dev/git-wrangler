@@ -88,7 +88,7 @@ func TestRemoteCommandsUseShortGitTimeout(t *testing.T) {
 		gitArgs  string
 		expected string
 	}{
-		{name: "pull", args: []string{"pull", "--force"}, gitArgs: "pull --force", expected: "Summary: 1 updated, 0 skipped, 0 failed"},
+		{name: "pull", args: []string{"pull", "--rebase"}, gitArgs: "pull --rebase", expected: "Summary: 1 updated, 0 skipped, 0 failed"},
 		{name: "fetch", args: []string{"fetch", "--prune"}, gitArgs: "fetch --prune origin", expected: "Summary: 1 fetched, 0 failed"},
 		{name: "push", args: []string{"push", "--force"}, gitArgs: "push --force-with-lease origin HEAD", expected: "Summary: 1 pushed, 0 skipped, 0 failed"},
 	} {
@@ -119,6 +119,30 @@ func TestRemoteCommandsUseShortGitTimeout(t *testing.T) {
 				t.Fatalf("missing summary:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 			}
 		})
+	}
+}
+
+func TestPullForceIsRejected(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), fakeRunner{lookPath: fakeGitLookPath}, []string{"pull", "--force"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(stderr.String(), "unknown flag: --force") {
+		t.Fatalf("pull --force error = %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("pull --force wrote stdout:\n%s", stdout.String())
+	}
+}
+
+func TestRewriteAuthorsForceIsRejected(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), fakeRunner{lookPath: fakeGitLookPath}, []string{"rewrite-authors", "--force"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(stderr.String(), "unknown flag: --force") {
+		t.Fatalf("rewrite-authors --force error = %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("rewrite-authors --force wrote stdout:\n%s", stdout.String())
 	}
 }
 
@@ -561,6 +585,9 @@ func TestRewriteAuthorsRunsFilterRepoConcurrentlyAndPreservesOutputOrder(t *test
 			case joined == "git cat-file -p "+hash:
 				return fakeRewriteAuthorCatFile(hash), "", nil
 			case name == "/usr/bin/git-filter-repo" && strings.Contains(strings.Join(args, " "), "--commit-callback"):
+				if !containsString(args, "--force") {
+					return "", "", errors.New("rewrite-authors did not pass internal --force")
+				}
 				metadataDir := filepath.Join(dir, ".git", "filter-repo")
 				if err := os.MkdirAll(metadataDir, 0o755); err != nil {
 					return "", "", err

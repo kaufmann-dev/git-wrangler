@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/version"
 	"github.com/spf13/cobra"
@@ -92,9 +93,8 @@ func commandSpecs() []commandSpec {
 			run:   runPull,
 			flags: joinFlags(targetFlags(), flags{
 				boolFlag("rebase", "Rebase local commits while pulling."),
-				boolFlag("force", "Pass --force to git pull."),
 			}),
-			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling"), guidedBool("force", "Force pull")}},
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("rebase", "Rebase while pulling")}},
 		},
 		{
 			use:   "fetch",
@@ -149,14 +149,19 @@ func commandSpecs() []commandSpec {
 		},
 		{
 			use:   "license",
-			short: "Add or replace MIT LICENSE files.",
+			short: "Add or replace LICENSE files.",
 			group: "local",
 			run:   runLicense,
 			flags: joinFlags(targetFlags(), flags{
+				stringFlag("type", "", "License type ID."),
+				intFlag("year", time.Now().Year(), "Copyright year."),
 				stringFlag("name", "", "Copyright holder name."),
 				boolFlag("overwrite", "Replace an existing LICENSE file."),
 			}, confirmationFlags()),
-			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")}},
+			guided: guidedSpec{
+				prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedEnum("type", "License type", supportedLicenseIDs()...), guidedPositiveInt("year", "Copyright year"), guidedString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
+				setup:   guideLicense,
+			},
 		},
 		{
 			use:   "rename-branch",
@@ -209,10 +214,8 @@ func commandSpecs() []commandSpec {
 			flags: joinFlags(flags{
 				stringFlag("name", "", "New author and committer name."),
 				stringFlag("email", "", "New author and committer email."),
-			}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), flags{
-				boolFlag("force", "Pass --force to git-filter-repo."),
-			}, confirmationFlags()),
-			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedBool("force", "Force filter-repo")}},
+			}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), confirmationFlags()),
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
 		},
 		{
 			use:   "rewrite-commits",

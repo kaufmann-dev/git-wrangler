@@ -10,7 +10,6 @@ import (
 type pullOptions struct {
 	target targetOptions
 	rebase bool
-	force  bool
 }
 
 type fetchCommandOptions struct {
@@ -29,7 +28,6 @@ func pullOptionsFromCommand(cmd *cobra.Command) pullOptions {
 	return pullOptions{
 		target: targetOptionsFromCommand(cmd),
 		rebase: boolFlagValue(cmd, "rebase"),
-		force:  boolFlagValue(cmd, "force"),
 	}
 }
 
@@ -76,9 +74,6 @@ func runPull(a *app, cmd *cobra.Command, args []string) int {
 		pullArgs := []string{"pull"}
 		if opts.rebase {
 			pullArgs = append(pullArgs, "--rebase")
-		}
-		if opts.force {
-			pullArgs = append(pullArgs, "--force")
 		}
 		out, err := a.git.CaptureRemote(a.ctx, r.dir, nil, pullArgs...)
 		return pullResult{repo: r, out: out, err: err, skipped: err == nil && strings.Contains(out, "Already up to date")}

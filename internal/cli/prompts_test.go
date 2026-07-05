@@ -394,7 +394,7 @@ func TestRequiredValuePromptsWithYesAndFailsOutsideTTY(t *testing.T) {
 	var stdout bytes.Buffer
 	stderr.Reset()
 	err := ExecuteWithRunner(context.Background(), nil, []string{"license", "--yes"}, strings.NewReader("Ada\n"), &stdout, &stderr)
-	if err == nil || !strings.Contains(stderr.String(), "--name is required") {
+	if err == nil || !strings.Contains(stderr.String(), "--type is required") {
 		t.Fatalf("license --yes error = %v, stderr:\n%s", err, stderr.String())
 	}
 }

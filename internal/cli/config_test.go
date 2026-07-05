@@ -200,6 +200,151 @@ func TestConfigSetAIHeadersUsesConfigAndKeyring(t *testing.T) {
 	}
 }
 
+func TestConfigSetGitHubHostClearsUsernameOnChange(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := config.Save(config.Config{
+		GitHub: config.GitHubConfig{Host: "github.com", Username: "octo"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), nil, []string{"config", "set", "github.host", "https://github.enterprise.test/"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("config set github.host returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GitHub.Host != "github.enterprise.test" || cfg.GitHub.Username != "" {
+		t.Fatalf("config = %#v", cfg.GitHub)
+	}
+}
+
+func TestConfigUnsetSupportsAllConfigKeys(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := config.Save(config.Config{
+		GitHub: config.GitHubConfig{Host: "github.enterprise.test", Username: "octo"},
+		AI: config.AIConfig{
+			Provider: "custom",
+			BaseURL:  "https://ai.example.test/v1",
+			Model:    "model-test",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeCredentialStore{values: map[string]string{
+		"github:github.enterprise.test": "github-secret",
+		"ai:custom":                     "ai-secret",
+	}}
+
+	for _, args := range [][]string{
+		{"config", "unset", "github.auth"},
+		{"config", "unset", "ai.api-key"},
+		{"config", "unset", "ai.model"},
+		{"config", "unset", "github.host"},
+		{"config", "unset", "ai.provider"},
+		{"config", "unset", "ai.base-url"},
+	} {
+		var stdout, stderr bytes.Buffer
+		a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+		a.creds = store
+		cmd := newRootCommand(a)
+		cmd.SetArgs(args)
+		cmd.SetIn(a.stdin)
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("%v returned error: %v\nstdout: %s\nstderr: %s", args, err, stdout.String(), stderr.String())
+		}
+	}
+
+	if _, err := store.Get("github:github.enterprise.test"); !errors.Is(err, credentials.ErrNotFound) {
+		t.Fatalf("github credential still present: %v", err)
+	}
+	if _, err := store.Get("ai:custom"); !errors.Is(err, credentials.ErrNotFound) {
+		t.Fatalf("AI credential still present: %v", err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GitHub.Host != config.DefaultGitHubHost || cfg.GitHub.Username != "" {
+		t.Fatalf("github config = %#v", cfg.GitHub)
+	}
+	if cfg.AI.Provider != config.DefaultAIProvider || cfg.AI.BaseURL != config.DefaultAIBaseURL || cfg.AI.Model != "" {
+		t.Fatalf("ai config = %#v", cfg.AI)
+	}
+}
+
+func TestConfigUnsetAIBaseURLLeavesCustomProviderEmpty(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := config.Save(config.Config{
+		AI: config.AIConfig{Provider: "custom", BaseURL: "https://ai.example.test/v1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), nil, []string{"config", "unset", "ai.base-url"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("config unset ai.base-url returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AI.Provider != "custom" || cfg.AI.BaseURL != "" {
+		t.Fatalf("ai config = %#v", cfg.AI)
+	}
+}
+
+func TestConfigUnsetAIHeaderRemovesConfigAndCredential(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := config.Save(config.Config{
+		AI: config.AIConfig{
+			Provider:      "openai",
+			Headers:       map[string]string{"X-Project-Id": "corp-dev-99"},
+			SecretHeaders: []string{"Api-Key"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeCredentialStore{values: map[string]string{
+		credentials.AIHeaderAccount("openai", "Api-Key"): "azure-secret",
+	}}
+
+	for _, key := range []string{"ai.headers.X-Project-ID", "ai.headers.api-key"} {
+		var stdout, stderr bytes.Buffer
+		a := newApp(context.Background(), fakeRunner{}, strings.NewReader(""), &stdout, &stderr)
+		a.creds = store
+		cmd := newRootCommand(a)
+		cmd.SetArgs([]string{"config", "unset", key})
+		cmd.SetIn(a.stdin)
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("config unset %s returned error: %v\nstdout: %s\nstderr: %s", key, err, stdout.String(), stderr.String())
+		}
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.AI.Headers) != 0 || len(cfg.AI.SecretHeaders) != 0 {
+		t.Fatalf("headers = %#v secret = %#v", cfg.AI.Headers, cfg.AI.SecretHeaders)
+	}
+	if _, err := store.Get(credentials.AIHeaderAccount("openai", "Api-Key")); !errors.Is(err, credentials.ErrNotFound) {
+		t.Fatalf("secret header credential still present: %v", err)
+	}
+}
+
 func TestConfigSetRejectsExtraValuesBeforeMutation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

@@ -158,7 +158,7 @@ processes.
 | ------------------------------------------------------------------- | ----------------------------------------------------------- |
 | [`commit`](https://wrangler.kaufmann.dev/docs/commit)               | Generate and create one AI Conventional Commit per repo.    |
 | [`fix-gitignore`](https://wrangler.kaufmann.dev/docs/fix-gitignore) | Add missing common generated-file patterns to `.gitignore`. |
-| [`license`](https://wrangler.kaufmann.dev/docs/license)             | Add or replace MIT license files.                           |
+| [`license`](https://wrangler.kaufmann.dev/docs/license)             | Add or replace standard license files.                      |
 | [`rename-branch`](https://wrangler.kaufmann.dev/docs/rename-branch) | Rename a branch across repositories.                        |
 | [`reset`](https://wrangler.kaufmann.dev/docs/reset)                 | Reset current branches to their origin counterparts.        |
 | [`review`](https://wrangler.kaufmann.dev/docs/review)               | Review unpushed changes across repositories.                |
