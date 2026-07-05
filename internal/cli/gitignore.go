@@ -88,8 +88,8 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 	if len(applies) == 0 {
 		return status
 	}
-	renderWarning(a, fmt.Sprintf("This operation will modify .gitignore and create commits in %d repositories.", len(applies)))
-	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Apply and commit .gitignore updates for %d repositories?", len(applies)))
+	renderWarning(a, fmt.Sprintf("This operation will modify .gitignore in %d repositories.", len(applies)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Apply .gitignore updates for %d repositories?", len(applies)))
 	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
 		return 1
 	}
@@ -119,20 +119,7 @@ func runFixGitignore(a *app, cmd *cobra.Command, args []string) int {
 			failed++
 			continue
 		}
-		if out, err := a.git.Capture(a.ctx, r.dir, nil, "add", ".gitignore"); err != nil {
-			progress.advance(r.display)
-			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not stage .gitignore", output: outputOrError(out, err)})
-			status = 1
-			failed++
-			continue
-		}
-		if out, err := a.git.Capture(a.ctx, r.dir, nil, "commit", "-m", "Update .gitignore with missing entries"); err == nil {
-			updated++
-		} else {
-			applyErrors = append(applyErrors, applyError{subject: r.display + ": could not commit .gitignore", output: outputOrError(out, err)})
-			status = 1
-			failed++
-		}
+		updated++
 		progress.advance(r.display)
 	}
 	finishProgressBeforeOutput(progress)

@@ -144,7 +144,7 @@ Show one progress line. Suppress routine per-repo success lines. Print actionabl
 
 ### `clone`
 
-Show GitHub auth source once when auth is used. When secure credential storage is unavailable, hide backend errors and direct authenticated cloning to `GIT_WRANGLER_GITHUB_TOKEN`; public cloning continues without auth. Clone sequentially. Print existing-directory skips and failures. Suppress routine cloned lines for large runs; one or two individual success lines are acceptable. End with `cloned`, `skipped`, and `failed`.
+Show GitHub auth source once when auth is used. When secure credential storage is unavailable, hide backend errors and direct authenticated cloning to `GIT_WRANGLER_GITHUB_TOKEN`; public cloning continues without auth. Clone sequentially. Empty repository listings are successful no-ops with a zero summary. Print existing-directory skips and failures. Suppress routine cloned lines for large runs; one or two individual success lines are acceptable. End with `cloned`, `skipped`, and `failed`.
 
 ### `commit`
 
@@ -152,7 +152,7 @@ Prepare AI commit context with progress. Before network calls, print a data-send
 
 ### `fix-gitignore`
 
-Scan first. Print candidate repo blocks only for proposed additions. Count clean/no-change repositories in the scan summary. Prompt once, apply with progress, then print the apply summary.
+Scan first. Print candidate repo blocks only for proposed additions. Count clean/no-change repositories in the scan summary. Prompt once, apply `.gitignore` edits with progress, then print the apply summary. Do not stage files or create commits.
 
 ### `license`
 
@@ -160,7 +160,7 @@ Print conflicts, skips, and failures. Suppress routine success lines. `--overwri
 
 ### `rename-branch`
 
-Progress while checking and applying. Suppress successful rename spam. Print skips for missing source branches or existing targets, print failures, then summarize.
+Progress while checking. Print skips for missing source branches or existing targets, print failures, preview candidates in a table, warn and prompt once, then apply with progress. Suppress successful rename spam and summarize.
 
 ### `reset`
 
@@ -172,7 +172,7 @@ Refresh `origin` first unless `--no-fetch` is set, then show review progress. Pr
 
 ### `untrack`
 
-Scan first. Print candidate blocks only for repositories with tracked ignored files. Count missing `.gitignore` and no-match repositories. Prompt once, apply with progress, and summarize.
+Scan first. Print candidate blocks only for repositories with tracked ignored files. Count missing `.gitignore` and no-match repositories. Prompt once, apply index removals with progress, and summarize. Do not create commits.
 
 ### `remove-secrets`
 

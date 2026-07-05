@@ -114,7 +114,7 @@ func TestCommandSurfaceMatchesExpected(t *testing.T) {
 		{name: "pull", group: "remote", flags: strings.Fields("force guided rebase repo")},
 		{name: "push", group: "remote", flags: strings.Fields("force force-unsafe guided repo yes")},
 		{name: "remove-secrets", group: "history", flags: strings.Fields("guided no-fetch repo yes")},
-		{name: "rename-branch", group: "local", flags: strings.Fields("guided newbranch oldbranch repo")},
+		{name: "rename-branch", group: "local", flags: strings.Fields("guided newbranch oldbranch repo yes")},
 		{name: "rename-repo", group: "remote", flags: strings.Fields("description repo")},
 		{name: "reset", group: "local", flags: strings.Fields("guided repo yes")},
 		{name: "review", group: "local", flags: strings.Fields("guided json no-fetch repo")},

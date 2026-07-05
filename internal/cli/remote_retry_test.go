@@ -182,6 +182,37 @@ func TestCloneRetriesRepositoryListing(t *testing.T) {
 	}
 }
 
+func TestCloneEmptyRepositoryListIsSuccessfulNoop(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	t.Chdir(root)
+	runner := fakeRunner{
+		lookPath: func(name string) (string, error) {
+			if name == "git" || name == "gh" {
+				return "/usr/bin/" + name, nil
+			}
+			return "", errors.New("unexpected command")
+		},
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "gh" || strings.Join(args, " ") != "repo list user --visibility public --limit 1" {
+				return "", "", errors.New("unexpected command")
+			}
+			return "", "", nil
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), runner, []string{"clone", "--user", "user", "--visibility", "public", "--limit", "1", "--into", "clones"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("clone empty list returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{"SKIP no public repositories found for 'user'", "Summary: 0 cloned, 0 skipped, 0 failed"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("missing %q:\nstdout:%s\nstderr:%s", want, stdout.String(), stderr.String())
+		}
+	}
+}
+
 func TestCloneRetriesTransientCloneFailureAndCleansPartialTarget(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
