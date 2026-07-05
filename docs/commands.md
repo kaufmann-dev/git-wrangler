@@ -197,7 +197,7 @@ Human output is one dense table. Multi-repository output includes `Date`, `Repos
 
 ### `fix-gitignore`
 
-`fix-gitignore` scans for common generated-file patterns that exist in a repository but are not ignored. It previews repositories with proposed additions, prompts once for the candidate set unless `--yes` is set, then appends missing entries to `.gitignore`. It does not stage files and does not create commits.
+`fix-gitignore` detects repository languages with enry, selects embedded templates from a pinned `github/gitignore` snapshot plus global editor/OS/tool templates, and proposes only template rules that match existing repository paths and are not already ignored. It previews repositories with proposed additions, prompts once for the candidate set unless `--yes` is set, then appends missing entries to `.gitignore`. It does not stage files and does not create commits.
 
 ### `rename-branch`
 
@@ -213,7 +213,9 @@ Human output is one dense table. Multi-repository output includes `Date`, `Repos
 
 ### `remove-secrets`
 
-`remove-secrets` refreshes `origin` before scanning history for a fixed set of sensitive filename/path patterns. Any fetch failure stops before scanning or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning. It prints matched files for affected repositories, counts clean repositories, and only rewrites repositories with matches. It always passes `--partial --force` to `git-filter-repo`.
+`remove-secrets` validates extra configured path globs from `~/.config/git-wrangler/remove-secrets.toml` before dependency checks, fetches, scans, or rewrites. The configured globs are additive; the built-in sensitive filename/path patterns always apply. Manage the file with `config file remove-secrets path`, `config file remove-secrets show`, and `config file remove-secrets edit`.
+
+After validation, `remove-secrets` refreshes `origin` before scanning history for the combined path glob set. Any fetch failure stops before scanning or mutation. With `--no-fetch`, it warns that local remote-tracking refs may miss remote-only commits before scanning. It prints matched files for affected repositories, distinguishes configured pattern matches in the preview when present, counts clean repositories, and only rewrites repositories with matches. It always passes `--partial --force` to `git-filter-repo`.
 
 Before mutating a repository, `remove-secrets` deletes `.git/git-wrangler/baseline/` and clears managed rewrite metadata that cannot safely cross secret removal. It does not create a replacement baseline. The next `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, or `rewrite-hours` run starts a fresh rollback baseline from the already-cleaned history.
 
@@ -286,3 +288,5 @@ GitHub credentials resolve only from `GIT_WRANGLER_GITHUB_TOKEN` or Git Wrangler
 ### `config`
 
 `config show` prints non-secret key/value sections. `config set` accepts plaintext values for non-secret keys only. Secret keys (`github.auth`, `ai.api-key`) must be entered through the prompt and are stored through the credential store. AI gateway headers use `ai.headers.<name>`: inline values are stored in config, while omitted values prompt for a secret and store it in the credential store. `config unset` supports the same keys: it deletes stored secrets, resets `github.host` and `ai.provider` to defaults, clears `ai.model`, clears or default-restores `ai.base-url` based on the provider, and removes AI header config plus matching stored header credentials.
+
+`config file remove-secrets path` prints the path to `remove-secrets.toml`. `config file remove-secrets show` validates and prints configured extra path globs, or reports that none are configured. `config file remove-secrets edit` creates a starter file when missing, opens `$VISUAL`, then `$EDITOR`, then `nano`, and validates the TOML after the editor exits.

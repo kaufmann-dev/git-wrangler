@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -113,6 +114,79 @@ func TestConfigSetSecretRequiresPromptInput(t *testing.T) {
 	}
 	if strings.Count(stdout.String(), "SKIP stopped: operation cancelled") != 1 {
 		t.Fatalf("unexpected stdout:\n%s", stdout.String())
+	}
+}
+
+func TestConfigFileRemoveSecretsPathAndShow(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	configDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+	wantPath := filepath.Join(configDir, "git-wrangler", "remove-secrets.toml")
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"config", "file", "remove-secrets", "path"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("config file remove-secrets path returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != wantPath {
+		t.Fatalf("path output = %q, want %q", strings.TrimSpace(stdout.String()), wantPath)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"config", "file", "remove-secrets", "show"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("config file remove-secrets show returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "No extra remove-secrets paths configured.") {
+		t.Fatalf("missing none configured message:\n%s", stdout.String())
+	}
+
+	if err := os.MkdirAll(filepath.Dir(wantPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wantPath, []byte("paths = [\"private/*.json\", \".env.local\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := ExecuteWithRunner(context.Background(), nil, []string{"config", "file", "remove-secrets", "show"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("config file remove-secrets show returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	output := stdout.String()
+	if !strings.Contains(output, ".env.local") || !strings.Contains(output, "private/*.json") {
+		t.Fatalf("show output missing configured paths:\n%s", output)
+	}
+	if strings.Index(output, ".env.local") > strings.Index(output, "private/*.json") {
+		t.Fatalf("show output is not sorted:\n%s", output)
+	}
+}
+
+func TestConfigFileRemoveSecretsEditCreatesInvokesAndValidates(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("VISUAL", "test-editor --flag")
+	var editedPath string
+	runner := fakeRunner{
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if name != "test-editor" {
+				return "", "", errors.New("unexpected editor: " + name)
+			}
+			if len(args) != 2 || args[0] != "--flag" {
+				return "", "", errors.New("unexpected editor args: " + strings.Join(args, " "))
+			}
+			editedPath = args[1]
+			return "", "", os.WriteFile(editedPath, []byte("paths = [\"private/*.json\"]\n"), 0o600)
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), runner, []string{"config", "file", "remove-secrets", "edit"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("config file remove-secrets edit returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if editedPath == "" {
+		t.Fatal("editor was not invoked")
+	}
+	if !strings.Contains(stdout.String(), "OK Validated "+editedPath) {
+		t.Fatalf("missing validation success:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
 	}
 }
 

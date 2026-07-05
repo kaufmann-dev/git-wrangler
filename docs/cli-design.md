@@ -152,7 +152,7 @@ Prepare AI commit context with progress. Before network calls, print a data-send
 
 ### `fix-gitignore`
 
-Scan first. Print candidate repo blocks only for proposed additions. Count clean/no-change repositories in the scan summary. Prompt once, apply `.gitignore` edits with progress, then print the apply summary. Do not stage files or create commits.
+Scan first with embedded `github/gitignore` templates selected from detected languages, project markers, and global editor/OS/tool templates. Print candidate repo blocks only for proposed additions that match existing paths and are not already ignored. Count clean/no-change repositories in the scan summary. Prompt once, apply `.gitignore` edits with progress, then print the apply summary. Do not stage files or create commits.
 
 ### `license`
 
@@ -176,7 +176,7 @@ Scan first. Print candidate blocks only for repositories with tracked ignored fi
 
 ### `remove-secrets`
 
-Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scan, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Scan history with progress. Always show matched files for affected repositories because this is safety-critical. Count clean repositories. Warn and prompt once. Apply with progress and summarize.
+Validate configured extra path globs before dependency checks, fetches, scans, previews, prompts, or mutation. Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scan, preview, prompt, or mutation. `--no-fetch` prints a warning before scanning. Scan history with progress. Always show matched files for affected repositories because this is safety-critical, and distinguish configured matches when present. Count clean repositories. Warn and prompt once. Apply with progress and summarize.
 
 ### `rewrite-authors`
 
@@ -216,7 +216,7 @@ When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, conti
 
 ### `config`
 
-`config show` uses non-secret key/value sections. Secret values are never printed. `config set` and `config unset` use standard `OK Updated <key>` and `OK Unset <key>` lines. Errors should say whether a key is unknown, a value is missing, or plaintext secrets are not accepted.
+`config show` uses non-secret key/value sections. Secret values are never printed. `config set` and `config unset` use standard `OK Updated <key>` and `OK Unset <key>` lines. `config file remove-secrets show` validates before printing configured paths, and `config file remove-secrets edit` validates after the editor exits. Errors should say whether a key is unknown, a value is missing, plaintext secrets are not accepted, or a file-backed config is invalid.
 
 ### `rename-repo`
 

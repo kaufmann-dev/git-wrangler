@@ -31,6 +31,10 @@ type StreamingRunner interface {
 	Stream(ctx context.Context, dir string, env []string, name string, args []string, consume func(io.Reader) error) error
 }
 
+type InteractiveRunner interface {
+	Interactive(ctx context.Context, dir string, env []string, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error
+}
+
 type RealRunner struct{}
 
 func New() Runner {
@@ -83,6 +87,20 @@ func StreamStdout(ctx context.Context, r Runner, dir string, env []string, name 
 	return consume(strings.NewReader(stdout))
 }
 
+func Interactive(ctx context.Context, r Runner, dir string, env []string, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if r == nil {
+		r = RealRunner{}
+	}
+	if interactive, ok := r.(InteractiveRunner); ok {
+		return interactive.Interactive(ctx, dir, env, name, args, stdin, stdout, stderr)
+	}
+	_, errText, err := r.Run(ctx, dir, env, name, args...)
+	if err != nil && strings.TrimSpace(errText) != "" {
+		return errors.New(strings.TrimSpace(errText))
+	}
+	return err
+}
+
 type stdinKey struct{}
 
 func WithStdin(ctx context.Context, stdin string) context.Context {
@@ -131,6 +149,29 @@ func (RealRunner) Run(ctx context.Context, dir string, env []string, name string
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+func (RealRunner) Interactive(ctx context.Context, dir string, env []string, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	configureCommandCancellation(cmd)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
 }
 
 func (RealRunner) Stream(ctx context.Context, dir string, env []string, name string, args []string, consume func(io.Reader) error) error {
