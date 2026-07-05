@@ -73,13 +73,31 @@ func TestLoadMalformedConfigFails(t *testing.T) {
 	}
 }
 
-func TestLoadRemoveSecretsPathsMissingFileErrors(t *testing.T) {
+func TestLoadRemoveSecretsPathsPathMissingFileErrors(t *testing.T) {
 	_, err := LoadRemoveSecretsPathsPath(filepath.Join(t.TempDir(), "remove-secrets.toml"))
 	if err == nil {
 		t.Fatal("expected error when config file is missing")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("error = %v, want not-found message", err)
+	}
+}
+
+func TestLoadRemoveSecretsPathsAutoCreatesFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	paths, err := LoadRemoveSecretsPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("auto-created config produced no paths")
+	}
+	configPath, err := RemoveSecretsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("config file was not auto-created on load: %v", err)
 	}
 }
 

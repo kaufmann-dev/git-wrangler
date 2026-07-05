@@ -13,10 +13,10 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// defaultRemoveSecretsConfig is the built-in remove-secrets.toml written to seed
-// a user's config file when it is first created. The default globs live in this
-// data file, not in Go; at scan time remove-secrets reads them exclusively from
-// the file on disk.
+// defaultRemoveSecretsConfig is the built-in remove-secrets.toml used to create
+// the user's config file the first time it is needed, so the default globs land
+// in the file the user edits rather than in Go. Once the file exists the user
+// owns it, and remove-secrets reads globs exclusively from that on-disk file.
 //
 //go:embed remove_secrets_default.toml
 var defaultRemoveSecretsConfig []byte
@@ -33,11 +33,11 @@ func RemoveSecretsPath() (string, error) {
 	return filepath.Join(dir, "git-wrangler", "remove-secrets.toml"), nil
 }
 
-// LoadRemoveSecretsPaths returns the remove-secrets globs from the config file.
-// The file is the sole source of globs; when it does not exist it returns an
-// error rather than falling back to any built-in list.
+// LoadRemoveSecretsPaths returns the remove-secrets globs from the user's config
+// file, creating that file seeded with the default secret paths if it does not
+// exist yet. The on-disk file is the sole source of globs.
 func LoadRemoveSecretsPaths() ([]string, error) {
-	configPath, err := RemoveSecretsPath()
+	configPath, err := EnsureRemoveSecretsStarter()
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func LoadRemoveSecretsPaths() ([]string, error) {
 func LoadRemoveSecretsPathsPath(configPath string) ([]string, error) {
 	data, err := os.ReadFile(configPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("remove-secrets config file not found at %s; run \"config file remove-secrets edit\" to create it with the default secret paths", configPath)
+		return nil, fmt.Errorf("remove-secrets config file not found at %s", configPath)
 	}
 	if err != nil {
 		return nil, err
