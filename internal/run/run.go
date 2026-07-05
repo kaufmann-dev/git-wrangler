@@ -161,7 +161,7 @@ func (RealRunner) Interactive(ctx context.Context, dir string, env []string, nam
 		defer cancel()
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
-	configureCommandCancellation(cmd)
+	configureInteractiveCommand(cmd)
 	if dir != "" {
 		cmd.Dir = dir
 	}
