@@ -72,13 +72,25 @@ func TestLoadMalformedConfigFails(t *testing.T) {
 	}
 }
 
-func TestLoadRemoveSecretsPathsMissingFile(t *testing.T) {
-	paths, err := LoadRemoveSecretsPathsPath(filepath.Join(t.TempDir(), "remove-secrets.toml"))
+func TestLoadRemoveSecretsPathsMissingFileUsesDefaults(t *testing.T) {
+	paths, usingDefaults, err := LoadRemoveSecretsPathsPath(filepath.Join(t.TempDir(), "remove-secrets.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) != 0 {
-		t.Fatalf("paths = %#v, want none", paths)
+	if !usingDefaults {
+		t.Fatal("expected defaults when config file is missing")
+	}
+	want, err := ValidateRemoveSecretsPaths(DefaultRemoveSecretsPaths())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) == 0 || len(paths) != len(want) {
+		t.Fatalf("paths = %#v, want defaults %#v", paths, want)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("paths = %#v, want defaults %#v", paths, want)
+		}
 	}
 }
 
@@ -88,9 +100,12 @@ func TestLoadRemoveSecretsPathsValidatesNormalizesAndSorts(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := LoadRemoveSecretsPathsPath(path)
+	paths, usingDefaults, err := LoadRemoveSecretsPathsPath(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if usingDefaults {
+		t.Fatal("expected file-backed paths, not defaults")
 	}
 	want := []string{".env.local", "private/*.json"}
 	if len(paths) != len(want) {
@@ -120,7 +135,7 @@ func TestLoadRemoveSecretsPathsRejectsInvalidConfig(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.toml), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := LoadRemoveSecretsPathsPath(path); err == nil {
+			if _, _, err := LoadRemoveSecretsPathsPath(path); err == nil {
 				t.Fatal("expected validation error")
 			}
 		})
@@ -140,7 +155,7 @@ func TestEnsureRemoveSecretsStarterCreatesPrivateFile(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
 	}
-	if _, err := LoadRemoveSecretsPaths(); err != nil {
+	if _, _, err := LoadRemoveSecretsPaths(); err != nil {
 		t.Fatalf("starter TOML should validate: %v", err)
 	}
 }

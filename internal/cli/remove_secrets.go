@@ -28,7 +28,7 @@ func removeSecretsOptionsFromCommand(cmd *cobra.Command) removeSecretsOptions {
 
 func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	opts := removeSecretsOptionsFromCommand(cmd)
-	customPatterns, err := configpkg.LoadRemoveSecretsPaths()
+	patterns, _, err := configpkg.LoadRemoveSecretsPaths()
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
 		return 1
@@ -51,19 +51,18 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	if !refreshOriginForRewriteOptions(a, opts.fetch, repos) {
 		return 1
 	}
-	patterns := removeSecretDefinitions(customPatterns)
 	type secretScan struct {
 		repo            repo
 		err             error
 		invalidRepo     bool
-		matchedPatterns []secretDefinition
+		matchedPatterns []string
 		matchedFiles    []string
 	}
 	scans := parallelReposProgress(a.ctx, repos, newProgress(a, "Scanning history for secrets", len(repos)), func(r repo) secretScan {
 		if _, err := a.git.Capture(a.ctx, r.dir, nil, "rev-parse", "--is-inside-work-tree"); err != nil {
 			return secretScan{repo: r, err: err, invalidRepo: true}
 		}
-		args := append([]string{"log", "--all", "--format=", "--name-only", "--"}, secretDefinitionPatterns(patterns)...)
+		args := append([]string{"log", "--all", "--format=", "--name-only", "--"}, patterns...)
 		files, err := a.git.Stdout(a.ctx, r.dir, nil, args...)
 		if err != nil {
 			return secretScan{repo: r, err: err}
@@ -114,19 +113,14 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 			continue
 		}
 		renderRepoHeader(a, r.display)
-		builtInMatches, configuredMatches := secretDefinitionSourceCounts(matchedPatterns)
-		fmt.Fprintf(a.stdout, "  %sMatched files:%s %d across %d pattern(s)", a.ui.Yellow, a.ui.Reset, len(matchedFiles), len(matchedPatterns))
-		if configuredMatches > 0 {
-			fmt.Fprintf(a.stdout, " (%d built-in, %d configured)", builtInMatches, configuredMatches)
-		}
-		fmt.Fprintln(a.stdout)
+		fmt.Fprintf(a.stdout, "  %sMatched files:%s %d across %d pattern(s)\n", a.ui.Yellow, a.ui.Reset, len(matchedFiles), len(matchedPatterns))
 		for _, file := range matchedFiles {
 			fmt.Fprintf(a.stdout, "  %s\n", file)
 		}
 		fmt.Fprintln(a.stdout)
 		filterArgs := []string{}
 		for _, pattern := range matchedPatterns {
-			filterArgs = append(filterArgs, "--path-glob", pattern.pattern)
+			filterArgs = append(filterArgs, "--path-glob", pattern)
 		}
 		filterArgs = append(filterArgs, "--invert-paths", "--partial", "--force")
 		applies = append(applies, secretApply{repo: r, filterArgs: filterArgs, matchedFiles: matchedFiles})
@@ -194,73 +188,11 @@ func runRemoveSecrets(a *app, cmd *cobra.Command, args []string) int {
 	return status
 }
 
-type secretDefinition struct {
-	pattern string
-	source  secretDefinitionSource
-}
-
-type secretDefinitionSource string
-
-const (
-	secretDefinitionBuiltIn    secretDefinitionSource = "built-in"
-	secretDefinitionConfigured secretDefinitionSource = "configured"
-)
-
-func builtInRemoveSecretPaths() []string {
-	return []string{
-		".env", ".env.*", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
-		"*.pem", "*.key", "*.p12", "*.pfx", "*.asc", "*.gpg", "*.crt", "*.cer", "*.cert",
-		"id_rsa", "id_rsa.pub", "id_ed25519", "id_ed25519.pub", "*_rsa", "*_ed25519",
-		"secrets.json", "credentials.json", "*secret*.json", "*credential*.json", "*.secret",
-		"config/credentials.yml.enc", ".docker/config.json", ".kube/config", "kubeconfig",
-		".aws/credentials", ".aws/config", ".config/gcloud/*", "application_default_credentials.json",
-		"azureProfile.json", "accessTokens.json",
-	}
-}
-
-func removeSecretDefinitions(customPatterns []string) []secretDefinition {
-	defs := make([]secretDefinition, 0, len(builtInRemoveSecretPaths())+len(customPatterns))
-	seen := map[string]bool{}
-	for _, pattern := range builtInRemoveSecretPaths() {
-		defs = append(defs, secretDefinition{pattern: pattern, source: secretDefinitionBuiltIn})
-		seen[pattern] = true
-	}
-	for _, pattern := range customPatterns {
-		if seen[pattern] {
-			continue
-		}
-		defs = append(defs, secretDefinition{pattern: pattern, source: secretDefinitionConfigured})
-		seen[pattern] = true
-	}
-	return defs
-}
-
-func secretDefinitionPatterns(defs []secretDefinition) []string {
-	patterns := make([]string, 0, len(defs))
-	for _, def := range defs {
-		patterns = append(patterns, def.pattern)
-	}
-	return patterns
-}
-
-func secretDefinitionSourceCounts(defs []secretDefinition) (int, int) {
-	builtIn := 0
-	configured := 0
-	for _, def := range defs {
-		if def.source == secretDefinitionConfigured {
-			configured++
-		} else {
-			builtIn++
-		}
-	}
-	return builtIn, configured
-}
-
-func matchedSecretPatterns(patterns []secretDefinition, files []string) []secretDefinition {
-	matched := []secretDefinition{}
+func matchedSecretPatterns(patterns, files []string) []string {
+	matched := []string{}
 	for _, pattern := range patterns {
 		for _, file := range files {
-			if secretPatternMatches(pattern.pattern, file) {
+			if secretPatternMatches(pattern, file) {
 				matched = append(matched, pattern)
 				break
 			}

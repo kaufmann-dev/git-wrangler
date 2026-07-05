@@ -18,7 +18,7 @@ func TestRemoveSecretsUsesConfiguredPathGlobs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(configPath, []byte("paths = [\"private/*.json\"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("paths = [\".env\", \"private/*.json\"]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	root := tempGitRepos(t, "repo")
@@ -54,14 +54,45 @@ func TestRemoveSecretsUsesConfiguredPathGlobs(t *testing.T) {
 	if err := ExecuteWithRunner(context.Background(), runner, []string{"remove-secrets", "--no-fetch", "--yes"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("remove-secrets returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
-	if !containsArgAfterSeparator(scanArgs, "--", "private/*.json") {
-		t.Fatalf("scan args missing configured glob: %v", scanArgs)
+	if !containsArgAfterSeparator(scanArgs, "--", "private/*.json") || !containsArgAfterSeparator(scanArgs, "--", ".env") {
+		t.Fatalf("scan args missing configured globs: %v", scanArgs)
 	}
-	if !containsArgAfter(filterArgs, "--path-glob", "private/*.json") {
-		t.Fatalf("filter args missing configured glob: %v", filterArgs)
+	if containsArgAfterSeparator(scanArgs, "--", ".npmrc") {
+		t.Fatalf("scan args should not include defaults absent from the config file: %v", scanArgs)
 	}
-	if !strings.Contains(stdout.String(), "(1 built-in, 1 configured)") {
-		t.Fatalf("preview did not distinguish configured matches:\n%s", stdout.String())
+	if !containsArgAfter(filterArgs, "--path-glob", "private/*.json") || !containsArgAfter(filterArgs, "--path-glob", ".env") {
+		t.Fatalf("filter args missing configured globs: %v", filterArgs)
+	}
+}
+
+func TestRemoveSecretsUsesDefaultsWhenNoConfig(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := tempGitRepos(t, "repo")
+	t.Chdir(root)
+	var scanArgs []string
+	runner := fakeRunner{
+		lookPath: fakeGitAndFilterRepoLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			joined := name + " " + strings.Join(args, " ")
+			switch {
+			case joined == "git rev-parse --is-inside-work-tree":
+				return "true\n", "", nil
+			case strings.HasPrefix(joined, "git log --all --format= --name-only -- "):
+				scanArgs = append([]string{}, args...)
+				return "", "", nil
+			default:
+				return "", "", errors.New("unexpected command: " + joined)
+			}
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := ExecuteWithRunner(context.Background(), runner, []string{"remove-secrets", "--no-fetch", "--yes"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("remove-secrets returned error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !containsArgAfterSeparator(scanArgs, "--", ".env") {
+		t.Fatalf("scan args missing built-in default glob: %v", scanArgs)
 	}
 }
 

@@ -323,7 +323,7 @@ func commandSpecs() []commandSpec {
 					children: []commandSpec{
 						{
 							use:      "remove-secrets",
-							short:    "Show and edit extra remove-secrets path globs.",
+							short:    "Show and edit remove-secrets path globs.",
 							helpOnly: true,
 							children: []commandSpec{
 								{
@@ -333,12 +333,12 @@ func commandSpecs() []commandSpec {
 								},
 								{
 									use:   "show",
-									short: "Show configured extra remove-secrets path globs.",
+									short: "Show the effective remove-secrets path globs.",
 									run:   runConfigFileRemoveSecretsShowCommand,
 								},
 								{
 									use:   "edit",
-									short: "Edit configured extra remove-secrets path globs.",
+									short: "Edit the remove-secrets path globs.",
 									run:   runConfigFileRemoveSecretsEditCommand,
 								},
 							},

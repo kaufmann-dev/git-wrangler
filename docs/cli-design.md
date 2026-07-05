@@ -216,7 +216,7 @@ When the keyring is unavailable, skip GitHub OAuth and AI API-key prompts, conti
 
 ### `config`
 
-`config show` uses non-secret key/value sections. Secret values are never printed. `config set` and `config unset` use standard `OK Updated <key>` and `OK Unset <key>` lines. `config file remove-secrets show` validates before printing configured paths, and `config file remove-secrets edit` validates after the editor exits. Errors should say whether a key is unknown, a value is missing, plaintext secrets are not accepted, or a file-backed config is invalid.
+`config show` uses non-secret key/value sections. Secret values are never printed. `config set` and `config unset` use standard `OK Updated <key>` and `OK Unset <key>` lines. `config file remove-secrets show` validates before printing the effective paths, labeling them as built-in defaults when no file exists yet, and `config file remove-secrets edit` validates after the editor exits. Errors should say whether a key is unknown, a value is missing, plaintext secrets are not accepted, or a file-backed config is invalid.
 
 ### `rename-repo`
 
