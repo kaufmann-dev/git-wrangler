@@ -29,7 +29,6 @@ type rewriteAuthorsOptions struct {
 	bounds       currentRewriteDateBounds
 	name         string
 	email        string
-	force        bool
 }
 
 func rewriteAuthorsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteAuthorsOptions, bool) {
@@ -53,7 +52,6 @@ func rewriteAuthorsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteAuthor
 		bounds:       boundOpts.bounds,
 		name:         newName,
 		email:        newEmail,
-		force:        boolFlagValue(cmd, "force"),
 	}, true
 }
 
@@ -145,7 +143,7 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 			return authorApplyResult{apply: apply, err: fmt.Errorf("could not create author callback: %w", err)}
 		}
 		defer os.Remove(callback)
-		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, rewriteAuthorFilterArgs(apply.branches, callback, opts.force), []string{"NEW_EMAIL_ENV=" + opts.email, "NEW_NAME_ENV=" + opts.name})
+		out, err, restoreErr := runFilterRepoRestoringOrigin(a, apply.repo.dir, apply.repo.gitDir, filterCmd, rewriteAuthorFilterArgs(apply.branches, callback), []string{"NEW_EMAIL_ENV=" + opts.email, "NEW_NAME_ENV=" + opts.name})
 		if err == nil {
 			if updateErr := updateRewriteBaselineFromFilterRepoMap(apply.repo.gitDir); updateErr != nil {
 				return authorApplyResult{apply: apply, output: out, err: fmt.Errorf("could not update rewrite baseline: %w", updateErr), restoreErr: restoreErr}
@@ -185,8 +183,8 @@ func runRewriteAuthors(a *app, cmd *cobra.Command, args []string) int {
 	return status
 }
 
-func rewriteAuthorFilterArgs(branches []dateBranchRef, callback string, force bool) []string {
-	args := []string{"--partial"}
+func rewriteAuthorFilterArgs(branches []dateBranchRef, callback string) []string {
+	args := []string{"--partial", "--force"}
 	if len(branches) > 0 {
 		args = append(args, "--refs")
 		for _, branch := range branches {
@@ -194,9 +192,6 @@ func rewriteAuthorFilterArgs(branches []dateBranchRef, callback string, force bo
 		}
 	}
 	args = append(args, "--commit-callback", callback)
-	if force {
-		args = append(args, "--force")
-	}
 	return args
 }
 

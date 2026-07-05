@@ -1276,7 +1276,7 @@ func TestRewriteAuthorsDateBoundsRewriteAndBaselineOnlySelected(t *testing.T) {
 	commitEmptyForTest(t, repoDir, "third", "2024-02-03T10:00:00 +0000")
 
 	var stdout, stderr bytes.Buffer
-	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-authors", "--repo", repoDir, "--no-fetch", "--rewrite-after", "2024-02-02", "--rewrite-before", "2024-02-03", "--name", "New Name", "--email", "new@example.test", "--force", "--yes"}, strings.NewReader(""), &stdout, &stderr)
+	err := ExecuteWithRunner(context.Background(), nil, []string{"rewrite-authors", "--repo", repoDir, "--no-fetch", "--rewrite-after", "2024-02-02", "--rewrite-before", "2024-02-03", "--name", "New Name", "--email", "new@example.test", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("rewrite-authors failed: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 	}

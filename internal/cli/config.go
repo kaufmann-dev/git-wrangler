@@ -100,6 +100,10 @@ func runConfigSet(a *app, opts configSetOptions) int {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
+	if !supportedConfigKey(opts.key) {
+		a.plainErrorf("unknown config key %q.", opts.key)
+		return 1
+	}
 	switch opts.key {
 	case "github.auth":
 		token, ok := secretValue(a, opts.key, opts.hasValue, "GitHub token: ")
@@ -115,10 +119,15 @@ func runConfigSet(a *app, opts configSetOptions) int {
 		if !ok {
 			return 1
 		}
-		cfg.GitHub.Host = config.NormalizeHost(value)
-		if cfg.GitHub.Host == "" {
+		currentHost := cfg.GitHub.Host
+		nextHost := config.NormalizeHost(value)
+		if nextHost == "" {
 			a.plainErrorf("github.host cannot be empty.")
 			return 1
+		}
+		cfg.GitHub.Host = nextHost
+		if nextHost != currentHost {
+			cfg.GitHub.Username = ""
 		}
 		if err := config.Save(cfg); err != nil {
 			a.plainErrorf("%s", err.Error())
@@ -172,8 +181,6 @@ func runConfigSet(a *app, opts configSetOptions) int {
 		if strings.HasPrefix(opts.key, "ai.headers.") {
 			return runConfigSetAIHeader(a, cfg, opts)
 		}
-		a.plainErrorf("unknown config key %q.", opts.key)
-		return 1
 	}
 	a.ok("Updated " + opts.key)
 	return 0
@@ -185,25 +192,65 @@ func runConfigUnset(a *app, opts configUnsetOptions) int {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
-	var account string
+	if !supportedConfigKey(opts.key) {
+		a.plainErrorf("unknown config key %q.", opts.key)
+		return 1
+	}
 	switch opts.key {
 	case "github.auth":
-		account = credentials.GitHubAccount(cfg.GitHub.Host)
+		if err := a.creds.Delete(credentials.GitHubAccount(cfg.GitHub.Host)); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
+	case "github.host":
+		cfg.GitHub.Host = config.DefaultGitHubHost
+		cfg.GitHub.Username = ""
+		if err := config.Save(cfg); err != nil {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
 	case "ai.api-key":
-		account = credentials.AIAccount(cfg.AI.Provider)
+		if err := a.creds.Delete(credentials.AIAccount(cfg.AI.Provider)); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
+	case "ai.provider":
+		cfg.AI.Provider = config.DefaultAIProvider
+		cfg.AI.BaseURL = ""
+		config.ApplyDefaults(&cfg)
+		if err := config.Save(cfg); err != nil {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
+	case "ai.base-url":
+		cfg.AI.BaseURL = ""
+		config.ApplyDefaults(&cfg)
+		if err := config.Save(cfg); err != nil {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
+	case "ai.model":
+		cfg.AI.Model = ""
+		if err := config.Save(cfg); err != nil {
+			a.plainErrorf("%s", err.Error())
+			return 1
+		}
 	default:
 		if strings.HasPrefix(opts.key, "ai.headers.") {
 			return runConfigUnsetAIHeader(a, cfg, opts.key)
 		}
-		a.plainErrorf("unknown config key %q.", opts.key)
-		return 1
-	}
-	if err := a.creds.Delete(account); err != nil && !errors.Is(err, credentials.ErrNotFound) {
-		a.plainErrorf("%s", err.Error())
-		return 1
 	}
 	a.ok("Unset " + opts.key)
 	return 0
+}
+
+func supportedConfigKey(key string) bool {
+	switch key {
+	case "github.auth", "github.host", "ai.api-key", "ai.provider", "ai.base-url", "ai.model":
+		return true
+	default:
+		return strings.HasPrefix(key, "ai.headers.")
+	}
 }
 
 func runConfigSetAIHeader(a *app, cfg config.Config, opts configSetOptions) int {

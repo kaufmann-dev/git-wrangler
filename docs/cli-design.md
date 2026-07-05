@@ -156,7 +156,7 @@ Scan first. Print candidate repo blocks only for proposed additions. Count clean
 
 ### `license`
 
-Print conflicts, skips, and failures. Suppress routine success lines. `--overwrite` prompts once for existing files. Summarize `created`, `overwritten`, `skipped`, and `failed`.
+Require an explicit license type in noninteractive runs and prompt for it in interactive/guided runs. Copyright-bearing templates require a holder name and use `--year`; holder-free templates ignore `--name`. Print conflicts, skips, and failures. Suppress routine success lines. `--overwrite` prompts once for existing files. Summarize `created`, `overwritten`, `skipped`, and `failed`.
 
 ### `rename-branch`
 

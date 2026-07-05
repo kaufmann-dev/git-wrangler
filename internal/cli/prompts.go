@@ -501,6 +501,32 @@ func guideClone(a *app, cmd *cobra.Command) error {
 	return applyGuidedPrompt(a, cmd, guidedString("into", "Destination directory"))
 }
 
+func guideLicense(a *app, cmd *cobra.Command) error {
+	if err := applyGuidedPrompt(a, cmd, guidedString("repo", "Repository")); err != nil {
+		return err
+	}
+	if err := applyGuidedPrompt(a, cmd, guidedEnum("type", "License type", supportedLicenseIDs()...)); err != nil {
+		return err
+	}
+	template, ok := licenseTemplateByID(stringFlagValue(cmd, "type"))
+	if ok && template.requiresHolder {
+		if err := applyGuidedPrompt(a, cmd, guidedRequiredString("name", "Copyright holder name")); err != nil {
+			return err
+		}
+	} else if err := applyGuidedPrompt(a, cmd, guidedString("name", "Copyright holder name")); err != nil {
+		return err
+	}
+	for _, prompt := range []guidedPrompt{
+		guidedPositiveInt("year", "Copyright year"),
+		guidedBool("overwrite", "Overwrite existing licenses"),
+	} {
+		if err := applyGuidedPrompt(a, cmd, prompt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func guideRewriteDates(a *app, cmd *cobra.Command) error {
 	if _, ok := rewriteDatesOptionsFromCommand(a, cmd); !ok {
 		return exitError{code: 1}
