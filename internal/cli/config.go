@@ -36,18 +36,25 @@ func runConfigFileRemoveSecretsPathCommand(a *app, cmd *cobra.Command, args []st
 }
 
 func runConfigFileRemoveSecretsShowCommand(a *app, cmd *cobra.Command, args []string) int {
-	paths, err := config.LoadRemoveSecretsPaths()
+	paths, usingDefaults, err := config.LoadRemoveSecretsPaths()
 	if err != nil {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}
-	if len(paths) == 0 {
-		fmt.Fprintln(a.stdout, "No extra remove-secrets paths configured.")
+	if !usingDefaults && len(paths) == 0 {
+		fmt.Fprintln(a.stdout, "The remove-secrets config file lists no paths; remove-secrets will purge nothing.")
 		return 0
 	}
-	fmt.Fprintln(a.stdout, "Extra remove-secrets paths")
+	if usingDefaults {
+		fmt.Fprintln(a.stdout, "Remove-secrets paths (built-in defaults)")
+	} else {
+		fmt.Fprintln(a.stdout, "Remove-secrets paths")
+	}
 	for _, path := range paths {
 		fmt.Fprintf(a.stdout, "  %s\n", path)
+	}
+	if usingDefaults {
+		fmt.Fprintf(a.stdout, "\n%sSeeded from defaults. Run \"config file remove-secrets edit\" to customize.%s\n", a.ui.Muted, a.ui.Reset)
 	}
 	return 0
 }
@@ -63,7 +70,7 @@ func runConfigFileRemoveSecretsEditCommand(a *app, cmd *cobra.Command, args []st
 		a.plainErrorf("editor failed: %s", err)
 		return 1
 	}
-	if _, err := config.LoadRemoveSecretsPaths(); err != nil {
+	if _, _, err := config.LoadRemoveSecretsPaths(); err != nil {
 		a.plainErrorf("%s", err.Error())
 		return 1
 	}

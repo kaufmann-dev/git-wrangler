@@ -136,8 +136,11 @@ func TestConfigFileRemoveSecretsPathAndShow(t *testing.T) {
 	if err := ExecuteWithRunner(context.Background(), nil, []string{"config", "file", "remove-secrets", "show"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("config file remove-secrets show returned error: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No extra remove-secrets paths configured.") {
-		t.Fatalf("missing none configured message:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "built-in defaults") {
+		t.Fatalf("missing built-in defaults header:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), ".env") {
+		t.Fatalf("defaults show missing a built-in path:\n%s", stdout.String())
 	}
 
 	if err := os.MkdirAll(filepath.Dir(wantPath), 0o700); err != nil {
