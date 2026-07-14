@@ -103,12 +103,14 @@ func TestRewriteBaselineCaptureWithRelativeDiscoveredGitDir(t *testing.T) {
 	}
 }
 
-func TestRewriteBaselineCommitMapUpdatesCurrentOnlyAndKeepsAliases(t *testing.T) {
+func TestRewriteBaselineCommitMapUpdatesCurrentSHAsParentsAndKeepsOriginals(t *testing.T) {
 	manifest := rewriteBaselineManifest{Version: rewriteBaselineVersion, Entries: []rewriteBaselineEntry{{
 		FirstSHA:       "original",
 		CurrentSHA:     "current",
 		KnownSHAs:      []string{"original", "current"},
 		TreeSHA:        "tree",
+		ParentSHAs:     []string{"original-parent"},
+		CurrentParents: []string{"current-parent"},
 		AuthorDate:     "100 +0000",
 		AuthorEpoch:    100,
 		AuthorTZ:       "+0000",
@@ -129,7 +131,7 @@ func TestRewriteBaselineCommitMapUpdatesCurrentOnlyAndKeepsAliases(t *testing.T)
 	if err := writeRewriteBaseline(gitDir, manifest); err != nil {
 		t.Fatal(err)
 	}
-	if err := updateRewriteBaselineFromCommitMap(gitDir, map[string]string{"current": "next"}); err != nil {
+	if err := updateRewriteBaselineFromCommitMap(gitDir, map[string]string{"current": "next", "current-parent": "next-parent"}); err != nil {
 		t.Fatal(err)
 	}
 	updated, _, err := loadRewriteBaseline(gitDir)
@@ -142,6 +144,9 @@ func TestRewriteBaselineCommitMapUpdatesCurrentOnlyAndKeepsAliases(t *testing.T)
 	}
 	if entry.FirstSHA != "original" || entry.AuthorDate != "100 +0000" {
 		t.Fatalf("original metadata changed: %+v", entry)
+	}
+	if strings.Join(entry.ParentSHAs, " ") != "original-parent" || strings.Join(entry.CurrentParents, " ") != "next-parent" {
+		t.Fatalf("parent mappings = original %v current %v", entry.ParentSHAs, entry.CurrentParents)
 	}
 	for _, want := range []string{"original", "current", "next"} {
 		if !containsStringForBaselineTest(entry.KnownSHAs, want) {

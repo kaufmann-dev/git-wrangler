@@ -116,6 +116,7 @@ Preferred count orders:
 - `untrack`: with tracked ignored files, unchanged, failed; then updated, skipped, failed after apply.
 - `remove-secrets`: rewritten, clean, skipped, failed.
 - `rewrite-authors`: rewritten, skipped, failed.
+- `rewrite-coauthors`: commit messages rewritten, repositories updated, skipped, failed.
 - `rewrite-commits`: commit messages rewritten, repositories updated, failed.
 - `rewrite-dates`: rewritten, skipped, failed.
 - `rewrite-hours`: rewritten, skipped, failed.
@@ -148,7 +149,7 @@ Show GitHub auth source once when auth is used. When secure credential storage i
 
 ### `commit`
 
-Prepare AI commit context with progress. Before network calls, print a data-send notice containing endpoint, model, repository count, automatic bounded context, computed API batch count, content description, and secret handling. Prompt on stderr. Show API progress with inline retry/detail text, then commit creation progress. Print only failures/skips plus summary unless there is a single small success surface.
+Prepare AI commit context with progress. Before network calls, print a data-send notice containing endpoint, model, repository count, automatic bounded context, computed API batch count, content description, and secret handling. When `--coauthor` is present, state that coauthor identities are appended locally and never sent to the endpoint. Prompt on stderr. Show API progress with inline retry/detail text, then commit creation progress. Print only failures/skips plus summary unless there is a single small success surface.
 
 ### `fix-gitignore`
 
@@ -186,7 +187,11 @@ Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before th
 
 ### `rewrite-commits`
 
-Validate AI settings, refresh `origin` unless `--no-fetch` is set, apply optional current-author-date bounds, then use phases for repository scanning, commit scanning, API requests, generated preview, destructive warning/prompt, and applying rewrites. Fetch failures stop before scanning or AI requests. `--no-fetch` prints a warning before scanning and before the normal AI data-send confirmation path. Out-of-range commits must not be included in AI context or API requests. Retry details must stay inline or in clean progress logs, never interleaved with durable output. Keep the generated plan preview. Final success is aggregate.
+Validate AI settings, refresh `origin` unless `--no-fetch` is set, apply optional current-author-date bounds, then use phases for repository scanning, commit scanning, API requests, generated preview, destructive warning/prompt, and applying rewrites. Fetch failures stop before scanning or AI requests. `--no-fetch` prints a warning before scanning and before the normal AI data-send confirmation path. Out-of-range commits must not be included in AI context or API requests. Preserve the original final Git trailer block, including folding, order, and unrelated trailer keys, when merging each generated subject/body. `--remove-coauthors` removes only case-insensitive `Co-authored-by` entries from commits that otherwise receive a generated message. Retry details must stay inline or in clean progress logs, never interleaved with durable output. Keep the generated plan preview. Final success is aggregate.
+
+### `rewrite-coauthors`
+
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, preview, prompt, or mutation. Scan commits reachable from local branches, apply optional current-author-date bounds, and exclude merges, Git-generated revert/reapply subjects, and autosquash markers. Show one aggregate preview with repositories, affected messages, date filter, operation selectors, and skipped generated commits. Warn and prompt once. Apply local-branch-only rewrites with up to four workers, preserve unrelated trailers verbatim, restore `origin`, suppress routine success lines, and summarize `commit messages rewritten`, `repositories updated`, `skipped`, and `failed`.
 
 ### `rewrite-dates`
 

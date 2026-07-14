@@ -20,6 +20,7 @@ type rewriteCommitsOptions struct {
 	batchSize        int
 	skipConventional bool
 	requireScope     bool
+	removeCoauthors  bool
 }
 
 func rewriteCommitsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteCommitsOptions, bool) {
@@ -37,6 +38,7 @@ func rewriteCommitsOptionsFromCommand(a *app, cmd *cobra.Command) (rewriteCommit
 		batchSize:        intFlagValue(cmd, "batch-size"),
 		skipConventional: boolFlagValue(cmd, "skip-conventional"),
 		requireScope:     boolFlagValue(cmd, "require-scope"),
+		removeCoauthors:  boolFlagValue(cmd, "remove-coauthors"),
 	}
 	if opts.requireScope {
 		opts.skipConventional = true
@@ -114,6 +116,7 @@ func runRewriteCommits(a *app, cmd *cobra.Command, args []string) int {
 		SkipConventional: opts.skipConventional,
 		RequireScope:     opts.requireScope,
 		Body:             opts.ai.body,
+		RemoveCoauthors:  opts.removeCoauthors,
 		WorkDir:          workDir,
 		Git:              a.git,
 		Progress: func(event ai.ProgressEvent) {

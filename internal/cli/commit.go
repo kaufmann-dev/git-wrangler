@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ai"
+	"github.com/kaufmann-dev/git-wrangler/internal/trailers"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +28,7 @@ type commitOptions struct {
 	target       targetOptions
 	confirmation confirmationOptions
 	ai           aiRequestOptions
+	coauthors    []trailers.Identity
 }
 
 func commitOptionsFromCommand(a *app, cmd *cobra.Command) (commitOptions, bool) {
@@ -34,6 +37,12 @@ func commitOptionsFromCommand(a *app, cmd *cobra.Command) (commitOptions, bool) 
 		confirmation: confirmationOptionsFromCommand(cmd),
 		ai:           aiRequestOptionsFromCommand(cmd),
 	}
+	coauthors, err := trailers.ValidateIdentities(stringArrayFlagValues(cmd, "coauthor"))
+	if err != nil {
+		a.plainErrorf("%s.", err.Error())
+		return commitOptions{}, false
+	}
+	opts.coauthors = coauthors
 	for _, check := range []error{
 		validatePositiveIntFlag("rpm", opts.ai.rpm),
 		validatePositiveIntFlag("concurrency", opts.ai.concurrency),
@@ -100,6 +109,9 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 	if opts.ai.body {
 		bodyLines = append(bodyLines, "Messages: subject and body")
 	}
+	if len(opts.coauthors) > 0 {
+		bodyLines = append(bodyLines, "Coauthors: appended locally; identities are not sent")
+	}
 	renderNotice(a, "Data Send Notice", []keyValueRow{
 		{key: "Endpoint", value: settings.Config.AI.BaseURL},
 		{key: "Model", value: settings.Config.AI.Model},
@@ -163,14 +175,7 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "add", "-A"); err != nil {
 			return commitAICommitResult{change: change, out: out, err: err, stageErr: true}
 		}
-		if opts.ai.body {
-			if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject, "-m", message.Body); err == nil {
-				return commitAICommitResult{change: change, out: out}
-			} else {
-				return commitAICommitResult{change: change, out: out, err: err}
-			}
-		}
-		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, "commit", "-m", message.Subject); err == nil {
+		if out, err := a.git.Capture(a.ctx, change.repo.dir, nil, commitMessageArgs(message, opts.ai.body, opts.coauthors)...); err == nil {
 			return commitAICommitResult{change: change, out: out}
 		} else {
 			return commitAICommitResult{change: change, out: out, err: err}
@@ -202,6 +207,21 @@ func runCommit(a *app, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	return 0
+}
+
+func commitMessageArgs(message ai.Message, includeBody bool, coauthors []trailers.Identity) []string {
+	args := []string{"commit", "-m", message.Subject}
+	if includeBody {
+		args = append(args, "-m", message.Body)
+	}
+	if len(coauthors) > 0 {
+		lines := make([]string, 0, len(coauthors))
+		for _, identity := range coauthors {
+			lines = append(lines, trailers.CoauthorLine(identity))
+		}
+		args = append(args, "-m", strings.Join(lines, "\n"))
+	}
+	return args
 }
 
 func allGenerationFailuresAre(failures []ai.GenerationFailure, reason string) bool {

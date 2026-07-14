@@ -136,8 +136,9 @@ func commandSpecs() []commandSpec {
 			run:   runCommit,
 			flags: joinFlags(targetFlags(), aiRequestFlags(), flags{
 				boolFlag("body", "Generate commit message bodies."),
+				stringArrayFlag("coauthor", "Append a Name <email> Co-authored-by trailer. Repeatable."),
 			}, confirmationFlags()),
-			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies")}},
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("body", "Generate message bodies"), guidedRepeatable("coauthor", "Coauthors")}},
 		},
 		{
 			use:    "fix-gitignore",
@@ -227,6 +228,43 @@ func commandSpecs() []commandSpec {
 			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("name", "New author and committer name"), guidedRequiredString("email", "New author and committer email"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
 		},
 		{
+			use:      "rewrite-coauthors",
+			short:    "Add, replace, or remove coauthor trailers in history.",
+			group:    "history",
+			helpOnly: true,
+			children: []commandSpec{
+				{
+					use:   "add",
+					short: "Add missing coauthors to selected commits.",
+					run:   runRewriteCoauthorsAdd,
+					flags: joinFlags(flags{
+						stringArrayFlag("coauthor", "Coauthor in Name <email> form. Repeatable."),
+					}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), confirmationFlags()),
+					guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRepeatable("coauthor", "Coauthors"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
+				},
+				{
+					use:   "replace",
+					short: "Replace a coauthor email with one identity.",
+					run:   runRewriteCoauthorsReplace,
+					flags: joinFlags(flags{
+						stringFlag("email", "", "Existing coauthor email to replace."),
+						stringFlag("coauthor", "", "Replacement coauthor in Name <email> form."),
+					}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), confirmationFlags()),
+					guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRequiredString("email", "Existing coauthor email"), guidedRequiredString("coauthor", "Replacement coauthor"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
+				},
+				{
+					use:   "remove",
+					short: "Remove selected or all coauthors.",
+					run:   runRewriteCoauthorsRemove,
+					flags: joinFlags(flags{
+						stringArrayFlag("email", "Coauthor email to remove. Repeatable."),
+						boolFlag("all", "Remove every Co-authored-by trailer."),
+					}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), confirmationFlags()),
+					guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRepeatable("email", "Coauthor emails"), guidedBool("all", "Remove all coauthors"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
+				},
+			},
+		},
+		{
 			use:   "rewrite-commits",
 			short: "Generate Conventional Commit messages with an OpenAI-compatible endpoint.",
 			group: "history",
@@ -237,8 +275,9 @@ func commandSpecs() []commandSpec {
 				boolFlag("skip-conventional", "Skip commits that already use Conventional Commits."),
 				boolFlag("require-scope", "Skip only Conventional Commits that also have a scope; implies --skip-conventional."),
 				boolFlag("body", "Generate commit message bodies."),
+				boolFlag("remove-coauthors", "Remove Co-authored-by trailers from rewritten commits."),
 			}, confirmationFlags()),
-			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("require-scope", "Skip only scoped conventional commits"), guidedBool("body", "Generate message bodies")}},
+			guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before"), guidedPositiveInt("batch-size", "Maximum commits per API request"), guidedPositiveInt("rpm", "Requests per minute"), guidedPositiveInt("concurrency", "Concurrent API requests"), guidedPositiveInt("timeout", "Timeout seconds"), guidedBool("skip-conventional", "Skip conventional commits"), guidedBool("require-scope", "Skip only scoped conventional commits"), guidedBool("body", "Generate message bodies"), guidedBool("remove-coauthors", "Remove coauthors")}},
 		},
 		{
 			use:   "rewrite-hours",
