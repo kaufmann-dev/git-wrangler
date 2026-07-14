@@ -29,7 +29,7 @@ is not treated as a declined confirmation or an empty, invalid, or missing
 prompt value.
 
 Command-local `--guided` is available on `activity`, `log`, `clone`, `pull`, `fetch`,
-`push`, `commit`, `fix-gitignore`, `license`, `rename-branch`, `reset`, `review`,
+`push`, `commit`, `fix-gitignore`, `license`, `license remove`, `rename-branch`, `reset`, `review`,
 `untrack`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`,
 `rewrite-dates`, `rewrite-hours`, `rollback-rewrites`, `info`, and `status`. It prompts for all command-specific
 behavior options, applies answers through Cobra flag setters, and prints the
@@ -55,7 +55,7 @@ a TTY.
 | `rename-repo`       | Remote  | Discovered repos or exact `--repo`           | GitHub repository name and optionally description                                             | Prompts for new values; `gh repo rename` receives `--yes` after a name is entered                       | `git`, `gh`                                   | Requires Git Wrangler GitHub auth                         |
 | `commit`            | Local   | Discovered repos or exact `--repo`           | Index and new commits; sends redacted staged context to AI endpoint                           | Data-send prompt unless `--yes`                                                                         | `git`                                         | Requires AI base URL, model, and API key                  |
 | `fix-gitignore`     | Local   | Discovered repos or exact `--repo`           | `.gitignore` files                                                                            | Prompts once for all candidates unless `--yes`                                                          | `git`                                         | None                                                      |
-| `license`           | Local   | Discovered repos or exact `--repo`           | Writes `LICENSE` files                                                                        | `--overwrite` prompts once before replacing existing files unless `--yes`                               | `git`                                         | None                                                      |
+| `license`           | Local   | Discovered repos or exact `--repo`           | Writes or removes root `LICENSE` files                                                        | `--overwrite` and `license remove` prompt once for their candidate sets unless `--yes`                  | `git`                                         | None                                                      |
 | `rename-branch`     | Local   | Discovered repos or exact `--repo`           | Local branch names                                                                            | Prompts once for all candidates unless `--yes`                                                          | `git`                                         | None                                                      |
 | `reset`             | Local   | Discovered repos or exact `--repo`           | Fetches then hard-resets current branch to `origin/<branch>`                                  | Prompts once for all candidates unless `--yes`                                                          | `git`                                         | None                                                      |
 | `review`            | Local   | Discovered repos or exact `--repo`           | No                                                                                            | None                                                                                                    | `git`                                         | None                                                      |
@@ -193,7 +193,9 @@ Human output is one dense table. Multi-repository output includes `Date`, `Repos
 
 ### `license`
 
-`license --type <id>` creates missing `LICENSE` files without confirmation. Supported IDs are `apache-2.0`, `gpl-3.0`, `mit`, `bsd-2-clause`, `bsd-3-clause`, `bsl-1.0`, `cc0-1.0`, `epl-2.0`, `agpl-3.0`, `gpl-2.0`, `lgpl-2.1`, `mpl-2.0`, and `unlicense`. `--year` defaults to the current year for copyright-bearing templates. `--name` is required only for templates that include a copyright holder. `license --overwrite` prompts once before replacing all existing files in the candidate set; `license --overwrite --yes` skips only that overwrite confirmation. Human output prints conflicts/skips/failures and a created/overwritten/skipped/failed summary.
+`license --type <id>` creates missing `LICENSE` files without confirmation. Supported IDs are `apache-2.0`, `gpl-3.0`, `mit`, `0bsd`, `bsd-2-clause`, `bsd-3-clause`, `bsl-1.0`, `cc0-1.0`, `epl-2.0`, `agpl-3.0`, `gpl-2.0`, `lgpl-2.1`, `mpl-2.0`, and `unlicense`. `--year` defaults to the current year for copyright-bearing templates. `--name` is required only for templates that include a copyright holder, including `0bsd`. `license --overwrite` prompts once before replacing all existing files in the candidate set; `license --overwrite --yes` skips only that overwrite confirmation. Human output prints conflicts/skips/failures and a created/overwritten/skipped/failed summary.
+
+`license remove` deletes only the exact root `LICENSE` file or symbolic link and never removes common variants such as `LICENSE.md`, `LICENSE.txt`, or `COPYING`. Missing files are skips; directories and unsupported filesystem entries are failures. The command warns and prompts once for all removal candidates unless `--yes` is set, and a declined confirmation is a successful no-op that counts candidates as skipped. Human output suppresses routine success lines and ends with a removed/skipped/failed summary.
 
 ### `fix-gitignore`
 
