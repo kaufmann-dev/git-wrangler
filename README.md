@@ -170,6 +170,7 @@ processes.
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | [`remove-secrets`](https://wrangler.kaufmann.dev/docs/remove-secrets)       | Purge sensitive files from Git history.                           |
 | [`rewrite-authors`](https://wrangler.kaufmann.dev/docs/rewrite-authors)     | Rewrite author and committer identity.                            |
+| [`rewrite-coauthors`](https://wrangler.kaufmann.dev/docs/rewrite-coauthors) | Add, replace, or remove coauthor trailers in history.             |
 | [`rewrite-commits`](https://wrangler.kaufmann.dev/docs/rewrite-commits)     | Generate AI Conventional Commit messages, then rewrite history.   |
 | [`rewrite-dates`](https://wrangler.kaufmann.dev/docs/rewrite-dates)         | Redistribute commit dates, optionally inside one time window.     |
 | [`rewrite-hours`](https://wrangler.kaufmann.dev/docs/rewrite-hours)         | Move commit times into a uniform daily time window.               |
@@ -200,6 +201,21 @@ change summary, and redacted diff snippets, but not old commit messages. For
 large or cross-cutting changes, use `--body` for rationale and prefer a stronger
 model when a cheap/fast model still produces file-level summaries. Context is
 collected and packed automatically with internal bounds.
+
+Coauthors stay local. Repeat `commit --coauthor "Name <email>"` to append
+validated `Co-authored-by` trailers to every generated commit; those identities
+are never included in AI requests. `rewrite-commits` preserves the complete
+existing Git trailer block by default, including non-coauthor attestations and
+folded values. Use `--remove-coauthors` only when rewritten commits should drop
+their coauthor trailers.
+
+For history-only coauthor maintenance, use the dedicated local workflow:
+
+```bash
+git-wrangler rewrite-coauthors add --coauthor "Jane Doe <jane@example.com>"
+git-wrangler rewrite-coauthors replace --email old@example.com --coauthor "Jane Doe <jane@example.com>"
+git-wrangler rewrite-coauthors remove --email former@example.com
+```
 
 ```bash
 # Set up credentials
@@ -240,8 +256,8 @@ and designed to fail safely.
   explicit offline/local-only runs.
 - **Origin preservation** — history rewrite commands that use `git-filter-repo`
   restore the `origin` remote after it is removed.
-- **Shared rewrite rollback** — `rewrite-authors`, `rewrite-commits`,
-  `rewrite-dates`, and `rewrite-hours` share one cumulative baseline under
+- **Shared rewrite rollback** — `rewrite-authors`, `rewrite-coauthors`,
+  `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` share one cumulative baseline under
   `.git/git-wrangler/baseline/`. Use `rollback-rewrites` instead of the removed
   `rewrite-dates --rollback`; it restores all baselined rewrites together while
   preserving commits created between rewrite runs.
@@ -253,11 +269,11 @@ and designed to fail safely.
 
 ## Runtime Dependencies
 
-| Tool              | Required for                                                                                                    |
-| ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| `git`             | All repository operations (required).                                                                           |
-| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                                      |
-| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours`. |
+| Tool              | Required for                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `git`             | All repository operations (required).                                                                                                |
+| `gh`              | GitHub operations: `clone`, `rename-repo`.                                                                                           |
+| `git-filter-repo` | History rewrites: `remove-secrets`, `rewrite-authors`, `rewrite-coauthors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours`. |
 
 Run `git-wrangler doctor` to check what's available on your system.
 

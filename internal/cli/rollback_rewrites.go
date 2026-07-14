@@ -382,7 +382,7 @@ func rebuildRollbackRewriteBranch(a *app, dir string, branch rollbackRewriteBran
 }
 
 func restoreBaselinedCommit(a *app, dir string, entry rewriteBaselineEntry, rewritten map[string]string) (string, error) {
-	parents, changed := remapParents(entry.ParentSHAs, rewritten)
+	parents, changed := remapParents(entry.CurrentParents, rewritten)
 	if !changed {
 		if _, err := a.git.Capture(a.ctx, dir, nil, "cat-file", "-e", entry.FirstSHA+"^{commit}"); err == nil {
 			return entry.FirstSHA, nil

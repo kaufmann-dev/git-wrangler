@@ -15,14 +15,52 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kaufmann-dev/git-wrangler/internal/ai"
 	"github.com/kaufmann-dev/git-wrangler/internal/config"
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
+	"github.com/kaufmann-dev/git-wrangler/internal/trailers"
 )
+
+func TestCommitMessageArgsAppendOneLocalCoauthorBlock(t *testing.T) {
+	identities, err := trailers.ValidateIdentities([]string{
+		"Jane Q. Doe <Jane@Example.test>",
+		"John Smith <john@example.test>",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := commitMessageArgs(ai.Message{Subject: "feat(cli): add thing", Body: "Explain the change."}, true, identities)
+	want := []string{
+		"commit", "-m", "feat(cli): add thing",
+		"-m", "Explain the change.",
+		"-m", "Co-authored-by: Jane Q. Doe <Jane@Example.test>\nCo-authored-by: John Smith <john@example.test>",
+	}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("args = %#v, want %#v", got, want)
+	}
+}
+
+func TestCommitRejectsDuplicateCoauthorEmailsCaseInsensitively(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), fakeRunner{}, []string{
+		"commit",
+		"--coauthor", "First <same@example.test>",
+		"--coauthor", "Second <SAME@example.test>",
+	}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(stderr.String(), "duplicate coauthor email") {
+		t.Fatalf("error = %v, stderr = %q", err, stderr.String())
+	}
+}
 
 func TestCommitStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	server := aiResponseServer(t, `{"messages":[{"id":"c000001","subject":"feat(dirty): update file"}]}`)
+	server := aiResponseServerInspect(t, `{"messages":[{"id":"c000001","subject":"feat(dirty): update file"}]}`, func(body []byte) {
+		if bytes.Contains(body, []byte("Local Coauthor")) || bytes.Contains(body, []byte("local@example.test")) {
+			t.Fatalf("coauthor identity was sent to AI endpoint: %s", body)
+		}
+	})
 	defer server.Close()
 	saveAIConfig(t, server.URL)
 
@@ -72,7 +110,7 @@ func TestCommitStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 				return "1\t0\tfile.txt\n", "", nil
 			case tempIndex && repoName == "dirty" && joined == "diff --cached --no-color --no-ext-diff --find-renames --find-copies --unified=3 -- file.txt":
 				return "diff --git a/file.txt b/file.txt\n+hello\n", "", nil
-			case !tempIndex && repoName == "dirty" && joined == "commit -m feat(dirty): update file":
+			case !tempIndex && repoName == "dirty" && joined == "commit -m feat(dirty): update file -m Co-authored-by: Local Coauthor <local@example.test>":
 				commits = append(commits, joined)
 				return "committed\n", "", nil
 			default:
@@ -84,7 +122,7 @@ func TestCommitStagesSkipsCommitsAndReportsSummary(t *testing.T) {
 	a := newApp(context.Background(), runner, strings.NewReader(""), &stdout, &stderr)
 	a.creds = &fakeCredentialStore{values: map[string]string{credentials.AIAccount("openai"): "test-key"}}
 	cmd := newRootCommand(a)
-	cmd.SetArgs([]string{"commit", "--yes"})
+	cmd.SetArgs([]string{"commit", "--yes", "--coauthor", "Local Coauthor <local@example.test>"})
 	cmd.SetIn(a.stdin)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -408,7 +446,7 @@ func makeGitDir(t *testing.T, root, name string) string {
 
 func aiResponseServer(t *testing.T, content string) *httptest.Server {
 	t.Helper()
-	return aiResponseServerFunc(t, func() string { return content })
+	return aiResponseServerInspect(t, content, nil)
 }
 
 func aiResponseServerFunc(t *testing.T, content func() string) *httptest.Server {
@@ -423,6 +461,33 @@ func aiResponseServerFunc(t *testing.T, content func() string) *httptest.Server 
 		envelope := map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]string{"content": content()}},
+			},
+		}
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(envelope); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(buf.Bytes())
+	}))
+}
+
+func aiResponseServerInspect(t *testing.T, content string, inspect func([]byte)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inspect != nil {
+			inspect(body)
+		}
+		envelope := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": content}},
 			},
 		}
 		var buf bytes.Buffer

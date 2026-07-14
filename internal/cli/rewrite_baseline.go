@@ -33,6 +33,7 @@ type rewriteBaselineEntry struct {
 	KnownSHAs      []string `json:"known_shas,omitempty"`
 	TreeSHA        string   `json:"tree_sha"`
 	ParentSHAs     []string `json:"parent_shas"`
+	CurrentParents []string `json:"current_parent_shas,omitempty"`
 	AuthorName     string   `json:"author_name"`
 	AuthorEmail    string   `json:"author_email"`
 	AuthorDate     string   `json:"author_date"`
@@ -116,6 +117,7 @@ func captureRewriteBaselineForHashes(a *app, r repo, hashes []string) error {
 			KnownSHAs:      []string{data.SHA},
 			TreeSHA:        data.Tree,
 			ParentSHAs:     append([]string(nil), data.Parents...),
+			CurrentParents: append([]string(nil), data.Parents...),
 			AuthorName:     data.AuthorName,
 			AuthorEmail:    data.AuthorEmail,
 			AuthorDate:     data.AuthorDate,
@@ -240,6 +242,9 @@ func normalizeRewriteBaseline(manifest rewriteBaselineManifest) rewriteBaselineM
 	manifest.Version = rewriteBaselineVersion
 	for i := range manifest.Entries {
 		manifest.Entries[i].KnownSHAs = sortedUniqueNonEmpty(append(manifest.Entries[i].KnownSHAs, manifest.Entries[i].FirstSHA, manifest.Entries[i].CurrentSHA))
+		if manifest.Entries[i].CurrentParents == nil {
+			manifest.Entries[i].CurrentParents = append([]string(nil), manifest.Entries[i].ParentSHAs...)
+		}
 	}
 	sort.Slice(manifest.Entries, func(i, j int) bool {
 		if manifest.Entries[i].FirstSHA == manifest.Entries[j].FirstSHA {
@@ -264,6 +269,12 @@ func updateRewriteBaselineFromCommitMap(gitDir string, commitMap map[string]stri
 			manifest.Entries[i].KnownSHAs = append(manifest.Entries[i].KnownSHAs, manifest.Entries[i].CurrentSHA, next)
 			manifest.Entries[i].CurrentSHA = next
 			changed = true
+		}
+		for parentIndex, parent := range manifest.Entries[i].CurrentParents {
+			if next := commitMap[parent]; next != "" && next != parent {
+				manifest.Entries[i].CurrentParents[parentIndex] = next
+				changed = true
+			}
 		}
 	}
 	if !changed {

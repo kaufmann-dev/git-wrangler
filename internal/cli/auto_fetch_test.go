@@ -240,6 +240,36 @@ func TestRewriteCommitsFetchFailureStopsBeforeAIGeneration(t *testing.T) {
 	}
 }
 
+func TestRewriteCoauthorsFetchFailureStopsBeforeScan(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	root := tempGitRepos(t, "repo")
+	t.Chdir(root)
+	scanned := false
+	runner := fakeRunner{
+		lookPath: fakeGitAndFilterRepoLookPath,
+		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			joined := name + " " + strings.Join(args, " ")
+			if joined == "git fetch --prune origin" {
+				return "", "offline", errors.New("fetch failed")
+			}
+			scanned = true
+			return "", "", errors.New("unexpected command: " + joined)
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := ExecuteWithRunner(context.Background(), runner, []string{
+		"rewrite-coauthors", "add", "--coauthor", "Test User <test@example.test>", "--yes",
+	}, strings.NewReader(""), &stdout, &stderr)
+	assertExitCode(t, err, 1)
+	if scanned {
+		t.Fatal("coauthor history scan should not run after fetch failure")
+	}
+	if !strings.Contains(stderr.String(), "git fetch failed") {
+		t.Fatalf("missing fetch failure output:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
+	}
+}
+
 func TestRewriteDatesFetchFailureStopsBeforePlanning(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, tc := range []struct {

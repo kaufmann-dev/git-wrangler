@@ -18,7 +18,7 @@ Do not automatically load these files into context with `AGENTS.md`; open them o
 
 `internal/cli` also owns command-local repository target selection, confirmation handling, JSON output, progress plumbing, and ordered result reporting. Commands that support `--repo` must use exact single-repository targeting through the shared helper; commands without `--repo` keep discovering repositories below the current directory.
 
-Remote-aware read/report commands and history rewrite planning stay `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` refresh with `git fetch --prune origin` before inspecting remote-tracking refs unless `--no-fetch` is set. `rollback-rewrites` is local-only and never fetches. Fetch failures are per-repository failures for read/report commands and hard stops before planning or mutation for history rewrites.
+Remote-aware read/report commands and history rewrite planning stay `origin`-centric. `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-coauthors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` refresh with `git fetch --prune origin` before inspecting remote-tracking refs unless `--no-fetch` is set. `rollback-rewrites` is local-only and never fetches. Fetch failures are per-repository failures for read/report commands and hard stops before planning or mutation for history rewrites.
 
 Bulk per-repository work in `internal/cli` should use ordered worker patterns: read-only scans cap at 32 workers, independent Git mutations cap at 4 workers, and history rewrites that are not explicitly parallelized remain sequential. Workers must return result structs; print only after collection so repository output order stays stable. Confirmed AI and non-AI rewrite applications run repositories in parallel with the independent Git mutation cap.
 
@@ -44,13 +44,15 @@ Long-running bulk phases should report progress to stderr with the shared progre
 
 `internal/ai` owns AI commit creation and AI rewrite generation: redaction, batching, OpenAI-compatible chat completions calls, request pacing and concurrency, response validation, retry behavior, and callback generation. Auto-generated commits are excluded during scanning and counted as a dedicated skipped stat: merges (two or more parents, structural check) and Git-generated subjects (`Revert "`/`Reapply "` prefixes, `fixup!`/`squash!`/`amend!` markers). `RequireScope` gates both commit selection and generated-output validation: with it set, the prompt demands a scope and scopeless subjects are rejected as invalid; without it, scope stays optional per the Conventional Commits spec. AI batch request starts are paced by `--rpm` while in-flight requests are bounded by `--concurrency` (default 8, worker pool); keep these knobs orthogonal. All API calls share one pooled HTTP/1.1 client (HTTP/2 disabled); do not create per-request clients. Batch retries use up to four attempts with jittered exponential backoff, then per-commit retries and a final single-commit recovery pass. Transient retry attempts are aggregated into one end-of-run summary progress event instead of per-attempt output.
 
+`internal/trailers` owns Git final-trailer-block parsing, raw trailer preservation, `Name <email>` validation, and coauthor mutations. Preserve trailer spelling, casing, order, and folding. Canonicalize only new or explicitly replaced coauthors as `Co-authored-by: Name <email>`.
+
 `internal/version` owns `Version`, `Commit`, and `Date`, defaulting to `dev`, `unknown`, and `unknown`. GoReleaser injects release values with ldflags.
 
 ## Commands
 
 Keep these public commands unless the user explicitly asks to change the surface:
 
-`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `log`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, `rewrite-hours`, `rollback-rewrites`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
+`activity`, `clone`, `commit`, `config`, `doctor`, `fetch`, `fix-gitignore`, `info`, `init`, `license`, `log`, `pull`, `push`, `remove-secrets`, `rename-branch`, `rename-repo`, `reset`, `review`, `rewrite-authors`, `rewrite-coauthors`, `rewrite-commits`, `rewrite-dates`, `rewrite-hours`, `rollback-rewrites`, `status`, `untrack`, `version`, and Cobra-generated `completion` and `help`.
 
 Do not restore `update` or `uninstall`. Updates are handled by Homebrew, Scoop, or manual replacement of release binaries.
 
@@ -62,7 +64,7 @@ All interactive prompts use the shared context-aware prompt session. `Ctrl+C` an
 
 `--json` is command-local and limited to `status`, `info`, `review`, `doctor`, `config show`, and `version`. JSON mode writes one document to stdout, suppresses colors/progress/prompts/human summaries, keeps stderr empty except Cobra parse errors or unavoidable process-level failures, and must not expose stored secrets.
 
-`--no-fetch` is command-local and limited to `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours`. It skips only the automatic origin refresh; it must not change repository targeting or other command behavior.
+`--no-fetch` is command-local and limited to `status`, `info`, `review`, `remove-secrets`, `rewrite-authors`, `rewrite-coauthors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours`. It skips only the automatic origin refresh; it must not change repository targeting or other command behavior.
 
 ## Runtime Dependencies
 
@@ -113,7 +115,7 @@ Keep this as a short top-level section because history rewrite commands are dest
 
 History rewrite commands must require explicit confirmation before mutation, with `--yes` as the standard noninteractive confirmation flag. Capture and restore `origin` when `git-filter-repo` removes it. Print warnings to stderr for destructive operations. Bulk commands must return nonzero if any repository operation fails; no-op skips and declined confirmations remain successful.
 
-`rewrite-authors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` share a command-neutral cumulative baseline under `.git/git-wrangler/baseline/`. Existing baseline metadata must not be overwritten; later rewrites add only newly eligible commits and update current SHA mappings from `.git/filter-repo/commit-map`. `rollback-rewrites` restores that shared baseline across commands while preserving commits created between rewrite runs, replaying unbaselined commits only when parent links must be reconnected. `remove-secrets` is the only history rewrite command that clears the shared baseline and creates no replacement baseline.
+`rewrite-authors`, `rewrite-coauthors`, `rewrite-commits`, `rewrite-dates`, and `rewrite-hours` share a command-neutral cumulative baseline under `.git/git-wrangler/baseline/`. Existing baseline metadata must not be overwritten; later rewrites add only newly eligible commits and update current SHA and current-parent mappings from `.git/filter-repo/commit-map`. `rollback-rewrites` restores that shared baseline across commands while preserving commits created between rewrite runs, replaying unbaselined commits only when parent links must be reconnected. `remove-secrets` is the only history rewrite command that clears the shared baseline and creates no replacement baseline.
 
 `rewrite-dates --window HH:MM-HH:MM` uses the existing date planner with one uniform time window for every targeted repository and every day. `rewrite-dates --window mon-fri=HH:MM-HH:MM` applies explicit windows only to listed days and uses generated per-day working hours for omitted days. Omitting `--window` preserves generated per-day working hours. `rewrite-hours --window HH:MM-HH:MM` is required, preserves each commit's current calendar date, and rewrites author and committer dates into the window. `rewrite-hours` day-of-week schedules rewrite only listed days and leave omitted days unchanged. Do not restore `rewrite-dates --rollback`; rollback is handled by `rollback-rewrites`.
 

@@ -71,6 +71,7 @@ func TestRootHelpUsesCobraGroups(t *testing.T) {
 		"fetch",
 		"commit",
 		"rewrite-commits",
+		"rewrite-coauthors",
 		"completion",
 		"activity",
 		"log",
@@ -102,7 +103,7 @@ func TestCommandSurfaceMatchesExpected(t *testing.T) {
 	}{
 		{name: "activity", group: "utility", flags: strings.Fields("all global-scale guided repo user year")},
 		{name: "clone", group: "remote", flags: strings.Fields("guided into limit user visibility")},
-		{name: "commit", group: "local", flags: strings.Fields("body concurrency guided repo rpm timeout yes")},
+		{name: "commit", group: "local", flags: strings.Fields("body coauthor concurrency guided repo rpm timeout yes")},
 		{name: "config", group: "utility"},
 		{name: "doctor", group: "utility", flags: strings.Fields("json")},
 		{name: "fetch", group: "remote", flags: strings.Fields("guided prune repo")},
@@ -119,7 +120,8 @@ func TestCommandSurfaceMatchesExpected(t *testing.T) {
 		{name: "reset", group: "local", flags: strings.Fields("guided repo yes")},
 		{name: "review", group: "local", flags: strings.Fields("guided json no-fetch repo")},
 		{name: "rewrite-authors", group: "history", flags: strings.Fields("email guided name no-fetch repo rewrite-after rewrite-before yes")},
-		{name: "rewrite-commits", group: "history", flags: strings.Fields("batch-size body concurrency guided no-fetch repo require-scope rewrite-after rewrite-before rpm skip-conventional timeout yes")},
+		{name: "rewrite-coauthors", group: "history"},
+		{name: "rewrite-commits", group: "history", flags: strings.Fields("batch-size body concurrency guided no-fetch remove-coauthors repo require-scope rewrite-after rewrite-before rpm skip-conventional timeout yes")},
 		{name: "rewrite-dates", group: "history", flags: strings.Fields("days end-date frequency guided no-fetch repo rewrite-after rewrite-before seed spread start-date until window yes")},
 		{name: "rewrite-hours", group: "history", flags: strings.Fields("guided no-fetch repo rewrite-after rewrite-before window yes")},
 		{name: "rollback-rewrites", group: "history", flags: strings.Fields("guided repo yes")},
@@ -177,6 +179,27 @@ func TestRootAndConfigCommandsComeFromSpecs(t *testing.T) {
 	for name := range wantChildren {
 		if !gotChildren[name] {
 			t.Fatalf("commandSpecs config subcommand %q was not built", name)
+		}
+	}
+}
+
+func TestRewriteCoauthorSubcommandSurface(t *testing.T) {
+	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
+	parent := commandByName(t, root, "rewrite-coauthors")
+	for _, tc := range []struct {
+		name  string
+		flags string
+	}{
+		{name: "add", flags: "coauthor guided no-fetch repo rewrite-after rewrite-before yes"},
+		{name: "replace", flags: "coauthor email guided no-fetch repo rewrite-after rewrite-before yes"},
+		{name: "remove", flags: "all email guided no-fetch repo rewrite-after rewrite-before yes"},
+	} {
+		cmd := commandByName(t, parent, tc.name)
+		if got := strings.Join(localFlagNames(cmd), " "); got != tc.flags {
+			t.Fatalf("rewrite-coauthors %s flags = %q, want %q", tc.name, got, tc.flags)
+		}
+		if flag := cmd.Flags().ShorthandLookup("y"); flag == nil || flag.Name != "yes" {
+			t.Fatalf("rewrite-coauthors %s does not expose -y", tc.name)
 		}
 	}
 }
