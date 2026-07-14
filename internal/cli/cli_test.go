@@ -201,6 +201,20 @@ func TestConfigSubcommandSurfaceMatchesExpected(t *testing.T) {
 	}
 }
 
+func TestLicenseRemoveSubcommandSurfaceMatchesExpected(t *testing.T) {
+	root := newRootCommand(newApp(context.Background(), fakeRunner{}, strings.NewReader(""), io.Discard, io.Discard))
+	license := commandByName(t, root, "license")
+	remove := childCommandByName(t, license, "remove")
+	got := localFlagNames(remove)
+	want := strings.Fields("guided repo yes")
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("license remove flags = %q, want %q", got, want)
+	}
+	if flag := remove.Flags().ShorthandLookup("y"); flag == nil || flag.Name != "yes" {
+		t.Fatal("license remove does not expose -y for --yes")
+	}
+}
+
 func commandUseName(use string) string {
 	return strings.Fields(use)[0]
 }

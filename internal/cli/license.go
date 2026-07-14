@@ -29,6 +29,11 @@ type licenseOptions struct {
 	overwrite    bool
 }
 
+type licenseRemoveOptions struct {
+	target       targetOptions
+	confirmation confirmationOptions
+}
+
 func licenseOptionsFromCommand(a *app, cmd *cobra.Command) (licenseOptions, bool) {
 	licenseType, ok := requiredStringFlag(a, cmd, "type", "License type: ")
 	if !ok {
@@ -137,6 +142,98 @@ func runLicense(a *app, cmd *cobra.Command, args []string) int {
 	return status
 }
 
+func licenseRemoveOptionsFromCommand(cmd *cobra.Command) licenseRemoveOptions {
+	return licenseRemoveOptions{
+		target:       targetOptionsFromCommand(cmd),
+		confirmation: confirmationOptionsFromCommand(cmd),
+	}
+}
+
+func runLicenseRemove(a *app, cmd *cobra.Command, args []string) int {
+	opts := licenseRemoveOptionsFromCommand(cmd)
+	if !requireGit(a, "license remove") {
+		return 1
+	}
+	repos, err := opts.target.repositories()
+	if err != nil {
+		a.error(err.Error())
+		return 1
+	}
+	if len(repos) == 0 {
+		return noRepos(a)
+	}
+
+	candidates := make([]repo, 0, len(repos))
+	skipped := 0
+	failed := 0
+	status := 0
+	for _, r := range repos {
+		path := filepath.Join(r.dir, "LICENSE")
+		info, err := os.Lstat(path)
+		switch {
+		case os.IsNotExist(err):
+			renderStatusLine(a, a.stdout, statusSkip, r.display, "LICENSE does not exist")
+			skipped++
+		case err != nil:
+			renderErrorBlock(a, r.display+": could not inspect LICENSE", err.Error())
+			failed++
+			status = 1
+		case info.IsDir():
+			renderErrorBlock(a, r.display+": could not remove LICENSE", "LICENSE is a directory, not a file")
+			failed++
+			status = 1
+		case !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0:
+			renderErrorBlock(a, r.display+": could not remove LICENSE", "LICENSE is not a regular file or symbolic link")
+			failed++
+			status = 1
+		default:
+			candidates = append(candidates, r)
+		}
+	}
+
+	if len(candidates) == 0 {
+		renderLicenseRemovalSummary(a, 0, skipped, failed)
+		return status
+	}
+
+	renderWarning(a, fmt.Sprintf("This operation will permanently remove LICENSE files from %d repositories.", len(candidates)))
+	confirmation := confirmOrSkip(a, opts.confirmation.yes, fmt.Sprintf("Remove LICENSE files from %d repositories?", len(candidates)))
+	if confirmation == confirmationUnavailable || confirmation == confirmationCancelled {
+		return 1
+	}
+	if confirmation == confirmationDeclined {
+		renderLicenseRemovalSummary(a, 0, skipped+len(candidates), failed)
+		return status
+	}
+
+	removed := 0
+	for _, r := range candidates {
+		path := filepath.Join(r.dir, "LICENSE")
+		if err := os.Remove(path); err != nil {
+			if os.IsNotExist(err) {
+				renderStatusLine(a, a.stdout, statusSkip, r.display, "LICENSE does not exist")
+				skipped++
+				continue
+			}
+			renderErrorBlock(a, r.display+": could not remove LICENSE", err.Error())
+			failed++
+			status = 1
+			continue
+		}
+		removed++
+	}
+	renderLicenseRemovalSummary(a, removed, skipped, failed)
+	return status
+}
+
+func renderLicenseRemovalSummary(a *app, removed, skipped, failed int) {
+	renderSummary(a,
+		summaryCount{label: "removed", value: removed, color: a.ui.Green},
+		summaryCount{label: "skipped", value: skipped, color: a.ui.Yellow},
+		summaryCount{label: "failed", value: failed, color: a.ui.Red},
+	)
+}
+
 func supportedLicenseIDs() []string {
 	ids := make([]string, 0, len(licenseTemplates))
 	for _, template := range licenseTemplates {
@@ -159,6 +256,7 @@ var licenseTemplates = []licenseTemplate{
 	{id: "apache-2.0", displayName: "Apache License 2.0", requiresHolder: true, textFile: "Apache-2.0.txt"},
 	{id: "gpl-3.0", displayName: "GNU General Public License v3.0", requiresHolder: true, gnuNotice: true, textFile: "GPL-3.0-only.txt"},
 	{id: "mit", displayName: "MIT License", requiresHolder: true, noticeInBody: true, textFile: "MIT.txt"},
+	{id: "0bsd", displayName: "BSD Zero Clause License", requiresHolder: true, noticeInBody: true, textFile: "0BSD.txt"},
 	{id: "bsd-2-clause", displayName: "BSD 2-Clause License", requiresHolder: true, noticeInBody: true, textFile: "BSD-2-Clause.txt"},
 	{id: "bsd-3-clause", displayName: "BSD 3-Clause License", requiresHolder: true, noticeInBody: true, textFile: "BSD-3-Clause.txt"},
 	{id: "bsl-1.0", displayName: "Boost Software License 1.0", textFile: "BSL-1.0.txt"},

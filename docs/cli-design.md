@@ -109,7 +109,7 @@ Preferred count orders:
 - `log`: commits, repositories, failed.
 - `commit`: committed, skipped, failed.
 - `fix-gitignore`: with changes, unchanged, failed; then updated, skipped, failed after apply.
-- `license`: created, overwritten, skipped, failed.
+- `license`: created, overwritten, skipped, failed; `license remove`: removed, skipped, failed.
 - `rename-branch`: renamed, skipped, failed.
 - `reset`: reset, skipped, failed.
 - `review`: with unpushed changes, clean, failed.
@@ -156,7 +156,9 @@ Scan first with embedded `github/gitignore` templates selected from detected lan
 
 ### `license`
 
-Require an explicit license type in noninteractive runs and prompt for it in interactive/guided runs. Copyright-bearing templates require a holder name and use `--year`; holder-free templates ignore `--name`. Print conflicts, skips, and failures. Suppress routine success lines. `--overwrite` prompts once for existing files. Summarize `created`, `overwritten`, `skipped`, and `failed`.
+Require an explicit license type in noninteractive add/replace runs and prompt for it in interactive/guided runs. Copyright-bearing templates require a holder name and use `--year`; holder-free templates ignore `--name`. Print conflicts, skips, and failures. Suppress routine success lines. `--overwrite` prompts once for existing files. Summarize `created`, `overwritten`, `skipped`, and `failed`.
+
+`license remove` targets only the root `LICENSE` entry. It prints missing files as skips, rejects directories and unsupported filesystem entries, warns and prompts once for all removal candidates unless `--yes` is set, and suppresses routine success lines. A declined removal counts every candidate as skipped. Summarize `removed`, `skipped`, and `failed`.
 
 ### `rename-branch`
 

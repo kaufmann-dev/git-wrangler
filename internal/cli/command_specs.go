@@ -149,7 +149,7 @@ func commandSpecs() []commandSpec {
 		},
 		{
 			use:   "license",
-			short: "Add or replace LICENSE files.",
+			short: "Add, replace, or remove LICENSE files.",
 			group: "local",
 			run:   runLicense,
 			flags: joinFlags(targetFlags(), flags{
@@ -161,6 +161,15 @@ func commandSpecs() []commandSpec {
 			guided: guidedSpec{
 				prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedEnum("type", "License type", supportedLicenseIDs()...), guidedPositiveInt("year", "Copyright year"), guidedString("name", "Copyright holder name"), guidedBool("overwrite", "Overwrite existing licenses")},
 				setup:   guideLicense,
+			},
+			children: []commandSpec{
+				{
+					use:    "remove",
+					short:  "Remove LICENSE files.",
+					run:    runLicenseRemove,
+					flags:  joinFlags(targetFlags(), confirmationFlags()),
+					guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository")}},
+				},
 			},
 		},
 		{
