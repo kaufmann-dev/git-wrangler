@@ -106,10 +106,7 @@ func splitMessageLines(raw string) []messageLine {
 			end = start + newline
 			next = end + 1
 		}
-		text := raw[start:end]
-		if strings.HasSuffix(text, "\r") {
-			text = strings.TrimSuffix(text, "\r")
-		}
+		text := strings.TrimSuffix(raw[start:end], "\r")
 		lines = append(lines, messageLine{start: start, end: end, text: text})
 		if next > len(raw) {
 			break
