@@ -22,6 +22,9 @@ including when `--yes` is present. A command that reaches a final confirmation
 without prompting availability fails nonzero and tells the user to pass
 `--yes`. `--yes` and `-y` skip confirmations only.
 
+Visible and hidden TTY prompts support cursor-aware line editing. Hidden values
+remain unrendered, and prompt history is not retained between fields.
+
 At any active prompt, `Ctrl+C` or interactive EOF/`Ctrl+D` immediately cancels
 the command without requiring Enter. Cancellation stops later prompts and work,
 prints `SKIP stopped: operation cancelled` exactly once, and exits nonzero. It

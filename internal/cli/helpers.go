@@ -77,7 +77,12 @@ func noRepos(a *app) int {
 }
 
 func confirm(a *app, question string) confirmationResult {
-	result := a.prompts.confirm(question)
+	result, err := a.prompts.confirm(question)
+	if err != nil {
+		a.plainErrorf("could not read confirmation: %s", err.Error())
+		a.promptFailed = true
+		return confirmationUnavailable
+	}
 	if result == confirmationUnavailable {
 		a.plainErrorf("confirmation requires an interactive terminal; pass --yes to confirm noninteractively.")
 		a.promptFailed = true
@@ -125,7 +130,11 @@ func requiredStringFlag(a *app, cmd *cobra.Command, name, prompt string) (string
 	if errors.Is(err, errPromptCancelled) {
 		return "", false
 	}
-	if err != nil || answer == "" {
+	if err != nil {
+		a.plainErrorf("could not read --%s: %s", name, err.Error())
+		return "", false
+	}
+	if answer == "" {
 		a.plainErrorf("--%s is required.", name)
 		return "", false
 	}

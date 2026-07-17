@@ -480,7 +480,11 @@ func secretValue(a *app, key string, hasValue bool, prompt string) (string, bool
 	if errors.Is(err, errPromptCancelled) {
 		return "", false
 	}
-	if err != nil || value == "" {
+	if err != nil {
+		a.plainErrorf("could not read secret input: %s", err.Error())
+		return "", false
+	}
+	if value == "" {
 		a.plainErrorf("secret input is required.")
 		return "", false
 	}
