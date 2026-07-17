@@ -119,7 +119,9 @@ git-wrangler rewrite-dates --guided
 
 Guided setup requires both stdin and stderr to be terminals, prints the selected
 configuration to stderr, and cannot be combined with `--json`. Missing required
-values are prompted for in a terminal and fail in noninteractive runs.
+values are prompted for in a terminal and fail in noninteractive runs. Visible
+and hidden prompts support cursor-aware editing without retaining cross-prompt
+history; hidden values remain unrendered.
 Pressing `Ctrl+C` or sending EOF with `Ctrl+D` cancels any active prompt
 immediately, stops the command before further work, and exits nonzero.
 

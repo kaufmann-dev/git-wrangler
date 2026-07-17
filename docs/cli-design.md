@@ -82,9 +82,9 @@ Separate repo blocks with exactly one blank line. Do not print clean/no-change r
 
 Destructive warnings use one style through `renderWarning`. They go to stderr and describe the irreversible action concretely.
 
-Setup prompts, guided prompts, secret prompts, and final confirmations use the shared prompt session. Prompting is available only when both stdin and stderr are TTYs. Tests inject prompt eligibility and streams through that session.
+Setup prompts, guided prompts, secret prompts, and final confirmations use the shared prompt session. Prompting is available only when both stdin and stderr are TTYs. Real TTY input supports cursor-aware line editing for visible and hidden values, keeps hidden values unrendered, and retains no cross-prompt history. Tests inject prompt eligibility and streams through that session.
 
-`Ctrl+C` and interactive EOF/`Ctrl+D` cancel the active prompt immediately without waiting for Enter. Cancellation stops later prompts and command work, restores terminal state after secret input, prints `SKIP stopped: operation cancelled` exactly once, and exits nonzero. It is distinct from an empty required value, declined confirmation, invalid guided answer, or missing secret.
+`Ctrl+C` and interactive EOF/`Ctrl+D` cancel the active prompt immediately without waiting for Enter. Cancellation stops later prompts and command work, restores terminal state after any TTY input, prints `SKIP stopped: operation cancelled` exactly once, and exits nonzero. It is distinct from an empty required value, declined confirmation, invalid guided answer, or missing secret.
 
 Missing required values prompt by default when prompting is available and fail otherwise. `--yes` and `-y` skip confirmations only; they must not fill required values such as names, branches, config values, API keys, or secrets.
 

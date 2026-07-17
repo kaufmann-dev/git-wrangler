@@ -21,6 +21,19 @@ type blockingPromptReader struct {
 	once    sync.Once
 }
 
+type singleBytePromptReader struct {
+	value []byte
+}
+
+func (r *singleBytePromptReader) Read(buf []byte) (int, error) {
+	if len(r.value) == 0 {
+		return 0, io.EOF
+	}
+	buf[0] = r.value[0]
+	r.value = r.value[1:]
+	return 1, nil
+}
+
 func newBlockingPromptReader() *blockingPromptReader {
 	return &blockingPromptReader{started: make(chan struct{}), release: make(chan string, 1)}
 }
@@ -43,6 +56,143 @@ func TestPromptSessionRequiresStdinAndStderrTTY(t *testing.T) {
 	p.interactive = func() bool { return true }
 	if !p.available() {
 		t.Fatal("injected TTY eligibility was ignored")
+	}
+}
+
+func TestPromptTerminalEditsUnicodeLineAtCursor(t *testing.T) {
+	input := &singleBytePromptReader{value: []byte("Meine tolle Beschreibung\x1b[D\x1b[D\x1b[D\x1b[DX\r")}
+	var stderr bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	p := newPromptSession(ctx, cancel, input, &stderr)
+	p.editor.SetPrompt("Description: ")
+	restores := 0
+	value, err := p.readTerminalWithContext(p.editor.ReadLine, func() error {
+		restores++
+		return nil
+	})
+	if err != nil || value != "Meine tolle BeschreiXbung" {
+		t.Fatalf("value = %q, error = %v", value, err)
+	}
+	if restores != 1 {
+		t.Fatalf("terminal restore count = %d", restores)
+	}
+	if strings.Contains(stderr.String(), "^[[D") {
+		t.Fatalf("arrow escape was rendered literally: %q", stderr.String())
+	}
+}
+
+func TestPromptTerminalPreservesBufferedInputAcrossPrompts(t *testing.T) {
+	var stderr bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	p := newPromptSession(ctx, cancel, strings.NewReader("first\rsecond\r"), &stderr)
+	restore := func() error { return nil }
+
+	p.editor.SetPrompt("First: ")
+	first, err := p.readTerminalWithContext(p.editor.ReadLine, restore)
+	if err != nil || first != "first" {
+		t.Fatalf("first value = %q, error = %v", first, err)
+	}
+	p.editor.SetPrompt("Second: ")
+	second, err := p.readTerminalWithContext(p.editor.ReadLine, restore)
+	if err != nil || second != "second" {
+		t.Fatalf("second value = %q, error = %v", second, err)
+	}
+}
+
+func TestPromptTerminalEditsSecretWithoutEchoOrHistory(t *testing.T) {
+	input := strings.NewReader("visible\r\x1b[Asecrt\x1b[De\r")
+	var stderr bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	p := newPromptSession(ctx, cancel, input, &stderr)
+	restore := func() error { return nil }
+
+	p.editor.SetPrompt("Visible: ")
+	visible, err := p.readTerminalWithContext(p.editor.ReadLine, restore)
+	if err != nil || visible != "visible" {
+		t.Fatalf("visible value = %q, error = %v", visible, err)
+	}
+	secret, err := p.readTerminalWithContext(func() (string, error) {
+		return p.editor.ReadPassword("Secret: ")
+	}, restore)
+	if err != nil || secret != "secret" {
+		t.Fatalf("secret value = %q, error = %v", secret, err)
+	}
+	if strings.Contains(stderr.String(), "secret") || strings.Contains(stderr.String(), "secrt") {
+		t.Fatalf("secret input was echoed: %q", stderr.String())
+	}
+}
+
+func TestPromptTerminalControlKeysCancelPartialInput(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		key  byte
+	}{
+		{name: "ctrl-c", key: 3},
+		{name: "ctrl-d", key: 4},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			input := append([]byte("partial"), test.key)
+			p := newPromptSession(ctx, cancel, strings.NewReader(string(input)), io.Discard)
+			p.editor.SetPrompt("Value: ")
+			restores := 0
+			value, err := p.readTerminalWithContext(p.editor.ReadLine, func() error {
+				restores++
+				return nil
+			})
+			if value != "" || !errors.Is(err, errPromptCancelled) {
+				t.Fatalf("value = %q, error = %v", value, err)
+			}
+			if ctx.Err() == nil {
+				t.Fatal("control key did not cancel the prompt context")
+			}
+			if restores != 1 {
+				t.Fatalf("terminal restore count = %d", restores)
+			}
+		})
+	}
+}
+
+func TestPromptTerminalContextCancellationRestoresBeforeReturning(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := newBlockingPromptReader()
+	p := newPromptSession(ctx, cancel, reader, io.Discard)
+	p.editor.SetPrompt("Value: ")
+	restored := make(chan struct{}, 1)
+	result := make(chan error, 1)
+	go func() {
+		_, err := p.readTerminalWithContext(p.editor.ReadLine, func() error {
+			restored <- struct{}{}
+			return nil
+		})
+		result <- err
+	}()
+	<-reader.started
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, errPromptCancelled) {
+			t.Fatalf("error = %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("prompt cancellation waited for terminal input")
+	}
+	select {
+	case <-restored:
+	default:
+		t.Fatal("terminal state was not restored before cancellation returned")
+	}
+	reader.release <- "\r"
+}
+
+func TestPromptTerminalRestoreFailureIsReturned(t *testing.T) {
+	restoreErr := errors.New("restore failed")
+	ctx, cancel := context.WithCancel(context.Background())
+	p := newPromptSession(ctx, cancel, strings.NewReader("value\r"), io.Discard)
+	p.editor.SetPrompt("Value: ")
+	value, err := p.readTerminalWithContext(p.editor.ReadLine, func() error { return restoreErr })
+	if value != "" || !errors.Is(err, restoreErr) {
+		t.Fatalf("value = %q, error = %v", value, err)
 	}
 }
 

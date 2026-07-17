@@ -31,13 +31,17 @@ type promptSession struct {
 	stdin       io.Reader
 	stderr      io.Writer
 	input       *bufio.Reader
+	editor      *term.Terminal
 	interactive func() bool
 	readSecret  func() ([]byte, error)
 	restore     func() error
 }
 
 func newPromptSession(ctx context.Context, cancel context.CancelFunc, stdin io.Reader, stderr io.Writer) *promptSession {
-	p := &promptSession{ctx: ctx, cancel: cancel, stdin: stdin, stderr: stderr, input: bufio.NewReader(stdin)}
+	terminalIO := &promptTerminalIO{reader: stdin, writer: stderr}
+	editor := term.NewTerminal(terminalIO, "")
+	editor.History = promptHistory{}
+	p := &promptSession{ctx: ctx, cancel: cancel, stdin: stdin, stderr: stderr, input: bufio.NewReader(stdin), editor: editor}
 	p.interactive = func() bool {
 		in, inOK := stdin.(*os.File)
 		out, outOK := stderr.(*os.File)
@@ -51,6 +55,9 @@ func (p *promptSession) available() bool {
 }
 
 func (p *promptSession) read(prompt string) (string, error) {
+	if input, output, ok := p.terminalFiles(); ok {
+		return p.readTerminal(input, output, prompt, false)
+	}
 	fmt.Fprint(p.stderr, prompt)
 	answer, err := p.readWithContext(func() (string, error) {
 		return p.input.ReadString('\n')
@@ -59,31 +66,133 @@ func (p *promptSession) read(prompt string) (string, error) {
 }
 
 func (p *promptSession) secret(prompt string) (string, error) {
-	fmt.Fprint(p.stderr, prompt)
 	if p.readSecret != nil {
+		fmt.Fprint(p.stderr, prompt)
 		answer, err := p.readSecretWithContext(p.readSecret, p.restore)
 		if !errors.Is(err, errPromptCancelled) {
 			fmt.Fprintln(p.stderr)
 		}
 		return strings.TrimRight(string(answer), "\r\n"), err
 	}
-	if f, ok := p.stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		state, err := term.GetState(int(f.Fd()))
-		if err != nil {
-			return "", err
-		}
-		readSecret := func() ([]byte, error) { return term.ReadPassword(int(f.Fd())) }
-		restore := func() error { return term.Restore(int(f.Fd()), state) }
-		answer, err := p.readSecretWithContext(readSecret, restore)
-		if !errors.Is(err, errPromptCancelled) {
-			fmt.Fprintln(p.stderr)
-		}
-		return strings.TrimRight(string(answer), "\r\n"), err
+	if input, output, ok := p.terminalFiles(); ok {
+		return p.readTerminal(input, output, prompt, true)
 	}
+	fmt.Fprint(p.stderr, prompt)
 	answer, err := p.readWithContext(func() (string, error) {
 		return p.input.ReadString('\n')
 	})
 	return strings.TrimRight(answer, "\r\n"), err
+}
+
+type promptTerminalIO struct {
+	reader    io.Reader
+	writer    io.Writer
+	cancelled bool
+}
+
+func (rw *promptTerminalIO) Read(buf []byte) (int, error) {
+	if rw.cancelled {
+		return 0, io.EOF
+	}
+	n, err := rw.reader.Read(buf)
+	for i, value := range buf[:n] {
+		if value != 3 && value != 4 {
+			continue
+		}
+		rw.cancelled = true
+		if i == 0 {
+			return 0, io.EOF
+		}
+		return i, nil
+	}
+	return n, err
+}
+
+func (rw *promptTerminalIO) Write(buf []byte) (int, error) {
+	return rw.writer.Write(buf)
+}
+
+type promptHistory struct{}
+
+func (promptHistory) Add(string)    {}
+func (promptHistory) Len() int      { return 0 }
+func (promptHistory) At(int) string { return "" }
+
+func (p *promptSession) terminalFiles() (*os.File, *os.File, bool) {
+	input, inputOK := p.stdin.(*os.File)
+	output, outputOK := p.stderr.(*os.File)
+	if !inputOK || !outputOK || !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
+		return nil, nil, false
+	}
+	return input, output, true
+}
+
+func (p *promptSession) readTerminal(input, output *os.File, prompt string, secret bool) (string, error) {
+	state, err := term.MakeRaw(int(input.Fd()))
+	if err != nil {
+		return "", fmt.Errorf("could not enable terminal editing: %w", err)
+	}
+	restore := func() error {
+		if err := term.Restore(int(input.Fd()), state); err != nil {
+			return fmt.Errorf("could not restore terminal state: %w", err)
+		}
+		return nil
+	}
+
+	if width, height, sizeErr := term.GetSize(int(output.Fd())); sizeErr == nil {
+		_ = p.editor.SetSize(width, height)
+	}
+
+	var read func() (string, error)
+	if secret {
+		read = func() (string, error) { return p.editor.ReadPassword(prompt) }
+	} else {
+		p.editor.SetPrompt(prompt)
+		read = p.editor.ReadLine
+	}
+	answer, err := p.readTerminalWithContext(read, restore)
+	if errors.Is(err, term.ErrPasteIndicator) {
+		err = nil
+	}
+	if err != nil {
+		fmt.Fprintln(p.stderr)
+	}
+	return strings.TrimRight(answer, "\r\n"), err
+}
+
+func (p *promptSession) readTerminalWithContext(read func() (string, error), restore func() error) (string, error) {
+	type result struct {
+		value string
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		value, err := read()
+		results <- result{value: value, err: err}
+	}()
+	finish := func(value string, err error) (string, error) {
+		if restoreErr := restore(); restoreErr != nil {
+			return "", restoreErr
+		}
+		return value, err
+	}
+	select {
+	case <-p.ctx.Done():
+		value, err := finish("", errPromptCancelled)
+		p.closeInput()
+		return value, err
+	case result := <-results:
+		if p.ctx.Err() != nil {
+			value, err := finish("", errPromptCancelled)
+			p.closeInput()
+			return value, err
+		}
+		if errors.Is(result.err, io.EOF) {
+			p.cancel()
+			return finish("", errPromptCancelled)
+		}
+		return finish(result.value, result.err)
+	}
 }
 
 func (p *promptSession) readSecretWithContext(readSecret func() ([]byte, error), restore func() error) ([]byte, error) {
@@ -157,18 +266,21 @@ func (p *promptSession) closeInput() {
 	}
 }
 
-func (p *promptSession) confirm(question string) confirmationResult {
+func (p *promptSession) confirm(question string) (confirmationResult, error) {
 	if !p.available() {
-		return confirmationUnavailable
+		return confirmationUnavailable, nil
 	}
 	answer, err := p.read(question + " [y/N] ")
 	if errors.Is(err, errPromptCancelled) {
-		return confirmationCancelled
+		return confirmationCancelled, nil
+	}
+	if err != nil {
+		return confirmationUnavailable, err
 	}
 	if answer == "y" || answer == "Y" {
-		return confirmationAccepted
+		return confirmationAccepted, nil
 	}
-	return confirmationDeclined
+	return confirmationDeclined, nil
 }
 
 type guidedPrompt struct {

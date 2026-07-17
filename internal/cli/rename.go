@@ -229,6 +229,10 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 		if errors.Is(err, errPromptCancelled) {
 			return 1
 		}
+		if err != nil {
+			a.plainErrorf("could not read new repository name: %s", err.Error())
+			return 1
+		}
 		newDesc := ""
 		if opts.editDescription {
 			oldDesc, _ := a.gh.StdoutEnv(a.ctx, r.dir, ghEnv, "repo", "view", "--json", "description", "-q", ".description")
@@ -240,6 +244,10 @@ func runRenameRepo(a *app, cmd *cobra.Command, args []string) int {
 			}
 			newDesc, err = promptRead(a, "New description (leave blank to skip): ")
 			if errors.Is(err, errPromptCancelled) {
+				return 1
+			}
+			if err != nil {
+				a.plainErrorf("could not read new repository description: %s", err.Error())
 				return 1
 			}
 		}
