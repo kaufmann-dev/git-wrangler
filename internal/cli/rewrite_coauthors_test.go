@@ -144,11 +144,10 @@ func TestRewriteCoauthorsHistoryAndSharedBaselineRollback(t *testing.T) {
 		t.Fatalf("remove failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
 	}
 	messages = commitMessagesForTest(t, repoDir)
-	if strings.Contains(strings.ToLower(messages[0]), "co-authored-by") || strings.Contains(strings.ToLower(messages[2]), "co-authored-by") {
-		t.Fatalf("remove --all left regular coauthors: %#v", messages)
-	}
-	if !strings.Contains(messages[1], "Co-authored-by: Old Name <old@example.test>") {
-		t.Fatalf("remove --all changed generated commit: %q", messages[1])
+	for _, message := range messages {
+		if strings.Contains(strings.ToLower(message), "co-authored-by") {
+			t.Fatalf("remove --all left coauthors: %#v", messages)
+		}
 	}
 	assertBaselineContainsMessageForTest(t, filepath.Join(repoDir, ".git"), "Old Name <old@example.test>")
 	assertBaselineCurrentSHAsReachableForTest(t, repoDir)
@@ -161,6 +160,49 @@ func TestRewriteCoauthorsHistoryAndSharedBaselineRollback(t *testing.T) {
 	rolledBack := commitMessagesForTest(t, repoDir)
 	if strings.Join(rolledBack, "\x00") != strings.Join(original, "\x00") {
 		t.Fatalf("rollback messages = %#v, want %#v", rolledBack, original)
+	}
+}
+
+func TestRewriteCoauthorsRemoveAndReplaceIncludeMergeCommits(t *testing.T) {
+	requireGitFilterRepoForTest(t)
+	t.Setenv("NO_COLOR", "1")
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	runGitForTest(t, "", "init", "-b", "main", repoDir)
+	runGitForTest(t, repoDir, "config", "user.name", "Test User")
+	runGitForTest(t, repoDir, "config", "user.email", "test@example.test")
+	commitMessageForTest(t, repoDir, "base", "2024-01-15T10:00:00 +0000")
+	runGitForTest(t, repoDir, "checkout", "-b", "topic")
+	commitMessageForTest(t, repoDir, "topic work", "2024-01-16T10:00:00 +0000")
+	runGitForTest(t, repoDir, "checkout", "main")
+	commitMessageForTest(t, repoDir, "main work", "2024-01-17T10:00:00 +0000")
+	runGitForTest(t, repoDir, "merge", "--no-ff", "topic", "-m", "merge topic\n\nCo-authored-by: Old Name <old@example.test>\nCo-authored-by: Other Name <other@example.test>\nSession: kept")
+
+	stdout, stderr, err := runRealCLIForTest([]string{
+		"rewrite-coauthors", "replace", "--repo", repoDir, "--no-fetch", "--yes",
+		"--email", "other@example.test", "--coauthor", "New Name <new@example.test>",
+	})
+	if err != nil {
+		t.Fatalf("replace failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+	if strings.Contains(stderr, "Skipped generated commits") {
+		t.Fatalf("replace preview reported generated skips:\n%s", stderr)
+	}
+	stdout, stderr, err = runRealCLIForTest([]string{
+		"rewrite-coauthors", "remove", "--repo", repoDir, "--no-fetch", "--yes", "--email", "old@example.test",
+	})
+	if err != nil {
+		t.Fatalf("remove failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Summary: 1 commit messages rewritten, 1 repositories updated, 0 skipped, 0 failed") {
+		t.Fatalf("remove summary missing:\n%s", stdout)
+	}
+	merge := strings.TrimSpace(runGitForTest(t, repoDir, "log", "-1", "--format=%B"))
+	want := "merge topic\n\nCo-authored-by: New Name <new@example.test>\nSession: kept"
+	if merge != want {
+		t.Fatalf("merge message = %q, want %q", merge, want)
+	}
+	if parents := strings.Fields(runGitForTest(t, repoDir, "log", "-1", "--format=%P")); len(parents) != 2 {
+		t.Fatalf("merge parents = %v, want two", parents)
 	}
 }
 
