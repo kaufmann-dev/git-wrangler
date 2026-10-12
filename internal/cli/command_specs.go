@@ -254,13 +254,14 @@ func commandSpecs() []commandSpec {
 				},
 				{
 					use:   "remove",
-					short: "Remove selected or all coauthors.",
+					short: "Remove selected or all coauthors and other trailers.",
 					run:   runRewriteCoauthorsRemove,
 					flags: joinFlags(flags{
 						stringArrayFlag("email", "Coauthor email to remove. Repeatable."),
 						boolFlag("all", "Remove every Co-authored-by trailer."),
+						stringArrayFlag("trailer", "Trailer key to remove entirely, such as Claude-Session. Repeatable."),
 					}, targetFlags(), fetchControlFlags(), rewriteDateBoundFlags(), confirmationFlags()),
-					guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRepeatable("email", "Coauthor emails"), guidedBool("all", "Remove all coauthors"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
+					guided: guidedSpec{prompts: []guidedPrompt{guidedString("repo", "Repository"), guidedRepeatable("email", "Coauthor emails"), guidedBool("all", "Remove all coauthors"), guidedRepeatable("trailer", "Other trailer keys"), guidedBool("no-fetch", "Skip origin fetch"), guidedString("rewrite-after", "Current author date on or after"), guidedString("rewrite-before", "Current author date before")}},
 				},
 			},
 		},

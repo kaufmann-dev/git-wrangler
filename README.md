@@ -217,6 +217,7 @@ For history-only coauthor maintenance, use the dedicated local workflow:
 git-wrangler rewrite-coauthors add --coauthor "Jane Doe <jane@example.com>"
 git-wrangler rewrite-coauthors replace --email old@example.com --coauthor "Jane Doe <jane@example.com>"
 git-wrangler rewrite-coauthors remove --email former@example.com
+git-wrangler rewrite-coauthors remove --trailer Claude-Session
 ```
 
 ```bash

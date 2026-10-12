@@ -192,7 +192,7 @@ func TestRewriteCoauthorSubcommandSurface(t *testing.T) {
 	}{
 		{name: "add", flags: "coauthor guided no-fetch repo rewrite-after rewrite-before yes"},
 		{name: "replace", flags: "coauthor email guided no-fetch repo rewrite-after rewrite-before yes"},
-		{name: "remove", flags: "all email guided no-fetch repo rewrite-after rewrite-before yes"},
+		{name: "remove", flags: "all email guided no-fetch repo rewrite-after rewrite-before trailer yes"},
 	} {
 		cmd := commandByName(t, parent, tc.name)
 		if got := strings.Join(localFlagNames(cmd), " "); got != tc.flags {

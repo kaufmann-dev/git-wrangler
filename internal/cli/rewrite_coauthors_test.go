@@ -49,9 +49,11 @@ func TestRewriteCoauthorOptionValidation(t *testing.T) {
 		{args: []string{"rewrite-coauthors", "add", "--coauthor", "No Email"}, want: "identity must be in Name <email> form"},
 		{args: []string{"rewrite-coauthors", "replace", "--coauthor", "New <new@example.test>"}, want: "--email is required"},
 		{args: []string{"rewrite-coauthors", "replace", "--email", "old@example.test"}, want: "--coauthor is required"},
-		{args: []string{"rewrite-coauthors", "remove"}, want: "specify either --email or --all"},
+		{args: []string{"rewrite-coauthors", "remove"}, want: "specify --email, --all, or --trailer"},
 		{args: []string{"rewrite-coauthors", "remove", "--all", "--email", "old@example.test"}, want: "specify either --email or --all"},
 		{args: []string{"rewrite-coauthors", "remove", "--email", "same@example.test", "--email", "SAME@example.test"}, want: "duplicate email"},
+		{args: []string{"rewrite-coauthors", "remove", "--trailer", "Claude Session"}, want: "must not contain whitespace or colons"},
+		{args: []string{"rewrite-coauthors", "remove", "--trailer", "X-Id", "--trailer", "x-id"}, want: "duplicate trailer key"},
 	} {
 		var stdout, stderr bytes.Buffer
 		err := ExecuteWithRunner(context.Background(), fakeRunner{}, tc.args, strings.NewReader(""), &stdout, &stderr)
@@ -203,6 +205,21 @@ func TestRewriteCoauthorsRemoveAndReplaceIncludeMergeCommits(t *testing.T) {
 	}
 	if parents := strings.Fields(runGitForTest(t, repoDir, "log", "-1", "--format=%P")); len(parents) != 2 {
 		t.Fatalf("merge parents = %v, want two", parents)
+	}
+
+	stdout, stderr, err = runRealCLIForTest([]string{
+		"rewrite-coauthors", "remove", "--repo", repoDir, "--no-fetch", "--yes", "--trailer", "session",
+	})
+	if err != nil {
+		t.Fatalf("remove --trailer failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "session trailers") {
+		t.Fatalf("remove --trailer preview missing selector:\n%s", stderr)
+	}
+	merge = strings.TrimSpace(runGitForTest(t, repoDir, "log", "-1", "--format=%B"))
+	want = "merge topic\n\nCo-authored-by: New Name <new@example.test>"
+	if merge != want {
+		t.Fatalf("merge message after trailer removal = %q, want %q", merge, want)
 	}
 }
 

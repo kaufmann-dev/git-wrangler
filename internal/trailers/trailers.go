@@ -339,23 +339,28 @@ func ReplaceCoauthor(message, oldEmail string, replacement Identity) (string, bo
 	return parsed.render(transform, nil), true
 }
 
-// RemoveCoauthors removes all coauthor trailers or only parseable identities
-// whose emails match selectors case-insensitively.
-func RemoveCoauthors(message string, emails []string, all bool) (string, bool) {
+// RemoveTrailers removes all coauthor trailers or only parseable coauthor
+// identities whose emails match selectors case-insensitively, plus every
+// trailer whose key matches one of keys case-insensitively.
+func RemoveTrailers(message string, emails []string, allCoauthors bool, keys []string) (string, bool) {
 	parsed := Parse(message)
 	selectors := map[string]bool{}
 	for _, email := range emails {
 		selectors[strings.ToLower(email)] = true
 	}
+	removedKeys := map[string]bool{}
+	for _, key := range keys {
+		removedKeys[strings.ToLower(key)] = true
+	}
 	changed := false
 	transform := func(entry Entry) (string, bool) {
-		if !isCoauthor(entry) {
-			return entry.Raw, true
-		}
-		remove := all
-		if !remove {
-			identity, ok := entryIdentity(entry)
-			remove = ok && selectors[strings.ToLower(identity.Email)]
+		remove := removedKeys[strings.ToLower(entry.Key)]
+		if !remove && isCoauthor(entry) {
+			remove = allCoauthors
+			if !remove {
+				identity, ok := entryIdentity(entry)
+				remove = ok && selectors[strings.ToLower(identity.Email)]
+			}
 		}
 		if remove {
 			changed = true
@@ -368,6 +373,19 @@ func RemoveCoauthors(message string, emails []string, all bool) (string, bool) {
 		return message, false
 	}
 	return result, true
+}
+
+// ValidateKey validates a trailer key selector.
+func ValidateKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("trailer key must not be empty")
+	}
+	for _, r := range key {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || r == ':' {
+			return fmt.Errorf("trailer key %q must not contain whitespace or colons", key)
+		}
+	}
+	return nil
 }
 
 func (parsed Message) render(transform func(Entry) (string, bool), additions []string) string {

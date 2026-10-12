@@ -31,6 +31,7 @@ type rewriteCoauthorsOptions struct {
 	oldEmail     string
 	emails       []string
 	removeAll    bool
+	trailerKeys  []string
 }
 
 type coauthorCommit struct {
@@ -122,8 +123,13 @@ func rewriteCoauthorsOptionsFromCommand(a *app, cmd *cobra.Command, operation co
 	case coauthorRemove:
 		opts.emails = stringArrayFlagValues(cmd, "email")
 		opts.removeAll = boolFlagValue(cmd, "all")
-		if opts.removeAll == (len(opts.emails) > 0) {
+		opts.trailerKeys = stringArrayFlagValues(cmd, "trailer")
+		if opts.removeAll && len(opts.emails) > 0 {
 			a.plainErrorf("specify either --email or --all.")
+			return rewriteCoauthorsOptions{}, false
+		}
+		if !opts.removeAll && len(opts.emails) == 0 && len(opts.trailerKeys) == 0 {
+			a.plainErrorf("specify --email, --all, or --trailer.")
 			return rewriteCoauthorsOptions{}, false
 		}
 		seen := map[string]bool{}
@@ -137,6 +143,21 @@ func rewriteCoauthorsOptionsFromCommand(a *app, cmd *cobra.Command, operation co
 				break
 			}
 			seen[key] = true
+		}
+		seenKeys := map[string]bool{}
+		for _, trailerKey := range opts.trailerKeys {
+			if err != nil {
+				break
+			}
+			if err = trailers.ValidateKey(trailerKey); err != nil {
+				break
+			}
+			key := strings.ToLower(trailerKey)
+			if seenKeys[key] {
+				err = fmt.Errorf("duplicate trailer key %q", trailerKey)
+				break
+			}
+			seenKeys[key] = true
 		}
 	}
 	if err != nil {
@@ -379,7 +400,7 @@ func rewriteCoauthorMessage(message string, opts rewriteCoauthorsOptions) (strin
 	case coauthorReplace:
 		return trailers.ReplaceCoauthor(message, opts.oldEmail, opts.coauthors[0])
 	case coauthorRemove:
-		return trailers.RemoveCoauthors(message, opts.emails, opts.removeAll)
+		return trailers.RemoveTrailers(message, opts.emails, opts.removeAll, opts.trailerKeys)
 	default:
 		return message, false
 	}
@@ -408,11 +429,15 @@ func coauthorPreviewRows(opts rewriteCoauthorsOptions, repositories, affected, s
 			keyValueRow{key: "Replacement", value: opts.coauthors[0].Display},
 		)
 	case coauthorRemove:
-		selector := "all coauthors"
-		if !opts.removeAll {
-			selector = strings.Join(opts.emails, ", ")
+		selectors := []string{}
+		if opts.removeAll {
+			selectors = append(selectors, "all coauthors")
 		}
-		rows = append(rows, keyValueRow{key: "Selectors", value: selector})
+		selectors = append(selectors, opts.emails...)
+		for _, key := range opts.trailerKeys {
+			selectors = append(selectors, key+" trailers")
+		}
+		rows = append(rows, keyValueRow{key: "Selectors", value: strings.Join(selectors, ", ")})
 	}
 	return rows
 }

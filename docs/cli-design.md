@@ -191,7 +191,7 @@ Validate AI settings, refresh `origin` unless `--no-fetch` is set, apply optiona
 
 ### `rewrite-coauthors`
 
-Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, preview, prompt, or mutation. Scan commits reachable from local branches, and apply optional current-author-date bounds. `add` excludes merges, Git-generated revert/reapply subjects, and autosquash markers; `replace` and `remove` rewrite every matching commit, including merges. Show one aggregate preview with repositories, affected messages, date filter, operation selectors, and, for `add`, skipped generated commits. Warn and prompt once. Apply local-branch-only rewrites with up to four workers, preserve unrelated trailers verbatim, restore `origin`, suppress routine success lines, and summarize `commit messages rewritten`, `repositories updated`, `skipped`, and `failed`.
+Refresh `origin` first unless `--no-fetch` is set. Fetch failures stop before scanning, preview, prompt, or mutation. Scan commits reachable from local branches, and apply optional current-author-date bounds. `add` excludes merges, Git-generated revert/reapply subjects, and autosquash markers; `replace` and `remove` rewrite every matching commit, including merges. `remove --trailer KEY` also drops non-coauthor trailers by case-insensitive key. Show one aggregate preview with repositories, affected messages, date filter, operation selectors, and, for `add`, skipped generated commits. Warn and prompt once. Apply local-branch-only rewrites with up to four workers, preserve unrelated trailers verbatim, restore `origin`, suppress routine success lines, and summarize `commit messages rewritten`, `repositories updated`, `skipped`, and `failed`.
 
 ### `rewrite-dates`
 

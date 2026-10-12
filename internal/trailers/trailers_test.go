@@ -89,7 +89,7 @@ func TestCoauthorMutationsPreserveUnrelatedTrailers(t *testing.T) {
 	if !changed || strings.Count(strings.ToLower(replaced), "new@example.test") != 1 || !strings.Contains(replaced, "Co-authored-by: Current Name <new@example.test>") {
 		t.Fatalf("replace result = %q", replaced)
 	}
-	removed, changed := RemoveCoauthors(replaced, []string{"NEW@EXAMPLE.TEST"}, false)
+	removed, changed := RemoveTrailers(replaced, []string{"NEW@EXAMPLE.TEST"}, false, nil)
 	if !changed || strings.Contains(strings.ToLower(removed), "co-authored-by") {
 		t.Fatalf("remove result = %q", removed)
 	}
@@ -100,9 +100,25 @@ func TestCoauthorMutationsPreserveUnrelatedTrailers(t *testing.T) {
 
 func TestRemoveAllDropsMalformedCoauthors(t *testing.T) {
 	message := "subject\n\nCo-authored-by: not an identity\nSigned-off-by: A <a@example.test>"
-	got, changed := RemoveCoauthors(message, nil, true)
+	got, changed := RemoveTrailers(message, nil, true, nil)
 	if !changed || strings.Contains(got, "Co-authored-by") || !strings.Contains(got, "Signed-off-by") {
 		t.Fatalf("result = %q", got)
+	}
+}
+
+func TestRemoveTrailersDropsMatchingKeys(t *testing.T) {
+	message := "subject\n\nbody\n\nSigned-off-by: A <a@example.test>\nclaude-SESSION: https://example.test/session\nCo-authored-by: B <b@example.test>"
+	got, changed := RemoveTrailers(message, nil, false, []string{"Claude-Session"})
+	want := "subject\n\nbody\n\nSigned-off-by: A <a@example.test>\nCo-authored-by: B <b@example.test>"
+	if !changed || got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got, changed = RemoveTrailers("subject\n\nClaude-Session: https://example.test/session", nil, true, []string{"claude-session"})
+	if !changed || got != "subject" {
+		t.Fatalf("sole trailer result = %q", got)
+	}
+	if _, changed = RemoveTrailers(message, nil, false, []string{"Reviewed-by"}); changed {
+		t.Fatalf("absent key reported a change")
 	}
 }
 
