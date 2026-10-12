@@ -36,6 +36,11 @@ func Discover(root string) ([]Repository, error) {
 			return nil
 		}
 		if d.Name() == ".git" {
+			// An empty or partial .git directory is not a repository; Git would
+			// resolve it to an enclosing repository and duplicate that target.
+			if !isGitDir(path) {
+				return filepath.SkipDir
+			}
 			dir := DirFromGitDir(path)
 			found = append(found, Repository{
 				GitDir:  path,
@@ -64,11 +69,11 @@ func ResolveExact(path string) (Repository, error) {
 	if !info.IsDir() {
 		return Repository{}, fmt.Errorf("%s is not a Git repository", path)
 	}
-	if isBareRepository(path) {
+	if isGitDir(path) {
 		return Repository{}, fmt.Errorf("%s is a bare Git repository; --repo requires a working tree", path)
 	}
 	gitPath := filepath.Join(path, ".git")
-	if info, err := os.Stat(gitPath); err == nil && info.IsDir() {
+	if isGitDir(gitPath) {
 		return Repository{GitDir: gitPath, Dir: path, Display: DisplayName(path)}, nil
 	}
 	if validGitFile(gitPath) {
@@ -97,7 +102,9 @@ func validGitFile(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func isBareRepository(path string) bool {
+// isGitDir reports whether path holds Git's repository metadata: a HEAD file
+// plus objects and refs directories.
+func isGitDir(path string) bool {
 	if info, err := os.Stat(filepath.Join(path, "HEAD")); err != nil || info.IsDir() {
 		return false
 	}

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -438,7 +437,7 @@ func hasGitIndexEnv(env []string) bool {
 func makeGitDir(t *testing.T, root, name string) string {
 	t.Helper()
 	dir := filepath.Join(root, name)
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(dir, ".git")); err != nil {
 		t.Fatal(err)
 	}
 	return dir

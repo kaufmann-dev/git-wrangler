@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -235,7 +234,7 @@ func TestCloneRetriesTransientCloneFailureAndCleansPartialTarget(t *testing.T) {
 			case "repo clone owner/repo clones/repo":
 				cloneCalls++
 				if cloneCalls == 1 {
-					if err := os.MkdirAll(filepath.Join(target, ".git"), 0o755); err != nil {
+					if err := writeFakeGitDirForTest(filepath.Join(target, ".git")); err != nil {
 						t.Fatal(err)
 					}
 					return "", "unexpected EOF", errors.New("unexpected EOF")

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/auth"
 	"github.com/kaufmann-dev/git-wrangler/internal/credentials"
@@ -110,4 +112,15 @@ func (f fakeGitHubAuth) AuthenticateGitHub(ctx context.Context, host string, pro
 		}
 	}
 	return f.result, f.err
+}
+
+// writeFakeGitDirForTest creates the minimal metadata repository discovery
+// requires: a HEAD file plus objects and refs directories.
+func writeFakeGitDirForTest(gitDir string) error {
+	for _, dir := range []string{"objects", "refs"} {
+		if err := os.MkdirAll(filepath.Join(gitDir, dir), 0o755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
 }

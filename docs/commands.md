@@ -4,7 +4,7 @@ This is an internal implementation reference for maintainers and AI agents. It d
 
 ## Repository Targeting
 
-Most repository commands discover Git worktrees below the current directory when `--repo` is omitted. `--repo PATH` means exact single-repository targeting: operate only on `PATH`, do not recurse below it, and fail if `PATH` is not a normal or linked-worktree Git repository. Bare repository directories are rejected.
+Most repository commands discover Git worktrees below the current directory when `--repo` is omitted. Empty or partial `.git` directories (without `HEAD`, `objects`, and `refs`) are skipped, so stray placeholders never duplicate an enclosing repository. `--repo PATH` means exact single-repository targeting: operate only on `PATH`, do not recurse below it, and fail if `PATH` is not a normal or linked-worktree Git repository. Bare repository directories are rejected.
 
 Users who previously used `info --repo DIR`, `license --repo DIR`, or `rewrite-authors --repo DIR` to discover nested repositories should omit `--repo` and run from the common parent directory instead.
 

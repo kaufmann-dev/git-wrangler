@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -188,7 +187,7 @@ func TestRenameRepoRequiresGitWranglerAuthAndPassesEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
-	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(repo, ".git")); err != nil {
 		t.Fatal(err)
 	}
 	var ghEnv []string
@@ -232,7 +231,7 @@ func TestRenameRepoCancellationStopsBeforeMutation(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	rootDir := t.TempDir()
 	repo := filepath.Join(rootDir, "repo")
-	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(repo, ".git")); err != nil {
 		t.Fatal(err)
 	}
 	mutated := false
@@ -284,7 +283,7 @@ func TestRenameRepoFailsBeforeTargetDiscoveryWhenAuthenticationIsInvalid(t *test
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "repo", ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(root, "repo", ".git")); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string

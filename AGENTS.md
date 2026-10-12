@@ -24,7 +24,7 @@ Bulk per-repository work in `internal/cli` should use ordered worker patterns: r
 
 Long-running bulk phases should report progress to stderr with the shared progress helper. Progress must not change ordered stdout summaries or interleave repository result blocks.
 
-`internal/repos` is filesystem-only repository discovery and display-name handling. It discovers normal `.git` directories and linked worktree `.git` files with valid `gitdir:` pointers. It must not call Git, `gh`, or any subprocess.
+`internal/repos` is filesystem-only repository discovery and display-name handling. It discovers `.git` directories that contain a `HEAD` file plus `objects` and `refs` directories, skipping empty or partial ones, and linked worktree `.git` files with valid `gitdir:` pointers. It must not call Git, `gh`, or any subprocess.
 
 `internal/repos` also owns exact repository resolution for `--repo`. It accepts normal worktrees and valid linked-worktree `.git` files, rejects non-repositories and bare repositories, and does not recurse below the supplied path.
 

@@ -1056,7 +1056,7 @@ func TestRollbackRewritesDoesNotRequireFilterRepo(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := t.TempDir()
 	repoDir := filepath.Join(root, "repo")
-	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(repoDir, ".git")); err != nil {
 		t.Fatal(err)
 	}
 	filterRepoLookups := 0
@@ -1102,7 +1102,7 @@ func TestRollbackRewritesInvalidBaselineFailsBeforeMutation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	root := t.TempDir()
 	repoDir := filepath.Join(root, "repo")
-	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(repoDir, ".git")); err != nil {
 		t.Fatal(err)
 	}
 	baselineDir := filepath.Join(repoDir, ".git", "git-wrangler", "baseline")

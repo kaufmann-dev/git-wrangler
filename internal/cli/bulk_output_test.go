@@ -633,7 +633,7 @@ func tempGitRepos(t *testing.T, names ...string) string {
 	t.Helper()
 	root := t.TempDir()
 	for _, name := range names {
-		if err := os.MkdirAll(filepath.Join(root, name, ".git"), 0o755); err != nil {
+		if err := writeFakeGitDirForTest(filepath.Join(root, name, ".git")); err != nil {
 			t.Fatal(err)
 		}
 	}

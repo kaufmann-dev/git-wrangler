@@ -10,7 +10,7 @@ import (
 func TestDiscoverFindsReposDeterministically(t *testing.T) {
 	root := t.TempDir()
 	for _, rel := range []string{"b/.git", "a/.git", "nested/c/.git"} {
-		if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+		if err := writeFakeGitDirForTest(filepath.Join(root, rel)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -28,10 +28,37 @@ func TestDiscoverFindsReposDeterministically(t *testing.T) {
 	}
 }
 
+func TestDiscoverSkipsEmptyNestedGitDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFakeGitDirForTest(filepath.Join(root, "repo", ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "repo", ".data", "files", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repositories, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repositories) != 1 || filepath.Base(repositories[0].Dir) != "repo" {
+		t.Fatalf("repos = %#v, want only repo", repositories)
+	}
+}
+
+func TestResolveExactRejectsEmptyGitDirectory(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "files")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveExact(repo); err == nil || !strings.Contains(err.Error(), "is not a Git repository") {
+		t.Fatalf("err = %v, want not a Git repository", err)
+	}
+}
+
 func TestDisplayNameForCurrentDirectory(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	if err := os.Mkdir(".git", 0o755); err != nil {
+	if err := writeFakeGitDirForTest(".git"); err != nil {
 		t.Fatal(err)
 	}
 	repositories, err := Discover(".")
@@ -79,7 +106,7 @@ func TestDiscoverFindsLinkedWorktreeGitFile(t *testing.T) {
 func TestResolveExactFindsGitDirectory(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
-	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+	if err := writeFakeGitDirForTest(filepath.Join(repo, ".git")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ResolveExact(repo)
@@ -126,7 +153,7 @@ func TestResolveExactRejectsNonRepository(t *testing.T) {
 func TestResolveExactRejectsBareRepository(t *testing.T) {
 	root := t.TempDir()
 	for _, rel := range []string{"objects", "refs"} {
-		if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+		if err := writeFakeGitDirForTest(filepath.Join(root, rel)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -147,4 +174,15 @@ func TestReposPackageHasNoSubprocessDependency(t *testing.T) {
 	if strings.Contains(string(data), "os/exec") || strings.Contains(string(data), "exec.") {
 		t.Fatal("repos package must not execute subprocesses")
 	}
+}
+
+// writeFakeGitDirForTest creates the minimal metadata repository discovery
+// requires: a HEAD file plus objects and refs directories.
+func writeFakeGitDirForTest(gitDir string) error {
+	for _, dir := range []string{"objects", "refs"} {
+		if err := os.MkdirAll(filepath.Join(gitDir, dir), 0o755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
 }
