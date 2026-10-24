@@ -1,6 +1,6 @@
 module github.com/kaufmann-dev/git-wrangler
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/cli/oauth v1.2.2
