@@ -24,16 +24,25 @@ func Discover(root string) ([]Repository, error) {
 			return err
 		}
 		if !d.IsDir() {
-			if d.Name() == ".git" && validGitFile(path) {
-				dir := filepath.Dir(path)
-				found = append(found, Repository{
-					GitDir:  path,
-					Dir:     dir,
-					Display: DisplayName(dir),
-				})
+			if d.Name() != ".git" {
+				return nil
+			}
+			target, ok := gitFileTarget(path)
+			if !ok {
+				return nil
+			}
+			// Submodule checkouts belong to their superproject and sit
+			// detached at its pinned commit; only linked worktrees count.
+			if isSubmoduleGitDir(target) {
 				return filepath.SkipDir
 			}
-			return nil
+			dir := filepath.Dir(path)
+			found = append(found, Repository{
+				GitDir:  path,
+				Dir:     dir,
+				Display: DisplayName(dir),
+			})
+			return filepath.SkipDir
 		}
 		if d.Name() == ".git" {
 			// An empty or partial .git directory is not a repository; Git would
@@ -83,23 +92,40 @@ func ResolveExact(path string) (Repository, error) {
 }
 
 func validGitFile(path string) bool {
+	_, ok := gitFileTarget(path)
+	return ok
+}
+
+// gitFileTarget resolves the gitdir: pointer of a .git file and reports
+// whether it names an existing directory.
+func gitFileTarget(path string) (string, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false
+		return "", false
 	}
 	target, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
 	if !ok {
-		return false
+		return "", false
 	}
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return false
+		return "", false
 	}
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(filepath.Dir(path), target)
 	}
 	info, err := os.Stat(target)
-	return err == nil && info.IsDir()
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	return target, true
+}
+
+// isSubmoduleGitDir reports whether a resolved gitdir lives below a
+// superproject's .git/modules directory, where Git stores every submodule
+// repository, nested ones included.
+func isSubmoduleGitDir(target string) bool {
+	return strings.Contains(filepath.ToSlash(filepath.Clean(target)), "/.git/modules/")
 }
 
 // isGitDir reports whether path holds Git's repository metadata: a HEAD file

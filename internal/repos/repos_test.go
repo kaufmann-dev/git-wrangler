@@ -103,6 +103,71 @@ func TestDiscoverFindsLinkedWorktreeGitFile(t *testing.T) {
 	}
 }
 
+// writeFakeSubmoduleForTest creates a submodule checkout at super/rel whose
+// .git file points into the superproject's .git/modules store.
+func writeFakeSubmoduleForTest(t *testing.T, super string, rel string) string {
+	t.Helper()
+	checkout := filepath.Join(super, rel)
+	moduleGitDir := filepath.Join(super, ".git", "modules", rel)
+	if err := writeFakeGitDirForTest(moduleGitDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(checkout, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pointer, err := filepath.Rel(checkout, moduleGitDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(checkout, ".git"), []byte("gitdir: "+filepath.ToSlash(pointer)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return checkout
+}
+
+func TestDiscoverSkipsSubmoduleGitFiles(t *testing.T) {
+	root := t.TempDir()
+	super := filepath.Join(root, "super")
+	if err := writeFakeGitDirForTest(filepath.Join(super, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeSubmoduleForTest(t, super, filepath.Join("vendor", "lib"))
+	// Git stores nested submodules below the parent module's own modules dir.
+	nested := filepath.Join(super, "vendor", "lib", "inner")
+	nestedGitDir := filepath.Join(super, ".git", "modules", "vendor", "lib", "modules", "inner")
+	if err := writeFakeGitDirForTest(nestedGitDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, ".git"), []byte("gitdir: ../../../.git/modules/vendor/lib/modules/inner\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repositories, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repositories) != 1 || repositories[0].Dir != super {
+		t.Fatalf("repos = %#v, want only %s", repositories, super)
+	}
+}
+
+func TestResolveExactAcceptsSubmoduleGitFile(t *testing.T) {
+	super := filepath.Join(t.TempDir(), "super")
+	if err := writeFakeGitDirForTest(filepath.Join(super, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	checkout := writeFakeSubmoduleForTest(t, super, filepath.Join("vendor", "lib"))
+	got, err := ResolveExact(checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Dir != checkout {
+		t.Fatalf("dir = %q, want %q", got.Dir, checkout)
+	}
+}
+
 func TestResolveExactFindsGitDirectory(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
