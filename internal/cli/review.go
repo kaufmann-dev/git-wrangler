@@ -130,9 +130,9 @@ func runReview(a *app, cmd *cobra.Command, args []string) int {
 		renderReviewSection(a, "Unstaged", r.Unstaged, false)
 		renderReviewSection(a, "Untracked", r.Untracked, false)
 		if r.Unpushed == nil {
-			fmt.Fprintf(a.stdout, "  Unpushed: unavailable (%s)\n", r.Comparison.State)
+			fmt.Fprintf(a.stdout, "  %sUnpushed: unavailable (%s)%s\n", a.ui.Muted, r.Comparison.State, a.ui.Reset)
 		} else if r.Comparison.Ahead != nil && *r.Comparison.Ahead > 0 {
-			label := fmt.Sprintf("Unpushed — %d commits → %s", *r.Comparison.Ahead, reviewPath(r.Comparison.Target))
+			label := fmt.Sprintf("Unpushed — %d %s → %s", *r.Comparison.Ahead, plural(*r.Comparison.Ahead, "commit", "commits"), reviewPath(r.Comparison.Target))
 			if r.Comparison.State == "unpublished" {
 				label += " (new branch on origin; full snapshot)"
 			} else if r.Comparison.Method != "merge base" {
@@ -165,6 +165,26 @@ func reviewPath(path string) string {
 	}
 	return path
 }
+func reviewStatusStyle(a *app, status string) (string, string) {
+	switch status {
+	case "A":
+		return "Added", a.ui.Green
+	case "C":
+		return "Copied", a.ui.Green
+	case "M":
+		return "Edited", a.ui.Yellow
+	case "D":
+		return "Removed", a.ui.Red
+	case "R":
+		return "Renamed", a.ui.Cyan
+	case "T":
+		return "Type changed", a.ui.Cyan
+	case "U":
+		return "Conflicted", a.ui.Red
+	}
+	return status, ""
+}
+
 func renderReviewSection(a *app, label string, files []gitclient.FileChange, force bool) {
 	if len(files) == 0 && !force {
 		return
@@ -178,26 +198,87 @@ func renderReviewSection(a *app, label string, files []gitclient.FileChange, for
 			deleted += *f.Deletions
 		}
 	}
-	fmt.Fprintf(a.stdout, "  %s — %d %s, +%d -%d\n", label, len(files), plural(len(files), "file", "files"), added, deleted)
+	fmt.Fprintf(a.stdout, "  %s%s%s — %d %s, %s+%d%s %s-%d%s\n", a.ui.Bold, label, a.ui.Reset, len(files), plural(len(files), "file", "files"), a.ui.Green, added, a.ui.Reset, a.ui.Red, deleted, a.ui.Reset)
 	if len(files) == 0 {
-		fmt.Fprintln(a.stdout, "    No net file changes")
+		fmt.Fprintf(a.stdout, "    %sNo net file changes%s\n", a.ui.Muted, a.ui.Reset)
+		return
 	}
-	labels := map[string]string{"A": "Added", "M": "Edited", "D": "Removed", "R": "Renamed", "C": "Copied", "T": "Type changed", "U": "Conflicted"}
+	type row struct {
+		label, color, path string
+		add, del           int
+		counted, binary    bool
+	}
+	rows := make([]row, 0, len(files))
+	labelWidth, pathWidth, maxChange := 0, 0, 0
 	for _, f := range files {
-		path := reviewPath(f.Path)
+		r := row{path: reviewPath(f.Path), binary: f.Binary}
+		r.label, r.color = reviewStatusStyle(a, f.Status)
 		if f.PreviousPath != "" {
-			path = reviewPath(f.PreviousPath) + " → " + path
+			r.path = reviewPath(f.PreviousPath) + " → " + r.path
 		}
-		counts := "unavailable"
-		if f.Binary {
-			counts = "binary"
-		} else if f.Additions != nil && f.Deletions != nil {
-			counts = fmt.Sprintf("+%d -%d", *f.Additions, *f.Deletions)
+		if !f.Binary && f.Additions != nil && f.Deletions != nil {
+			r.add, r.del, r.counted = *f.Additions, *f.Deletions, true
+			maxChange = max(maxChange, r.add+r.del)
 		}
-		label := labels[f.Status]
-		if label == "" {
-			label = f.Status
-		}
-		fmt.Fprintf(a.stdout, "    %-12s %s  %s\n", label, path, counts)
+		labelWidth = max(labelWidth, visibleWidth(r.label))
+		pathWidth = max(pathWidth, visibleWidth(r.path))
+		rows = append(rows, r)
 	}
+	countWidth := max(len(strconv.Itoa(maxChange)), len("Bin"))
+	graphWidth := 40
+	if width := terminalWidth(a.stdout); width > 0 {
+		prefix := 4 + labelWidth + 2 + pathWidth + 3 + countWidth + 1
+		graphWidth = min(max(width-prefix, 10), 50)
+	}
+	for _, r := range rows {
+		fmt.Fprintf(a.stdout, "    %s%s%s%s  %s%s | ", r.color, r.label, a.ui.Reset, strings.Repeat(" ", labelWidth-visibleWidth(r.label)), r.path, strings.Repeat(" ", pathWidth-visibleWidth(r.path)))
+		switch {
+		case r.binary:
+			fmt.Fprintf(a.stdout, "%s%*s%s\n", a.ui.Muted, countWidth, "Bin", a.ui.Reset)
+		case !r.counted:
+			fmt.Fprintf(a.stdout, "%sunavailable%s\n", a.ui.Muted, a.ui.Reset)
+		default:
+			fmt.Fprintf(a.stdout, "%*d%s\n", countWidth, r.add+r.del, diffstatBar(a, r.add, r.del, graphWidth, maxChange))
+		}
+	}
+}
+
+func diffstatBar(a *app, add, del, width, maxChange int) string {
+	add, del = diffstatScale(add, del, width, maxChange)
+	if add+del == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteByte(' ')
+	if add > 0 {
+		b.WriteString(a.ui.Green + strings.Repeat("+", add) + a.ui.Reset)
+	}
+	if del > 0 {
+		b.WriteString(a.ui.Red + strings.Repeat("-", del) + a.ui.Reset)
+	}
+	return b.String()
+}
+
+// diffstatScale scales a file's additions and deletions into a graph of at
+// most width columns, matching git's --stat scaling.
+func diffstatScale(add, del, width, maxChange int) (int, int) {
+	if maxChange <= width {
+		return add, del
+	}
+	scale := func(it, w, m int) int {
+		if it == 0 {
+			return 0
+		}
+		return 1 + it*(w-1)/m
+	}
+	total := scale(add+del, width, maxChange)
+	if total < 2 && add > 0 && del > 0 {
+		total = 2
+	}
+	if add < del {
+		add = scale(add, total, add+del)
+		return add, total - add
+	}
+	del = scale(del, total, add+del)
+	return total - del, del
 }

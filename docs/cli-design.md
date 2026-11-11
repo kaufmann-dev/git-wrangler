@@ -171,7 +171,7 @@ Preparation progress completes before any preview. Print a reset table with repo
 
 ### `review`
 
-`review` shows Staged (HEAD to index), Unstaged (index to working tree), Untracked (non-ignored new files), and Unpushed sections. Each lists individual files, change types, and added/removed line counts, with section totals. Binary files and unavailable conflict counts are labeled. Files may appear in multiple sections; section counts must not be added together.
+`review` shows Staged (HEAD to index), Unstaged (index to working tree), Untracked (non-ignored new files), and Unpushed sections. Each lists individual files, change types, and added/removed line counts, with section totals. File rows use a git-style diffstat: a change-type word colored by type, an aligned path, `|`, the changed-line count, and a green `+`/red `-` bar scaled like `git diff --stat` to the terminal width (40 columns when stdout is not a terminal). Binary files show `Bin`; unavailable conflict counts show `unavailable`. Files may appear in multiple sections; section counts must not be added together.
 
 `review`, `status`, and `info` compare the current branch with `origin/<current branch>`, regardless of configured upstream. Unpushed counts use commit reachability; file changes are the net diff from the merge base to HEAD. If histories have no common ancestor, review compares the origin and HEAD trees directly and labels that comparison. Metadata-only rewrites can show unpushed commits with no net file changes.
 

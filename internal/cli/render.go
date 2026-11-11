@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/kaufmann-dev/git-wrangler/internal/ui"
@@ -186,4 +187,17 @@ func writeTableRow(w io.Writer, columns []tableColumn, widths []int, row []strin
 
 func finishProgressBeforeOutput(progress *progress) {
 	progress.done()
+}
+
+// terminalWidth returns the column count of w when it is a terminal, or 0.
+func terminalWidth(w io.Writer) int {
+	file, ok := w.(*os.File)
+	if !ok || !ui.IsTerminal(file) {
+		return 0
+	}
+	width, _, err := termGetSize(int(file.Fd()))
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
 }
