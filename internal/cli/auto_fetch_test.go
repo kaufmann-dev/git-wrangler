@@ -24,7 +24,7 @@ func TestRemoteAwareCommandsFetchOriginBeforeInspection(t *testing.T) {
 	}{
 		{name: "status", args: []string{"status"}, inspection: "status --porcelain=v2 --branch"},
 		{name: "info", args: []string{"info"}, inspection: "status --porcelain"},
-		{name: "review", args: []string{"review"}, inspection: "rev-list HEAD --not --remotes"},
+		{name: "review", args: []string{"review"}, inspection: "diff --no-ext-diff --no-textconv --find-renames --name-status -z --cached --"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := tempGitRepos(t, "repo")
@@ -148,9 +148,10 @@ func TestRemoteAwareJSONFetchFailureRowsAreSilent(t *testing.T) {
 			if stderr.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", stderr.String())
 			}
-			if inspected {
-				t.Fatal("repository inspection should not run after fetch failure")
+			if inspected != (tc.name == "review") {
+				t.Fatalf("local inspection after fetch failure = %v", inspected)
 			}
+
 			var doc struct {
 				OK           bool `json:"ok"`
 				Repositories []struct {
@@ -340,6 +341,13 @@ func TestRewriteDatesNoFetchWarnsAndSkipsFetch(t *testing.T) {
 }
 
 func remoteAwareCommandOutput(joined string) (string, string, error) {
+	if out, stderr, err, ok := originFixture(joined, "0", "0", false); ok {
+		return out, stderr, err
+	}
+	if strings.HasPrefix(joined, "diff --no-ext-diff ") || joined == "ls-files --others --exclude-standard -z" {
+		return "", "", nil
+	}
+
 	switch joined {
 	case "fetch --prune origin":
 		return "fetched\n", "", nil

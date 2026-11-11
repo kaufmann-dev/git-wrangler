@@ -148,7 +148,7 @@ For `status`, `info`, and `review`, JSON mode silently performs the default `git
 
 ## Per-Command Notes
 
-Human output follows `docs/cli-design.md`: progress and prompts on stderr, durable results on stdout after progress closes, actionable per-repo skips/failures, and final `Summary:` lines for bulk commands. JSON output remains unchanged for commands that support `--json`.
+Human output follows `docs/cli-design.md`: progress and prompts on stderr, durable results on stdout after progress closes, actionable per-repo skips/failures, and final `Summary:` lines for bulk commands. JSON output follows each command’s documented shape.
 
 ### `clone`
 
@@ -168,7 +168,7 @@ The built-in auto-refresh used by reporting and history rewrite commands is sepa
 
 ### `status`
 
-`status` refreshes `origin` before checking clean/dirty and ahead/behind state. With `--no-fetch`, it uses existing local remote-tracking refs. Fetch failures are per-repository failures: human output continues to inspect other repositories, and JSON output includes failure rows without stderr output.
+`status` refreshes `origin` before checking clean/dirty and ahead/behind state against `origin/<current branch>`, independent of configured upstream. With `--no-fetch`, it uses existing local remote-tracking refs. Fetch failures are per-repository failures: human output continues to inspect other repositories, and JSON output includes failure rows without stderr output.
 
 ### `activity`
 
@@ -188,11 +188,17 @@ Human output is one dense table. Multi-repository output includes `Date`, `Repos
 
 ### `info`
 
-`info` refreshes `origin` before collecting status, branch, ahead/behind, branch list, remotes, commit counts, authors, and largest files. With `--no-fetch`, it uses existing local remote-tracking refs. Fetch failures are per-repository failures in both human and JSON modes.
+`info` compares ahead/behind against `origin/<current branch>`, independent of configured upstream. It refreshes `origin` before collecting status, branch, ahead/behind, branch list, remotes, commit counts, authors, and largest files. With `--no-fetch`, it uses existing local remote-tracking refs. Fetch failures are per-repository failures in both human and JSON modes.
 
 ### `review`
 
-`review` refreshes `origin` before calculating unpushed commits with `HEAD --not --remotes`. With `--no-fetch`, it compares against existing local remote-tracking refs. Fetch failures are per-repository failures in both human and JSON modes.
+`review` shows Staged (HEAD to index), Unstaged (index to working tree), Untracked (non-ignored new files), and Unpushed sections. Each lists individual files, change types, and added/removed line counts, with section totals. Binary files and unavailable conflict counts are labeled. Files may appear in multiple sections; section counts must not be added together.
+
+`review`, `status`, and `info` compare the current branch with `origin/<current branch>`, regardless of configured upstream. Unpushed counts use commit reachability; file changes are the net diff from the merge base to HEAD. If histories have no common ancestor, review compares the origin and HEAD trees directly and labels that comparison. Metadata-only rewrites can show unpushed commits with no net file changes.
+
+An unpublished branch shows all HEAD commits and its full committed snapshot, labeled as a new branch on origin. An unborn repository has zero unpushed commits. Detached HEAD keeps local results available and reports branch comparison unavailable without failing solely for detachment.
+
+Origin is fetched first unless `--no-fetch` is set. Fetch failures retain available local review sections, mark Unpushed unavailable, and exit nonzero. JSON has `staged`, `unstaged`, `untracked`, and `unpushed` file arrays, comparison metadata and nullable counts. `unpushed: []` means no net file changes; `unpushed: null` means unavailable. Actual errors remain per-repository errors with empty stderr in JSON mode.
 
 ### `rename-repo`
 

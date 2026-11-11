@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
+	gitclient "github.com/kaufmann-dev/git-wrangler/internal/git"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 )
@@ -22,267 +24,180 @@ func reviewOptionsFromCommand(cmd *cobra.Command) reviewOptions {
 	}
 }
 
+type reviewResult struct {
+	Name       string                 `json:"name"`
+	Path       string                 `json:"path"`
+	Comparison gitclient.Comparison   `json:"comparison"`
+	Staged     []gitclient.FileChange `json:"staged"`
+	Unstaged   []gitclient.FileChange `json:"unstaged"`
+	Untracked  []gitclient.FileChange `json:"untracked"`
+	Unpushed   []gitclient.FileChange `json:"unpushed"`
+	Error      *jsonError             `json:"error,omitempty"`
+}
+
 func runReview(a *app, cmd *cobra.Command, args []string) int {
 	opts := reviewOptionsFromCommand(cmd)
-	if opts.json.enabled {
-		return runReviewJSON(a, opts)
-	}
-	if !requireGit(a, "review") {
-		return 1
-	}
-	repos, err := opts.target.repositories()
-	if err != nil {
+	fatal := func(err error) int {
+		if opts.json.enabled {
+			return writeJSONStatus(a, map[string]any{"ok": false, "error": jsonError{Message: err.Error()}})
+		}
 		a.error(err.Error())
 		return 1
 	}
-	if len(repos) == 0 {
-		return noRepos(a)
-	}
-	fetchFailures := map[string]originRefreshResult{}
-	if !opts.fetch.noFetch {
-		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
-		if interrupted(a) {
-			return 1
-		}
-	}
-	type reviewResult struct {
-		repo              repo
-		err               error
-		errMessage        string
-		added             []string
-		modified          []string
-		deletedFolders    []string
-		individualDeleted []string
-	}
-	status := 0
-	changed := 0
-	clean := 0
-	failed := 0
-	results := parallelReposProgress(a.ctx, repos, newProgress(a, "Reviewing repositories", len(repos)), func(r repo) reviewResult {
-		if failure, ok := fetchFailures[r.dir]; ok {
-			return reviewResult{repo: r, err: fmt.Errorf("%s", fetchFailureMessage(failure)), errMessage: "could not fetch origin"}
-		}
-		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
-		if err != nil {
-			return reviewResult{repo: r, err: err, errMessage: "could not list unpushed commits"}
-		}
-		commits := splitLines(unpushed)
-		if len(commits) == 0 {
-			return reviewResult{repo: r}
-		}
-		oldest := commits[len(commits)-1]
-		base, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-parse", "--verify", oldest+"^")
-		base = strings.TrimSpace(base)
-		if err != nil || base == "" {
-			base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-		}
-		diff, err := a.git.Stdout(a.ctx, r.dir, nil, "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
-		if err != nil {
-			return reviewResult{repo: r, err: err, errMessage: "could not inspect unpushed diff"}
-		}
-		added, modified, deleted := parseNameStatusZ(diff)
-		if len(added) == 0 && len(modified) == 0 && len(deleted) == 0 {
-			return reviewResult{repo: r}
-		}
-		deletedFolders, individualDeleted := groupDeletedFiles(a, r.dir, deleted)
-		return reviewResult{repo: r, added: added, modified: modified, deletedFolders: deletedFolders, individualDeleted: individualDeleted}
-	})
-	if interrupted(a) {
-		return 1
-	}
-	for _, result := range results {
-		if result.err != nil {
-			renderErrorBlock(a, fmt.Sprintf("%s: %s", result.repo.display, result.errMessage), result.err.Error())
-			status = 1
-			failed++
-			continue
-		}
-		if len(result.added) == 0 && len(result.modified) == 0 && len(result.deletedFolders) == 0 && len(result.individualDeleted) == 0 {
-			clean++
-			continue
-		}
-		changed++
-		renderRepoHeader(a, result.repo.display)
-		for _, f := range result.added {
-			fmt.Fprintf(a.stdout, "  %sAdded:%s    %s\n", a.ui.Green, a.ui.Reset, f)
-		}
-		for _, f := range result.modified {
-			fmt.Fprintf(a.stdout, "  %sEdited:%s   %s\n", a.ui.Yellow, a.ui.Reset, f)
-		}
-		for _, f := range result.deletedFolders {
-			fmt.Fprintf(a.stdout, "  %sRemoved:%s  %s/ (entire folder)\n", a.ui.Red, a.ui.Reset, f)
-		}
-		for _, f := range result.individualDeleted {
-			fmt.Fprintf(a.stdout, "  %sRemoved:%s  %s\n", a.ui.Red, a.ui.Reset, f)
-		}
-		fmt.Fprintln(a.stdout)
-	}
-	renderSummary(a,
-		summaryCount{label: "with unpushed changes", value: changed, color: a.ui.Yellow},
-		summaryCount{label: "clean", value: clean, color: a.ui.Green},
-		summaryCount{label: "failed", value: failed, color: a.ui.Red},
-	)
-	return status
-}
-
-func runReviewJSON(a *app, opts reviewOptions) int {
 	if _, err := a.runner.LookPath("git"); err != nil {
-		return writeJSONStatus(a, map[string]any{
-			"ok":      false,
-			"summary": map[string]any{"repositories": 0, "failed": 1},
-			"error":   jsonError{Message: "'git' is required for review. Install it and make sure it is on PATH."},
-		})
+		return fatal(fmt.Errorf("'git' is required for review: %w", err))
 	}
 	repos, err := opts.target.repositories()
 	if err != nil {
-		return writeJSONStatus(a, map[string]any{
-			"ok":      false,
-			"summary": map[string]any{"repositories": 0, "failed": 1},
-			"error":   jsonError{Message: err.Error()},
-		})
+		return fatal(err)
 	}
-	fetchFailures := map[string]originRefreshResult{}
+	failures := map[string]originRefreshResult{}
 	if !opts.fetch.noFetch {
-		fetchFailures = refreshFailuresByDir(refreshOrigin(a, repos))
-		if a.ctx.Err() != nil {
-			return writeJSONStatus(a, map[string]any{
-				"ok":      false,
-				"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
-				"error":   jsonError{Message: "operation cancelled"},
-			})
-		}
+		failures = refreshFailuresByDir(refreshOrigin(a, repos))
 	}
-	type reviewJSONRepo struct {
-		Name            string     `json:"name"`
-		Path            string     `json:"path"`
-		Added           []string   `json:"added,omitempty"`
-		Modified        []string   `json:"modified,omitempty"`
-		DeletedFolders  []string   `json:"deletedFolders,omitempty"`
-		DeletedFiles    []string   `json:"deletedFiles,omitempty"`
-		UnpushedChanges bool       `json:"unpushedChanges"`
-		Error           *jsonError `json:"error,omitempty"`
-	}
-	results := parallelRepos(a.ctx, repos, func(r repo) reviewJSONRepo {
-		row := reviewJSONRepo{Name: r.display, Path: r.dir}
-		if failure, ok := fetchFailures[r.dir]; ok {
-			row.Error = &jsonError{Message: fetchFailureMessage(failure)}
-			return row
-		}
-		unpushed, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "HEAD", "--not", "--remotes")
-		if err != nil {
-			row.Error = &jsonError{Message: "could not list unpushed commits: " + err.Error()}
-			return row
-		}
-		commits := splitLines(unpushed)
-		if len(commits) == 0 {
-			return row
-		}
-		oldest := commits[len(commits)-1]
-		base, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-parse", "--verify", oldest+"^")
-		base = strings.TrimSpace(base)
-		if err != nil || base == "" {
-			base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-		}
-		diff, err := a.git.Stdout(a.ctx, r.dir, nil, "diff", "--name-status", "-z", "--no-renames", base+"..HEAD")
-		if err != nil {
-			row.Error = &jsonError{Message: "could not inspect unpushed diff: " + err.Error()}
-			return row
-		}
-		added, modified, deleted := parseNameStatusZ(diff)
-		deletedFolders, individualDeleted := groupDeletedFiles(a, r.dir, deleted)
-		row.Added = added
-		row.Modified = modified
-		row.DeletedFolders = deletedFolders
-		row.DeletedFiles = individualDeleted
-		row.UnpushedChanges = len(added) > 0 || len(modified) > 0 || len(deletedFolders) > 0 || len(individualDeleted) > 0
-		return row
-	})
 	if a.ctx.Err() != nil {
-		return writeJSONStatus(a, map[string]any{
-			"ok":      false,
-			"summary": map[string]any{"repositories": len(repos), "failed": len(repos)},
-			"error":   jsonError{Message: "operation cancelled"},
-		})
-	}
-	failed := 0
-	changed := 0
-	for _, result := range results {
-		if result.Error != nil {
-			failed++
+		if !opts.json.enabled {
+			interrupted(a)
+			return 1
 		}
-		if result.UnpushedChanges {
-			changed++
+		return fatal(a.ctx.Err())
+	}
+	collect := func(r repo) reviewResult {
+		row := reviewResult{Name: r.display, Path: r.dir, Comparison: gitclient.Comparison{State: "unavailable"}}
+		record := func(err error) {
+			if err != nil {
+				if row.Error == nil {
+					row.Error = &jsonError{Message: err.Error()}
+				} else {
+					row.Error.Message += "; " + err.Error()
+				}
+			}
+		}
+		var e error
+		row.Staged, e = a.git.DiffChanges(a.ctx, r.dir, "--cached")
+		record(e)
+		row.Unstaged, e = a.git.DiffChanges(a.ctx, r.dir)
+		record(e)
+		row.Untracked, e = a.git.UntrackedChanges(a.ctx, r.dir)
+		record(e)
+		if failure, ok := failures[r.dir]; ok {
+			record(fmt.Errorf("%s", fetchFailureMessage(failure)))
+			return row
+		}
+		row.Comparison, e = a.git.CompareOrigin(a.ctx, r.dir)
+		record(e)
+		if e != nil || row.Comparison.State == "detached" {
+			return row
+		}
+		row.Unpushed = []gitclient.FileChange{}
+		if row.Comparison.Ahead != nil && *row.Comparison.Ahead > 0 {
+			row.Unpushed, e = a.git.DiffChanges(a.ctx, r.dir, row.Comparison.Base, "HEAD")
+			record(e)
+		}
+		return row
+	}
+	var results []reviewResult
+	if opts.json.enabled {
+		results = parallelRepos(a.ctx, repos, collect)
+	} else {
+		results = parallelReposProgress(a.ctx, repos, newProgress(a, "Reviewing repositories", len(repos)), collect)
+	}
+	if a.ctx.Err() != nil {
+		if !opts.json.enabled {
+			interrupted(a)
+			return 1
+		}
+		return fatal(a.ctx.Err())
+	}
+	summary := map[string]int{"repositories": len(results), "changed": 0, "clean": 0, "unavailable": 0, "failed": 0}
+	for _, r := range results {
+		changed := len(r.Staged)+len(r.Unstaged)+len(r.Untracked) > 0 || (r.Comparison.Ahead != nil && *r.Comparison.Ahead > 0)
+		switch {
+		case r.Error != nil:
+			summary["failed"]++
+		case changed:
+			summary["changed"]++
+		case r.Unpushed == nil:
+			summary["unavailable"]++
+		default:
+			summary["clean"]++
+		}
+		if opts.json.enabled || (!changed && r.Unpushed != nil && r.Error == nil) {
+			continue
+		}
+		renderRepoHeader(a, r.Name)
+		renderReviewSection(a, "Staged", r.Staged, false)
+		renderReviewSection(a, "Unstaged", r.Unstaged, false)
+		renderReviewSection(a, "Untracked", r.Untracked, false)
+		if r.Unpushed == nil {
+			fmt.Fprintf(a.stdout, "  Unpushed: unavailable (%s)\n", r.Comparison.State)
+		} else if r.Comparison.Ahead != nil && *r.Comparison.Ahead > 0 {
+			label := fmt.Sprintf("Unpushed — %d commits → %s", *r.Comparison.Ahead, reviewPath(r.Comparison.Target))
+			if r.Comparison.State == "unpublished" {
+				label += " (new branch on origin; full snapshot)"
+			} else if r.Comparison.Method != "merge base" {
+				label += " (" + r.Comparison.Method + ")"
+			}
+			renderReviewSection(a, label, r.Unpushed, true)
+		}
+		fmt.Fprintln(a.stdout)
+		if r.Error != nil {
+			renderErrorBlock(a, r.Name+": could not complete review", r.Error.Message)
 		}
 	}
 	code := 0
-	if failed > 0 {
+	if summary["failed"] > 0 {
 		code = 1
 	}
-	_ = writeJSON(a, map[string]any{
-		"ok":           code == 0,
-		"summary":      map[string]int{"repositories": len(results), "changed": changed, "failed": failed},
-		"repositories": results,
-	})
+	if opts.json.enabled {
+		if results == nil {
+			results = []reviewResult{}
+		}
+		_ = writeJSON(a, map[string]any{"ok": code == 0, "summary": summary, "repositories": results})
+		return code
+	}
+	renderSummary(a, summaryCount{label: "with changes", value: summary["changed"], color: a.ui.Yellow}, summaryCount{label: "clean", value: summary["clean"], color: a.ui.Green}, summaryCount{label: "comparison unavailable", value: summary["unavailable"], color: a.ui.Muted}, summaryCount{label: "failed", value: summary["failed"], color: a.ui.Red})
 	return code
 }
-
-func parseNameStatusZ(data string) (added, modified, deleted []string) {
-	parts := strings.Split(strings.TrimRight(data, "\x00"), "\x00")
-	for i := 0; i+1 < len(parts); i += 2 {
-		status := parts[i]
-		file := parts[i+1]
-		if status == "" {
-			continue
-		}
-		switch status[0] {
-		case 'A':
-			added = append(added, file)
-		case 'M':
-			modified = append(modified, file)
-		case 'D':
-			deleted = append(deleted, file)
-		}
+func reviewPath(path string) string {
+	if strings.IndexFunc(path, unicode.IsControl) >= 0 {
+		return strconv.Quote(path)
 	}
-	return
+	return path
 }
-
-func groupDeletedFiles(a *app, dir string, deleted []string) ([]string, []string) {
-	deletedFolders := []string{}
-	individual := []string{}
-	for _, file := range deleted {
-		covered := false
-		for _, folder := range deletedFolders {
-			if strings.HasPrefix(file, folder+"/") {
-				covered = true
-				break
-			}
+func renderReviewSection(a *app, label string, files []gitclient.FileChange, force bool) {
+	if len(files) == 0 && !force {
+		return
+	}
+	added, deleted := 0, 0
+	for _, f := range files {
+		if f.Additions != nil {
+			added += *f.Additions
 		}
-		if covered {
-			continue
-		}
-		parent := filepath.ToSlash(filepath.Dir(file))
-		if parent == "." {
-			individual = append(individual, file)
-			continue
-		}
-		current := ""
-		found := ""
-		for _, part := range strings.Split(parent, "/") {
-			if current == "" {
-				current = part
-			} else {
-				current += "/" + part
-			}
-			if out, _ := a.git.Stdout(a.ctx, dir, nil, "ls-tree", "-d", "HEAD", current); strings.TrimSpace(out) == "" {
-				found = current
-				break
-			}
-		}
-		if found != "" {
-			deletedFolders = append(deletedFolders, found)
-		} else {
-			individual = append(individual, file)
+		if f.Deletions != nil {
+			deleted += *f.Deletions
 		}
 	}
-	return deletedFolders, individual
+	fmt.Fprintf(a.stdout, "  %s — %d %s, +%d -%d\n", label, len(files), plural(len(files), "file", "files"), added, deleted)
+	if len(files) == 0 {
+		fmt.Fprintln(a.stdout, "    No net file changes")
+	}
+	labels := map[string]string{"A": "Added", "M": "Edited", "D": "Removed", "R": "Renamed", "C": "Copied", "T": "Type changed", "U": "Conflicted"}
+	for _, f := range files {
+		path := reviewPath(f.Path)
+		if f.PreviousPath != "" {
+			path = reviewPath(f.PreviousPath) + " → " + path
+		}
+		counts := "unavailable"
+		if f.Binary {
+			counts = "binary"
+		} else if f.Additions != nil && f.Deletions != nil {
+			counts = fmt.Sprintf("+%d -%d", *f.Additions, *f.Deletions)
+		}
+		label := labels[f.Status]
+		if label == "" {
+			label = f.Status
+		}
+		fmt.Fprintf(a.stdout, "    %-12s %s  %s\n", label, path, counts)
+	}
 }

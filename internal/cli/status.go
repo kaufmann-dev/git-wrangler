@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
+	gitclient "github.com/kaufmann-dev/git-wrangler/internal/git"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -127,13 +127,14 @@ func runStatusJSON(a *app, opts statusOptions) int {
 		}
 	}
 	type statusJSONRepo struct {
-		Name     string     `json:"name"`
-		Path     string     `json:"path"`
-		State    string     `json:"state"`
-		Tracking string     `json:"tracking"`
-		Ahead    int        `json:"ahead"`
-		Behind   int        `json:"behind"`
-		Error    *jsonError `json:"error,omitempty"`
+		Name       string               `json:"name"`
+		Path       string               `json:"path"`
+		State      string               `json:"state"`
+		Tracking   string               `json:"tracking"`
+		Ahead      *int                 `json:"ahead"`
+		Behind     *int                 `json:"behind"`
+		Comparison gitclient.Comparison `json:"comparison"`
+		Error      *jsonError           `json:"error,omitempty"`
 	}
 	rows := []statusJSONRepo{}
 	summary := map[string]int{"repositories": len(repos), "clean": 0, "dirty": 0, "behind": 0, "noRemote": 0, "failed": 0}
@@ -146,8 +147,9 @@ func runStatusJSON(a *app, opts statusOptions) int {
 			continue
 		}
 		detail, err := statusDetails(a, r)
-		row.Ahead = detail.ahead
-		row.Behind = detail.behind
+		row.Comparison = detail.comparison
+		row.Ahead = detail.comparison.Ahead
+		row.Behind = detail.comparison.Behind
 		if err != nil {
 			row.Error = &jsonError{Message: err.Error()}
 			summary["failed"]++
@@ -162,7 +164,7 @@ func runStatusJSON(a *app, opts statusOptions) int {
 		}
 		switch {
 		case !detail.hasUpstream:
-			row.Tracking = "no remote"
+			row.Tracking = originComparisonLabel(detail.comparison)
 			summary["noRemote"]++
 		case detail.ahead > 0 && detail.behind > 0:
 			row.Tracking = "ahead and behind"
@@ -197,6 +199,7 @@ type statusTableRow struct {
 }
 
 type statusDetail struct {
+	comparison  gitclient.Comparison
 	dirty       bool
 	hasUpstream bool
 	ahead       int
@@ -210,20 +213,23 @@ func statusDetails(a *app, r repo) (statusDetail, error) {
 	}
 	detail := statusDetail{}
 	for _, line := range splitLines(out) {
-		switch {
-		case strings.HasPrefix(line, "# branch.upstream "):
-			detail.hasUpstream = true
-		case strings.HasPrefix(line, "# branch.ab "):
-			fields := strings.Fields(line)
-			if len(fields) >= 4 {
-				detail.ahead, _ = strconv.Atoi(strings.TrimPrefix(fields[2], "+"))
-				detail.behind, _ = strconv.Atoi(strings.TrimPrefix(fields[3], "-"))
-			}
-		case strings.HasPrefix(line, "#"), line == "":
-		default:
+		if line != "" && !strings.HasPrefix(line, "#") {
 			detail.dirty = true
 		}
 	}
+	comparison, err := a.git.CompareOrigin(a.ctx, r.dir)
+	if err != nil {
+		return detail, err
+	}
+	detail.comparison = comparison
+	detail.hasUpstream = comparison.State == "compared"
+	if comparison.Ahead != nil {
+		detail.ahead = *comparison.Ahead
+	}
+	if comparison.Behind != nil {
+		detail.behind = *comparison.Behind
+	}
+
 	return detail, nil
 }
 
@@ -248,7 +254,7 @@ func statusRow(a *app, r repo) (statusTableRow, error) {
 	behind := 0
 	noRemote := 0
 	if !detail.hasUpstream {
-		tracking = a.ui.Muted + "no remote" + a.ui.Reset
+		tracking = a.ui.Muted + originComparisonLabel(detail.comparison) + a.ui.Reset
 		noRemote = 1
 	} else if detail.ahead > 0 && detail.behind > 0 {
 		tracking = fmt.Sprintf("%sahead %d%s, %sbehind %d%s", a.ui.Cyan, detail.ahead, a.ui.Reset, a.ui.Red, detail.behind, a.ui.Reset)
@@ -260,5 +266,21 @@ func statusRow(a *app, r repo) (statusTableRow, error) {
 		behind = 1
 	}
 
+	if detail.hasUpstream {
+		tracking += " (" + reviewPath(detail.comparison.Target) + ")"
+	}
 	return statusTableRow{name: name, state: state, tracking: tracking, dirty: dirty, behind: behind, noRemote: noRemote}, nil
+}
+
+func originComparisonLabel(c gitclient.Comparison) string {
+	switch c.State {
+	case "detached":
+		return "detached HEAD; comparison unavailable"
+	case "unpublished":
+		return "new branch on origin"
+	case "unborn":
+		return "no commits"
+	default:
+		return c.State
+	}
 }

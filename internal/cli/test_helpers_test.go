@@ -124,3 +124,31 @@ func writeFakeGitDirForTest(gitDir string) error {
 	}
 	return os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
 }
+
+type gitExit int
+
+func (e gitExit) Error() string { return "git exited" }
+func (e gitExit) ExitCode() int { return int(e) }
+
+func originFixture(command string, ahead, behind string, missing bool) (string, string, error, bool) {
+	switch command {
+	case "symbolic-ref --quiet --short HEAD":
+		return "main\n", "", nil, true
+	case "rev-parse --verify --quiet HEAD":
+		return "head\n", "", nil, true
+	case "show-ref --verify --quiet refs/remotes/origin/main":
+		if missing {
+			return "", "", gitExit(1), true
+		}
+		return "", "", nil, true
+	case "rev-list --left-right --count HEAD...refs/remotes/origin/main":
+		return ahead + " " + behind + "\n", "", nil, true
+	case "merge-base refs/remotes/origin/main HEAD":
+		return "base\n", "", nil, true
+	case "rev-list --count HEAD":
+		return ahead + "\n", "", nil, true
+	case "hash-object -t tree --stdin":
+		return "empty\n", "", nil, true
+	}
+	return "", "", nil, false
+}

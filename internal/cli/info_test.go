@@ -64,6 +64,9 @@ func TestInfoRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 				return "", "", errors.New("unexpected command")
 			}
 			joined := strings.Join(args, " ")
+			if out, stderr, err, ok := originFixture(joined, "1", "2", false); ok {
+				return out, stderr, err
+			}
 			switch joined {
 			case "fetch --prune origin":
 				return "fetched\n", "", nil

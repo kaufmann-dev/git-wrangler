@@ -163,7 +163,7 @@ processes.
 | [`license`](https://wrangler.kaufmann.dev/docs/license)             | Add, replace, or remove standard license files.             |
 | [`rename-branch`](https://wrangler.kaufmann.dev/docs/rename-branch) | Rename a branch across repositories.                        |
 | [`reset`](https://wrangler.kaufmann.dev/docs/reset)                 | Reset current branches to their origin counterparts.        |
-| [`review`](https://wrangler.kaufmann.dev/docs/review)               | Review unpushed changes across repositories.                |
+| [`review`](https://wrangler.kaufmann.dev/docs/review)               | Review uncommitted and unpushed files with line counts.     |
 | [`untrack`](https://wrangler.kaufmann.dev/docs/untrack)             | Stop tracking files already covered by `.gitignore`.        |
 
 ### History Rewriting

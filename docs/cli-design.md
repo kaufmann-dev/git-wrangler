@@ -112,7 +112,7 @@ Preferred count orders:
 - `license`: created, overwritten, skipped, failed; `license remove`: removed, skipped, failed.
 - `rename-branch`: renamed, skipped, failed.
 - `reset`: reset, skipped, failed.
-- `review`: with unpushed changes, clean, failed.
+- `review`: with changes, clean, comparison unavailable, failed.
 - `untrack`: with tracked ignored files, unchanged, failed; then updated, skipped, failed after apply.
 - `remove-secrets`: rewritten, clean, skipped, failed.
 - `rewrite-authors`: rewritten, skipped, failed.
@@ -171,7 +171,13 @@ Preparation progress completes before any preview. Print a reset table with repo
 
 ### `review`
 
-Refresh `origin` first unless `--no-fetch` is set, then show review progress. Print only repositories with unpushed changes or errors. Keep per-repo file-change blocks because they are the command result. Added, edited, and removed labels are aligned and printed to stdout. Summarize changed, clean, and failed counts. JSON mode keeps fetch failures in repository rows and keeps stderr empty.
+`review` shows Staged (HEAD to index), Unstaged (index to working tree), Untracked (non-ignored new files), and Unpushed sections. Each lists individual files, change types, and added/removed line counts, with section totals. Binary files and unavailable conflict counts are labeled. Files may appear in multiple sections; section counts must not be added together.
+
+`review`, `status`, and `info` compare the current branch with `origin/<current branch>`, regardless of configured upstream. Unpushed counts use commit reachability; file changes are the net diff from the merge base to HEAD. If histories have no common ancestor, review compares the origin and HEAD trees directly and labels that comparison. Metadata-only rewrites can show unpushed commits with no net file changes.
+
+An unpublished branch shows all HEAD commits and its full committed snapshot, labeled as a new branch on origin. An unborn repository has zero unpushed commits. Detached HEAD keeps local results available and reports branch comparison unavailable without failing solely for detachment.
+
+Origin is fetched first unless `--no-fetch` is set. Fetch failures retain available local review sections, mark Unpushed unavailable, and exit nonzero. JSON has `staged`, `unstaged`, `untracked`, and `unpushed` file arrays, comparison metadata and nullable counts. `unpushed: []` means no net file changes; `unpushed: null` means unavailable. Actual errors remain per-repository errors with empty stderr in JSON mode.
 
 ### `untrack`
 

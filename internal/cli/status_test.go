@@ -37,7 +37,7 @@ func TestStatusRow(t *testing.T) {
 # branch.head main
 `,
 			expectedState:    "clean",
-			expectedTracking: "no remote",
+			expectedTracking: "new branch on origin",
 			expectedDirty:    0,
 			expectedBehind:   0,
 			expectedNoRemote: 1,
@@ -101,6 +101,17 @@ func TestStatusRow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			runner := fakeRunner{run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+				ahead, behind := "0", "0"
+				for _, line := range strings.Split(tc.gitOutput, "\n") {
+					if strings.HasPrefix(line, "# branch.ab ") {
+						f := strings.Fields(line)
+						ahead = strings.TrimPrefix(f[2], "+")
+						behind = strings.TrimPrefix(f[3], "-")
+					}
+				}
+				if out, stderr, err, ok := originFixture(strings.Join(args, " "), ahead, behind, !strings.Contains(tc.gitOutput, "branch.upstream")); ok {
+					return out, stderr, err
+				}
 				if name == "git" && len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain=v2" {
 					return tc.gitOutput, "", nil
 				}
@@ -123,7 +134,11 @@ func TestStatusRow(t *testing.T) {
 			if stateCleaned != tc.expectedState {
 				t.Errorf("state: got %q, expected %q", stateCleaned, tc.expectedState)
 			}
-			if trackingCleaned != tc.expectedTracking {
+			wantTracking := tc.expectedTracking
+			if strings.Contains(tc.gitOutput, "branch.upstream") {
+				wantTracking += " (origin/main)"
+			}
+			if trackingCleaned != wantTracking {
 				t.Errorf("tracking: got %q, expected %q", trackingCleaned, tc.expectedTracking)
 			}
 			if row.dirty != tc.expectedDirty {
@@ -149,6 +164,9 @@ func TestStatusProgressCompletesBeforeTableOutput(t *testing.T) {
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
 			if name != "git" {
 				return "", "", errors.New("unexpected command")
+			}
+			if out, stderr, err, ok := originFixture(strings.Join(args, " "), "0", "0", false); ok {
+				return out, stderr, err
 			}
 			switch strings.Join(args, " ") {
 			case "fetch --prune origin":

@@ -350,6 +350,14 @@ func TestStatusSummaryUsesStdoutAndCountsFailures(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			behind := "0"
+			if filepath.Base(dir) == "behind" {
+				behind = "2"
+			}
+			if out, stderr, err, ok := originFixture(strings.Join(args, " "), "0", behind, filepath.Base(dir) == "noremote"); ok {
+				return out, stderr, err
+			}
+
 			if name != "git" {
 				return "", "", errors.New("unexpected command")
 			}
@@ -406,15 +414,23 @@ func TestReviewRunsConcurrentlyAndPreservesOutputOrder(t *testing.T) {
 			switch {
 			case strings.Join(args, " ") == "fetch --prune origin":
 				return "fetched\n", "", nil
-			case strings.Join(args, " ") == "rev-list HEAD --not --remotes":
+			case strings.Join(args, " ") == "rev-list --left-right --count HEAD...refs/remotes/origin/main":
 				done := trackConcurrentStart(&mu, &activeRevLists, &maxActiveRevLists, release, &releaseOnce)
 				defer done()
-				return "commit\n", "", nil
+				return "1 0\n", "", nil
 			case strings.HasPrefix(strings.Join(args, " "), "rev-parse --verify commit^"):
 				return "", "", errors.New("no parent")
 			case len(args) >= 1 && args[0] == "diff":
+				if strings.Contains(strings.Join(args, " "), "--numstat") {
+					return "1\t0\tfile.go\x00", "", nil
+				}
 				return "A\x00file.go\x00", "", nil
+			case args[0] == "ls-files":
+				return "", "", nil
 			default:
+				if out, stderr, err, ok := originFixture(strings.Join(args, " "), "1", "0", false); ok {
+					return out, stderr, err
+				}
 				return "", "", errors.New("unexpected git args")
 			}
 		},

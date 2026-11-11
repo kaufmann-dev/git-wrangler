@@ -156,7 +156,7 @@ func printRootLanding(a *app) {
 	fmt.Fprintln(a.stdout, "Common commands:")
 	fmt.Fprintln(a.stdout, "  git-wrangler status          Show repository state")
 	fmt.Fprintln(a.stdout, "  git-wrangler pull --rebase   Refresh every repo")
-	fmt.Fprintln(a.stdout, "  git-wrangler review          Review unpushed work")
+	fmt.Fprintln(a.stdout, "  git-wrangler review          Review uncommitted and unpushed work")
 	fmt.Fprintln(a.stdout, "  git-wrangler help            Show all commands")
 }
 

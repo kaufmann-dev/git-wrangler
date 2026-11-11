@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	gitclient "github.com/kaufmann-dev/git-wrangler/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -107,18 +108,19 @@ func runInfoJSON(a *app, opts infoOptions) int {
 		}
 	}
 	type infoJSONRepo struct {
-		Name          string     `json:"name"`
-		Path          string     `json:"path"`
-		Status        string     `json:"status,omitempty"`
-		Branch        string     `json:"branch,omitempty"`
-		Ahead         string     `json:"ahead,omitempty"`
-		Behind        string     `json:"behind,omitempty"`
-		HasLicense    bool       `json:"hasLicense"`
-		CommitCount   string     `json:"commitCount,omitempty"`
-		LastCommit    string     `json:"lastCommit,omitempty"`
-		InitialCommit string     `json:"initialCommit,omitempty"`
-		Remotes       []string   `json:"remotes,omitempty"`
-		Error         *jsonError `json:"error,omitempty"`
+		Comparison    gitclient.Comparison `json:"comparison"`
+		Name          string               `json:"name"`
+		Path          string               `json:"path"`
+		Status        string               `json:"status,omitempty"`
+		Branch        string               `json:"branch,omitempty"`
+		Ahead         string               `json:"ahead,omitempty"`
+		Behind        string               `json:"behind,omitempty"`
+		HasLicense    bool                 `json:"hasLicense"`
+		CommitCount   string               `json:"commitCount,omitempty"`
+		LastCommit    string               `json:"lastCommit,omitempty"`
+		InitialCommit string               `json:"initialCommit,omitempty"`
+		Remotes       []string             `json:"remotes,omitempty"`
+		Error         *jsonError           `json:"error,omitempty"`
 	}
 	results := parallelRepos(a.ctx, repos, func(r repo) infoJSONRepo {
 		row := infoJSONRepo{Name: r.display, Path: r.dir, HasLicense: fileExists(filepath.Join(r.dir, "LICENSE"))}
@@ -136,17 +138,20 @@ func runInfoJSON(a *app, opts infoOptions) int {
 		} else {
 			row.Status = "dirty"
 		}
-		branch, err := a.git.CurrentBranch(a.ctx, r.dir)
+		comparison, err := a.git.CompareOrigin(a.ctx, r.dir)
+		row.Comparison = comparison
 		if err != nil {
-			row.Error = &jsonError{Message: "could not inspect branch: " + err.Error()}
+			row.Error = &jsonError{Message: err.Error()}
 			return row
 		}
-		row.Branch = strings.TrimSpace(branch)
-		if ab, _ := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--left-right", "--count", "HEAD...@{u}"); len(strings.Fields(ab)) >= 2 {
-			fields := strings.Fields(ab)
-			row.Ahead = fields[0]
-			row.Behind = fields[1]
+		row.Branch = comparison.Branch
+		if comparison.Ahead != nil {
+			row.Ahead = strconv.Itoa(*comparison.Ahead)
 		}
+		if comparison.Behind != nil {
+			row.Behind = strconv.Itoa(*comparison.Behind)
+		}
+
 		hasCommits := a.git.HasHead(a.ctx, r.dir)
 		if count, err := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--all", "--count"); err == nil {
 			row.CommitCount = strings.TrimSpace(count)
@@ -225,18 +230,25 @@ func collectInfo(a *app, r repo) infoResult {
 		fmt.Fprintf(&stdout, "Status:             %sDirty (uncommitted changes or untracked files)%s\n", a.ui.Yellow, a.ui.Reset)
 	}
 	writeLicenseInfo(&stdout, a, r.dir)
-	branch, err := a.git.CurrentBranch(a.ctx, r.dir)
+	comparison, err := a.git.CompareOrigin(a.ctx, r.dir)
 	if err != nil {
-		return errorf("could not inspect branch", err)
+		return errorf("could not compare origin", err)
 	}
-	fmt.Fprintf(&stdout, "Current branch:     %s\n", strings.TrimSpace(branch))
+	branchLabel := comparison.Branch
+	if comparison.State == "detached" {
+		branchLabel = "(detached HEAD)"
+	}
+	fmt.Fprintf(&stdout, "Current branch:     %s\n", reviewPath(branchLabel))
 	hasCommits := a.git.HasHead(a.ctx, r.dir)
-	ab, _ := a.git.Stdout(a.ctx, r.dir, nil, "rev-list", "--left-right", "--count", "HEAD...@{u}")
-	if fields := strings.Fields(ab); len(fields) >= 2 {
-		fmt.Fprintf(&stdout, "Ahead/behind:       %s ahead, %s behind remote\n", fields[0], fields[1])
+	if comparison.State == "compared" {
+		fmt.Fprintf(&stdout, "Ahead/behind:       %d ahead, %d behind %s\n", *comparison.Ahead, *comparison.Behind, comparison.Target)
 	} else {
-		fmt.Fprintln(&stdout, "Ahead/behind:       No upstream set")
+		fmt.Fprintf(&stdout, "Ahead/behind:       %s\n", originComparisonLabel(comparison))
+		if comparison.Ahead != nil {
+			fmt.Fprintf(&stdout, "Unpushed commits:   %d\n", *comparison.Ahead)
+		}
 	}
+
 	if err := writeBranches(&stdout, a, r.dir); err != nil {
 		return errorf("could not inspect branches", err)
 	}

@@ -50,6 +50,10 @@ func TestStatusJSONExactRepoSuppressesHumanOutput(t *testing.T) {
 	runner := fakeRunner{
 		lookPath: fakeGitLookPath,
 		run: func(ctx context.Context, dir string, env []string, name string, args ...string) (string, string, error) {
+			if out, stderr, err, ok := originFixture(strings.Join(args, " "), "0", "0", false); ok {
+				return out, stderr, err
+			}
+
 			if strings.Join(args, " ") == "fetch --prune origin" {
 				return "fetched\n", "", nil
 			}

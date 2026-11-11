@@ -47,7 +47,8 @@ Each JSON command should have focused coverage that verifies:
 - stdout contains no ANSI escape codes or progress text.
 - stderr is empty for normal JSON execution.
 - default auto-fetch success is silent.
-- fetch failures for `status`, `info`, and `review` appear as per-repository errors with empty stderr.
+- fetch failures for `status`, `info`, and `review` appear as per-repository errors with empty stderr; review retains available local file sections.
+- review covers shared origin-branch comparisons, detached HEAD, unborn and unpublished branches, rewritten roots, per-file statistics, and index preservation.
 - per-repo failures appear in `repositories[]` and return exit code 1.
 - fatal command errors include `error.message`.
 - `config show --json` never exposes stored secret values.

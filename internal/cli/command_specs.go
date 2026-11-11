@@ -194,7 +194,7 @@ func commandSpecs() []commandSpec {
 		},
 		{
 			use:    "review",
-			short:  "Review unpushed changes across repositories.",
+			short:  "Review uncommitted and unpushed file changes.",
 			group:  "local",
 			run:    runReview,
 			flags:  joinFlags(targetFlags(), jsonFlags(), fetchControlFlags()),
